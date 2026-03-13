@@ -1,0 +1,9 @@
+node_modules
+dist
+.vscode
+.DS_Store
+.env
+.env.*
+backend_laravel/vendor
+backend_laravel/bootstrap/cache/*.php
+backend_laravel/storage/*.key

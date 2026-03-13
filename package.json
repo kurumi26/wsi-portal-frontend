@@ -1,0 +1,25 @@
+{
+  "name": "wsi-service-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "cd backend_laravel && php artisan serve --host=127.0.0.1 --port=8000",
+    "server:setup": "cd backend_laravel && php artisan migrate:fresh --seed",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@vitejs/plugin-react-swc": "^3.8.1",
+    "tailwindcss": "^4.1.11",
+    "vite": "^7.0.0"
+  }
+}
