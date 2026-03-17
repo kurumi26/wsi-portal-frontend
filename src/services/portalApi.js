@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 const TOKEN_STORAGE_KEY = 'wsi-auth-token';
 
 let authToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
@@ -19,6 +19,7 @@ function getHeaders(customHeaders = {}) {
 
 async function apiRequest(path, options = {}) {
   let response;
+  console.log('BASE URL: '+API_BASE_URL)
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,

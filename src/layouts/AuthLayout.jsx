@@ -8,7 +8,7 @@ export default function AuthLayout() {
         <div className="mb-4 flex items-center justify-between gap-4">
           <div className="inline-flex items-center gap-3 rounded-2xl bg-transparent px-4 py-3 backdrop-blur">
             <div className="flex h-15 w-28 items-center justify-center overflow-hidden">
-              <img src="/src/assets/logo-light.png" alt="WSI" className="h-8 w-auto object-contain" />
+              <img src="/logo-light.png" alt="WSI" className="h-8 w-auto object-contain" />
             </div>
           </div>
 
@@ -22,7 +22,7 @@ export default function AuthLayout() {
           <section className="min-h-0 p-6 lg:p-8 bg-transparent">
             <div className="flex h-full flex-col justify-center gap-4">
               <div>
-                <h1 className="text-4xl font-bold text-white md:text-5xl">Modern hosting, billing, and customer operations</h1>
+                <h1 className="text-4xl font-bold text-white md:text-5xl">Moderns hosting, billing, and customer operations</h1>
                 <p className="mt-2 max-w-xl text-base text-slate-300">Manage services, invoices, and provisioning from one simple portal.</p>
               </div>
 
