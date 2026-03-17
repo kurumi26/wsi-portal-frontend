@@ -20,6 +20,7 @@ export default function PortalLayout() {
   const navigate = useNavigate();
   const { user, logout, isAdmin } = useAuth();
   const { cart, notifications, stats, updateNotificationStatus } = usePortal();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -134,8 +135,13 @@ export default function PortalLayout() {
 
   return (
     <div className="min-h-screen bg-transparent text-slate-100">
+      {/* Overlay for mobile sidebar */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${isSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} lg:hidden`}
+        onClick={() => setIsSidebarOpen(false)}
+      />
       <div className="mx-auto flex min-h-screen max-w-[1800px] gap-6 p-4 lg:p-6">
-        <aside className="panel hidden w-76 shrink-0 self-start p-5 lg:sticky lg:top-6 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col lg:gap-6 lg:overflow-y-auto">
+        <aside className={`panel fixed top-0 left-0 z-50 h-full w-72 max-w-[90vw] transform bg-slate-950 p-5 transition-transform duration-300 lg:static lg:translate-x-0 lg:sticky lg:top-6 lg:flex lg:h-[calc(100vh-3rem)] lg:w-76 lg:flex-col lg:gap-6 lg:overflow-y-auto ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div>
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-400/15 text-sky-300">
@@ -152,6 +158,7 @@ export default function PortalLayout() {
                 <NavLink
                   key={to}
                   to={to}
+                  end={to === '/dashboard'}
                   className={({ isActive }) =>
                     `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
                       isActive ? 'bg-orange-400 text-white' : 'text-slate-300 hover:bg-sky-300/10 hover:text-white'
@@ -177,9 +184,19 @@ export default function PortalLayout() {
 
         <div className="flex min-w-0 flex-1 flex-col gap-6">
           <header className="panel relative z-40 flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-slate-400">Welcome back</p>
-              <h2 className="text-2xl font-semibold text-white">{user?.name}</h2>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(true)}
+                className="lg:hidden inline-flex items-center justify-center rounded-xl bg-sky-400/15 p-2 text-sky-300 shadow-md"
+                aria-label="Open sidebar"
+              >
+                <LayoutDashboard size={20} />
+              </button>
+              <div>
+                <p className="text-sm text-slate-400">Welcome back</p>
+                <h2 className="text-2xl font-semibold text-white">{user?.name}</h2>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
