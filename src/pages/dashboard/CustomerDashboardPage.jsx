@@ -371,15 +371,15 @@ export default function CustomerDashboardPage() {
           ) : null}
           {/* Show a dedicated banner when payment was received and is awaiting admin approval */}
           {!unpaidNamesFinal.length && !nearExpiredServices.length && approvalPendingServicesFiltered.length ? (
-            <div className="rounded-3xl border border-amber-300/40 bg-amber-300/20 px-4 py-4 shadow-sm shadow-amber-900/10">
+            <div className="rounded-3xl border border-amber-300/40 bg-amber-300/10 px-4 py-4 shadow-sm shadow-amber-900/10">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-400 text-slate-950">
+                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-400 text-white">
                     <BellRing size={18} />
                   </div>
                   <div>
-                    <p className="font-semibold text-amber-100">Payment pending admin approval</p>
-                    <p className="text-sm text-amber-50/90">We received payment for {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}. Admin review is pending; provisioning will begin after approval.</p>
+                    <p className="font-semibold text-amber-700">Payment pending admin approval</p>
+                    <p className="text-sm text-amber-800">We received payment for {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}. Admin review is pending; provisioning will begin after approval.</p>
                   </div>
                 </div>
                 <Link to="/dashboard/orders" className="btn-secondary whitespace-nowrap px-5 py-2">View Orders</Link>

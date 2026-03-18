@@ -106,8 +106,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="panel relative overflow-hidden p-8 lg:p-9">
-      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-sky-400/10 via-white/0 to-orange-400/10" />
+    <div className="panel auth-panel relative overflow-hidden p-8 lg:p-9">
 
       <div className="relative">
         <p className="text-sm uppercase tracking-[0.2em] text-orange-300">New User Registration</p>

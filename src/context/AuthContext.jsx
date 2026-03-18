@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { portalApi } from '../services/portalApi';
 
 const AuthContext = createContext(null);
@@ -28,6 +28,14 @@ export function AuthProvider({ children }) {
   });
   const [isAuthLoading, setIsAuthLoading] = useState(Boolean(portalApi.getStoredToken()));
   const [security, setSecurity] = useState({ twoFactorEnabled: false, sessions: [] });
+  // Inactivity logout settings
+  const INACTIVITY_LIMIT = 60 * 1000; // 1 minute
+  const WARNING_DURATION = 10 * 1000; // show warning 10s before logout
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const [idleCountdown, setIdleCountdown] = useState(0);
+  const warningTimerRef = useRef(null);
+  const logoutTimerRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
 
   const persistUser = (nextUser) => {
     setUser(nextUser);
@@ -37,6 +45,72 @@ export function AuthProvider({ children }) {
     }
     localStorage.removeItem(storageKey);
   };
+
+  const clearInactivityTimers = () => {
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setShowIdleWarning(false);
+    setIdleCountdown(0);
+  };
+
+  const startInactivityTimers = () => {
+    clearInactivityTimers();
+    // schedule warning
+    warningTimerRef.current = setTimeout(() => {
+      setShowIdleWarning(true);
+      setIdleCountdown(Math.ceil(WARNING_DURATION / 1000));
+      countdownIntervalRef.current = setInterval(() => {
+        setIdleCountdown((c) => {
+          if (c <= 1) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+
+      logoutTimerRef.current = setTimeout(() => {
+        // perform logout when countdown finishes
+        clearInactivityTimers();
+        logout();
+      }, WARNING_DURATION);
+    }, Math.max(0, INACTIVITY_LIMIT - WARNING_DURATION));
+  };
+
+  const resetInactivityTimers = () => {
+    // restart timers when user interacts
+    if (!portalApi.getStoredToken()) return;
+    startInactivityTimers();
+  };
+
+  // listen for user interactions to reset timer
+  useEffect(() => {
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'click'];
+    const onActivity = () => resetInactivityTimers();
+
+    if (portalApi.getStoredToken()) {
+      events.forEach((ev) => window.addEventListener(ev, onActivity));
+      // start timers initially
+      startInactivityTimers();
+    }
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+      clearInactivityTimers();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => {
     const bootstrapAuth = async () => {
@@ -238,6 +312,10 @@ export function AuthProvider({ children }) {
       revokeOtherSessions,
       loadSecuritySettings,
       logout,
+      // idle logout UI
+      showIdleWarning,
+      idleCountdown,
+      resetInactivityTimers,
     }),
     [user, isAuthLoading, security],
   );

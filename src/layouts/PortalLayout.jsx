@@ -18,7 +18,7 @@ const customerNav = [
 
 export default function PortalLayout() {
   const navigate = useNavigate();
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, showIdleWarning, idleCountdown, resetInactivityTimers } = useAuth();
   const { cart, notifications, stats, updateNotificationStatus } = usePortal();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -172,14 +172,7 @@ export default function PortalLayout() {
             </nav>
           </div>
 
-          <div className="panel-muted p-4">
-            <p className="text-sm text-slate-400">System Snapshot</p>
-            <div className="mt-4 space-y-3 text-sm text-slate-200">
-              <div className="flex items-center justify-between"><span>Clients</span><span>{stats.totalClients}</span></div>
-              <div className="flex items-center justify-between"><span>Active Services</span><span>{stats.activeServices}</span></div>
-              <div className="flex items-center justify-between"><span>Provisioning</span><span>{stats.provisioning}</span></div>
-            </div>
-          </div>
+          {/* System Snapshot removed per request */}
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col gap-6">
@@ -343,6 +336,20 @@ export default function PortalLayout() {
               <button type="button" onClick={handleLogout} className="btn-primary gap-2">
                 <LogOut size={16} /> Log out
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showIdleWarning ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="panel w-full max-w-md p-6">
+            <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Inactivity Warning</p>
+            <h2 className="mt-2 text-2xl font-semibold text-white">You will be signed out soon</h2>
+            <p className="mt-4 text-sm text-slate-300">You have been inactive. You will be automatically signed out in <strong>{idleCountdown}</strong> second{idleCountdown === 1 ? '' : 's'}.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => { resetInactivityTimers(); }} className="btn-secondary">Stay signed in</button>
+              <button type="button" onClick={() => { resetInactivityTimers(); logout(); }} className="btn-primary">Sign out now</button>
             </div>
           </div>
         </div>
