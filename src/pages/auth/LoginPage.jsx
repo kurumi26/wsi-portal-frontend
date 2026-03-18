@@ -70,8 +70,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="panel relative overflow-hidden p-8 lg:p-9">
-      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-sky-400/10 via-white/0 to-orange-400/10" />
+    <div className="panel auth-panel relative overflow-hidden p-8 lg:p-9">
 
       <div className="relative">
         <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-orange-300">
@@ -144,7 +143,7 @@ export default function LoginPage() {
 
         <div className="mt-6 flex flex-col gap-3 text-sm text-slate-400">
           <Link to="/auth/register" className="hover:text-white">New user? Create an account</Link>
-          <Link to="/auth/admin" className="hover:text-white">Admin login</Link>
+          <Link to="/auth/admin" className="hover:text-white">Admin Login</Link>
         </div>
       </div>
     </div>

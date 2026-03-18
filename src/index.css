@@ -3,7 +3,8 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #0f172a;
+  background: #091413;
+  --accent-global: #3E64FF;
 }
 
 body.theme-dark {
@@ -23,19 +24,92 @@ body,
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(125, 211, 252, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(251, 146, 60, 0.16), transparent 32%),
-    linear-gradient(180deg, #0f172a 0%, #111827 45%, #172554 100%);
+  background: #091413;
   color: #e2e8f0;
 }
 
 body.theme-light {
-  background:
-    radial-gradient(circle at top left, rgba(125, 211, 252, 0.2), transparent 32%),
-    radial-gradient(circle at top right, rgba(251, 146, 60, 0.18), transparent 32%),
-    linear-gradient(180deg, #f8fafc 0%, #e0f2fe 46%, #fff7ed 100%);
+  background: #FCF8F8;
   color: #0f172a;
+}
+
+/* Accent variables for light theme — update once to change all accents */
+body.theme-light {
+  --accent: #3E64FF;
+  --accent-08: rgba(62,100,255,0.08);
+  --accent-12: rgba(62,100,255,0.12);
+  --accent-18: rgba(62,100,255,0.18);
+}
+
+/* Replace orange utilities with the accent globally */
+:root {
+  --accent: var(--accent-global);
+  --accent-08: rgba(62,100,255,0.08);
+  --accent-12: rgba(62,100,255,0.12);
+  --accent-18: rgba(62,100,255,0.18);
+}
+
+/* Backgrounds */
+.bg-orange-400 { background-color: var(--accent) !important; }
+.bg-orange-400\/10 { background-color: var(--accent-08) !important; }
+.bg-orange-400\/15 { background-color: var(--accent-12) !important; }
+.bg-orange-50 { background-color: rgba(62,100,255,0.18) !important; }
+
+/* Borders and hover */
+.border-orange-400\/20 { border-color: rgba(62,100,255,0.2) !important; }
+.border-orange-400\/30 { border-color: rgba(62,100,255,0.3) !important; }
+.hover\:bg-orange-300:hover { background-color: var(--accent-18) !important; }
+
+/* Text */
+.text-orange-300,
+.text-orange-600,
+.text-orange-100 { color: var(--accent) !important; }
+
+/* Gradient utilities */
+.from-orange-400\/10 { --tw-gradient-from: var(--accent-08) !important; }
+.to-orange-400\/10 { --tw-gradient-to: var(--accent-08) !important; }
+
+/* Ensure small orange badges/dots follow accent */
+.bg-orange-400[role],
+.bg-orange-400.px-1,
+.mt-1.h-2\.5.w-2\.5.rounded-full.bg-orange-400 { background-color: var(--accent) !important; }
+
+/* Primary buttons */
+.btn-primary { background-color: var(--accent) !important; }
+.btn-primary:hover { background-color: rgba(62,100,255,0.9) !important; }
+
+/* Keep white text for accent backgrounds and buttons when active/focused */
+.btn-primary,
+.btn-primary:hover,
+.btn-primary:active,
+.btn-primary:focus,
+.btn-primary:focus-visible {
+  color: #ffffff !important;
+}
+
+.bg-orange-400,
+.bg-orange-400:active,
+.bg-orange-400:focus,
+.bg-orange-400.text-white,
+.bg-orange-400 .text-white {
+  color: #ffffff !important;
+}
+
+/* Ensure highlighted/accented elements always use white text */
+.bg-orange-400,
+.bg-orange-400 *,
+.bg-orange-400:active,
+.bg-orange-400:focus,
+.bg-orange-400:hover {
+  color: #ffffff !important;
+}
+
+/* Specific case: nav items that set text color separately should be overridden when using accent bg */
+.bg-orange-400.text-slate-900,
+.bg-orange-400.text-slate-800,
+.bg-orange-400 .text-slate-900,
+.bg-orange-400 .text-slate-800 {
+  color: #ffffff !important;
 }
 
 button,
@@ -62,6 +136,12 @@ textarea {
     @apply inline-flex items-center justify-center rounded-2xl bg-orange-400 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-300;
   }
 
+  .btn-primary:active,
+  .btn-primary:focus,
+  .btn-primary:focus-visible {
+    color: #ffffff !important;
+  }
+
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-2xl border border-sky-100/15 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-sky-300/30 hover:bg-sky-300/10;
   }
@@ -74,6 +154,12 @@ textarea {
 /* Explicit dark-mode overrides to ensure a true dark appearance */
 body.theme-dark .panel {
   @apply border-slate-800/80 bg-slate-900/95 shadow-slate-900/80;
+}
+
+/* Force sidebar panels to use the exact dark base color */
+body.theme-dark aside.panel {
+  background-color: #091413 !important;
+  border-color: rgba(15, 23, 42, 0.6) !important;
 }
 
 body.theme-dark .panel-muted {
@@ -96,6 +182,56 @@ body.theme-dark .text-slate-300 {
   color: #94A3B8 !important;
 }
 
+/* Enforce the dark base color across common dark-mode backgrounds */
+body.theme-dark .panel,
+body.theme-dark .panel-muted,
+body.theme-dark aside.panel,
+body.theme-dark .bg-slate-950,
+body.theme-dark .bg-slate-950\/95,
+body.theme-dark .bg-slate-900,
+body.theme-dark .bg-slate-900\/70,
+body.theme-dark .bg-slate-900\/95,
+body.theme-dark .bg-slate-950\/70,
+body.theme-dark .bg-slate-950\/90,
+body.theme-dark .bg-slate-950\/60,
+body.theme-dark .bg-white\/5,
+body.theme-dark .bg-white\/10,
+body.theme-dark .bg-white\/\[0\.03\] {
+  background-color: #091413 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove any overlay gradients inside panels in dark mode */
+body.theme-dark .panel > .absolute.inset-0 {
+  background: none !important;
+}
+
+/* Account/profile dropdown specifics */
+body.theme-dark .border-white\/10,
+body.theme-dark .border-white\/8 {
+  border-color: rgba(255,255,255,0.04) !important;
+}
+
+body.theme-dark .absolute.bg-slate-950\/95,
+body.theme-dark .bg-slate-950\/95,
+body.theme-dark .relative > .absolute[class*="bg-slate"] {
+  background-color: #091413 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+body.theme-dark .backdrop-blur,
+body.theme-dark .backdrop-blur-sm {
+  backdrop-filter: none !important;
+}
+
+/* Make inputs match the dark base */
+body.theme-dark .input {
+  background-color: #091413 !important;
+  border-color: rgba(255,255,255,0.04) !important;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -113,6 +249,40 @@ a {
 body.theme-light .panel {
   @apply border-slate-200/80 bg-white shadow-slate-300/40;
   box-shadow: 0 10px 30px -10px rgba(15,23,42,0.06), 0 6px 14px -6px rgba(15,23,42,0.04);
+}
+
+/* Auth panels (login/register) in light mode use a soft blue background */
+body.theme-light .panel.auth-panel {
+  background-color: #D4EBF8 !important;
+  border-color: rgba(15,23,42,0.06) !important;
+  box-shadow: 0 12px 36px -14px rgba(15,23,42,0.06) !important;
+}
+
+/* Reduce/remove solid white elements inside auth panels so they blend with the blue */
+body.theme-light .panel.auth-panel .bg-white {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+body.theme-light .panel.auth-panel .bg-white\/5 {
+  background-color: transparent !important;
+}
+
+body.theme-light .panel.auth-panel .inline-flex.h-9.w-9.rounded-full.bg-white {
+  background-color: transparent !important;
+}
+
+body.theme-light .panel.auth-panel .input {
+  background-color: rgba(255,255,255,0.85) !important;
+  border-color: rgba(15,23,42,0.06) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .panel.auth-panel .btn-secondary,
+body.theme-light .panel.auth-panel button[class*="bg-white"] {
+  background-color: transparent !important;
+  border-color: rgba(15,23,42,0.06) !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .panel-muted {
@@ -260,6 +430,37 @@ body.theme-light .bg-white\/5 {
   background-color: #f1f5f9 !important;
 }
 
+/* Improve contrast for admin role/status in light mode */
+body.theme-light aside.panel .text-slate-400,
+body.theme-light .panel .text-slate-400 {
+  color: #334155 !important;
+}
+
+body.theme-light .panel .text-slate-200 {
+  color: #475569 !important;
+}
+
+/* Make badges/statuses clearer in light mode */
+body.theme-light .badge {
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(62,100,255,0.12) !important;
+  box-shadow: none !important;
+}
+
+/* Stronger background for status badges to improve readability */
+body.theme-light .bg-orange-50 {
+  background-color: rgba(62,100,255,0.18) !important;
+}
+
+/* Ensure notification/unread badges are readable */
+body.theme-light .relative .inline-flex.rounded-full.bg-orange-400,
+body.theme-light .relative .inline-flex.rounded-full.bg-orange-400 span {
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
+}
+
 body.theme-light .bg-white\/10 {
   background-color: #eef2f6 !important;
 }
@@ -318,12 +519,159 @@ body.theme-light .alert-danger .text-red-200 {
 }
 
 body.theme-light .alert-warning {
-  background-color: rgba(255, 249, 230, 0.95) !important;
-  border-color: rgba(245, 158, 11, 0.12) !important;
+  background-color: #FFE6B8 !important;
+  border-color: rgba(245, 158, 11, 0.28) !important;
+  color: #7c2d12 !important;
+  font-weight: 600 !important;
 }
 body.theme-light .alert-warning .text-amber-100 {
-  color: #92400e !important;
-}
-body.theme-light .alert-warning .text-amber-50\/90 {
   color: #7c2d12 !important;
 }
+body.theme-light .alert-warning .text-amber-50\/90 {
+  color: #6b2a10 !important;
+}
+
+/* Ensure alert text and icons are clearly readable */
+body.theme-light .alert-warning,
+body.theme-light .alert-warning * {
+  color: #7c2d12 !important;
+}
+body.theme-light .alert-warning svg,
+body.theme-light .alert-warning .icon {
+  color: #7c2d12 !important;
+  fill: #7c2d12 !important;
+}
+
+/* Make CTA button inside alerts stand out */
+body.theme-light .alert-warning .btn-primary {
+  background-color: #ffffff !important;
+  color: #7c2d12 !important;
+}
+
+/* Ensure utility text classes inside alerts are also overridden */
+body.theme-light .alert-warning .text-white {
+  color: #7c2d12 !important;
+}
+
+/* Normalize amber utility backgrounds used by alerts */
+body.theme-light .alert-warning.bg-amber-300\/20,
+body.theme-light .bg-amber-300\/20.alert-warning,
+body.theme-light .bg-amber-300\/20 {
+  background-color: #FFE6B8 !important;
+}
+
+body.theme-light .alert-warning .mt-0\.5 .bg-amber-400,
+body.theme-light .alert-warning .bg-amber-400 {
+  background-color: #F6B93B !important;
+  color: #0f172a !important;
+}
+
+/* Enforce the light base color across common light-mode backgrounds */
+body.theme-light .panel,
+body.theme-light .panel-muted,
+body.theme-light aside.panel,
+body.theme-light .bg-slate-950,
+body.theme-light .bg-slate-950\/95,
+body.theme-light .bg-slate-900,
+body.theme-light .bg-slate-900\/70,
+body.theme-light .bg-slate-900\/95,
+body.theme-light .bg-slate-950\/70,
+body.theme-light .bg-slate-950\/90,
+body.theme-light .bg-slate-950\/60,
+body.theme-light .bg-white\/5,
+body.theme-light .bg-white\/10,
+body.theme-light .bg-white\/\[0\.03\] {
+  background-color: #FCF8F8 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Give service cards a subtle accent background in light mode so they aren't plain */
+body.theme-light article.panel {
+  background-color: #F3E8DF !important;
+  border: 1px solid rgba(2,6,23,0.06) !important;
+  box-shadow: 0 6px 18px -10px rgba(2,6,23,0.04) !important;
+}
+
+/* Accent stripe for cards (left) to add color without changing layout */
+body.theme-light article.panel::before {
+  content: '';
+  display: block;
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  bottom: 1rem;
+  width: 6px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-08) 100%);
+  opacity: 0.12;
+}
+
+/* Ensure badges and headings inside cards remain visible */
+body.theme-light article.panel .text-white { color: #0f172a !important; }
+body.theme-light article.panel .badge { color: var(--accent) !important; }
+
+/* Remove overlay gradients inside panels in light mode and ensure contrast */
+body.theme-light .panel > .absolute.inset-0 {
+  background: none !important;
+}
+
+/* Inputs, buttons, and borders in light mode should blend with the light base */
+body.theme-light .input {
+  background-color: #FCF8F8 !important;
+  border-color: rgba(15, 23, 42, 0.06) !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+body.theme-light .btn-secondary,
+body.theme-light .btn-secondary:hover {
+  background-color: #FCF8F8 !important;
+  border-color: rgba(15, 23, 42, 0.06) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .border-white\/10,
+body.theme-light .border-white\/8,
+body.theme-light .border-slate-900,
+body.theme-light .border-slate-950 {
+  border-color: rgba(2,6,23,0.06) !important;
+}
+
+/* Profile dropdown and small menus */
+body.theme-light .absolute.right-0.w-64,
+body.theme-light .absolute.right-0.top-full.w-64,
+body.theme-light .relative > .absolute[class*="bg-"],
+body.theme-light .rounded-2xl.border.border-white\/8.bg-white\/\[0\.03\] {
+  background-color: #FCF8F8 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+}
+
+/* Remove or reduce backdrop blur in light mode where it conflicts with the flat color */
+body.theme-light .backdrop-blur,
+body.theme-light .backdrop-blur-sm {
+  backdrop-filter: none !important;
+}
+
+/* Replace orange utilities with #3E64FF in light mode */
+/* Map orange utilities to the accent variable */
+body.theme-light .bg-orange-400 { background-color: var(--accent) !important; }
+body.theme-light .bg-orange-400\/10 { background-color: var(--accent-08) !important; }
+body.theme-light .bg-orange-400\/15 { background-color: var(--accent-12) !important; }
+body.theme-light .border-orange-400\/20 { border-color: rgba(62,100,255,0.2) !important; }
+body.theme-light .border-orange-400\/30 { border-color: rgba(62,100,255,0.3) !important; }
+body.theme-light .text-orange-300,
+body.theme-light .text-orange-600,
+body.theme-light .text-orange-100 { color: var(--accent) !important; }
+body.theme-light .from-orange-400\/10 { --tw-gradient-from: var(--accent-08) !important; }
+body.theme-light .to-orange-400\/10 { --tw-gradient-to: var(--accent-08) !important; }
+body.theme-light .bg-orange-400[role],
+body.theme-light .bg-orange-400.px-1,
+body.theme-light .mt-1.h-2\.5.w-2\.5.rounded-full.bg-orange-400 { background-color: var(--accent) !important; }
+
+/* Map other small orange variants */
+body.theme-light .bg-orange-50 { background-color: rgba(62,100,255,0.06) !important; }
+body.theme-light .hover\:bg-orange-300:hover { background-color: var(--accent-18) !important; }
+body.theme-light .bg-orange-400\/10 { background-color: var(--accent-08) !important; }

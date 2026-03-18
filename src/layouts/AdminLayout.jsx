@@ -19,7 +19,7 @@ const adminNav = [
 
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, showIdleWarning, idleCountdown, resetInactivityTimers } = useAuth();
   const { stats, clients, adminServices, notifications, updateNotificationStatus } = usePortal();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -188,7 +188,7 @@ export default function AdminLayout() {
                     setIsNotificationsOpen(false);
                     setIsProfileMenuOpen(false);
                   }}
-                  className="inline-flex h-12 min-w-12 items-center justify-center gap-2 rounded-2xl border border-sky-300/15 bg-sky-300/10 px-3 text-sm font-semibold text-sky-100 transition hover:border-sky-300/30 hover:bg-sky-300/15"
+                  className="inline-flex h-12 min-w-12 items-center justify-center gap-2 rounded-2xl border border-sky-300/15 bg-sky-300/10 px-3 text-sm font-semibold text-white transition hover:border-sky-300/30 hover:bg-sky-300/15"
                   aria-label="Active services"
                   title="Active services"
                 >
@@ -315,6 +315,20 @@ export default function AdminLayout() {
           <main className="relative z-0 min-w-0 flex-1">
             <Outlet />
           </main>
+
+          {showIdleWarning ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="panel w-full max-w-md p-6">
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Inactivity Warning</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">You will be signed out soon</h2>
+                <p className="mt-4 text-sm text-slate-300">You have been inactive. You will be automatically signed out in <strong>{idleCountdown}</strong> second{idleCountdown === 1 ? '' : 's'}.</p>
+                <div className="mt-6 flex justify-end gap-3">
+                  <button type="button" onClick={() => { resetInactivityTimers(); }} className="btn-secondary">Stay signed in</button>
+                  <button type="button" onClick={() => { resetInactivityTimers(); logout(); }} className="btn-primary">Sign out now</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
