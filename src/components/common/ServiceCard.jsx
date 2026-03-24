@@ -15,7 +15,7 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
   const selectedConfiguration = getValue(configuration);
   const selectedAddon = getValue(addon);
   return (
-    <article className="panel flex h-full flex-col p-5">
+    <article className="panel flex h-full flex-col justify-between p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <span className="badge bg-sky-400/10 text-sky-300">{service.category}</span>
@@ -65,7 +65,7 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
         </div>
       </div>
 
-      <button type="button" onClick={() => onAdd(service)} className="btn-primary mt-6 gap-2">
+      <button type="button" onClick={() => onAdd(service)} className="btn-primary mt-6 gap-2 w-full">
         <Plus size={16} /> Add to Order
       </button>
     </article>

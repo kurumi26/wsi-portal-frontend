@@ -139,14 +139,7 @@ export default function AdminLayout() {
           </div>
 
           <div className="mt-auto space-y-4">
-            <div className="panel-muted p-4">
-              <p className="text-sm text-slate-400">Live Control Snapshot</p>
-              <div className="mt-4 space-y-3 text-sm text-slate-200">
-                <div className="flex items-center justify-between"><span>Total clients</span><span>{stats.totalClients}</span></div>
-                <div className="flex items-center justify-between"><span>Provisioning queue</span><span>{provisioningCount}</span></div>
-                <div className="flex items-center justify-between"><span>Pending clients</span><span>{pendingClients}</span></div>
-              </div>
-            </div>
+            {/* Live Control Snapshot removed */}
             <NavLink
               to="/admin/account"
               className={({ isActive }) =>
