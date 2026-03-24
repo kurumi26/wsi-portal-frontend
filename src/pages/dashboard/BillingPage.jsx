@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, CreditCard, Eye, FileDown, FileText, Grid2x2, Headphones, List, Percent, Search, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, CreditCard, Eye, FileDown, FileText, Grid2x2, Headphones, List, Percent, Search, ShieldCheck, X, Calendar, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
@@ -24,6 +24,10 @@ export default function BillingPage() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [statusOpen, setStatusOpen] = useState(false);
+  const statusRef = useRef(null);
   const [layoutMode, setLayoutMode] = useState('list');
   const [appliedDiscounts, setAppliedDiscounts] = useState({});
   const [discountTarget, setDiscountTarget] = useState(null);
@@ -296,9 +300,23 @@ export default function BillingPage() {
           )
         : true;
 
-      return matchesFilter && matchesSearch;
+      // Date range filter (based on order.date)
+      const orderDate = new Date(order.date);
+      let matchesDate = true;
+
+      if (startDate) {
+        const s = new Date(startDate + 'T00:00:00');
+        if (orderDate < s) matchesDate = false;
+      }
+
+      if (endDate) {
+        const e = new Date(endDate + 'T23:59:59');
+        if (orderDate > e) matchesDate = false;
+      }
+
+      return matchesFilter && matchesSearch && matchesDate;
     });
-  }, [invoiceRows, searchTerm, statusFilter]);
+  }, [invoiceRows, searchTerm, statusFilter, startDate, endDate]);
 
   const visiblePayableInvoices = useMemo(
     () => filteredInvoiceRows.filter((order) => order.status !== 'Paid'),
@@ -400,6 +418,18 @@ export default function BillingPage() {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, layoutMode]);
 
+  // close status dropdown when clicking outside
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (statusRef.current && !statusRef.current.contains(e.target)) {
+        setStatusOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
   useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
@@ -436,31 +466,81 @@ export default function BillingPage() {
                 <h2 className="text-xl font-semibold text-white">Recent Charges</h2>
               </div>
 
-              <div className="relative w-full xl:max-w-sm">
-                <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search invoice"
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/40"
-                />
+              <div className="flex items-center gap-4 w-full xl:max-w-[420px]">
+                <div className="relative flex-1 min-w-0">
+                  <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search invoice"
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/40"
+                  />
+                </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 xl:items-end">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
-                <div className="flex flex-wrap gap-2">
-                  {filters.map((filter) => (
+                <div className="flex items-center gap-3 xl:mr-4 xl:flex-1 xl:justify-end">
+                  <div className="flex items-center gap-2 w-full max-w-[520px] justify-end">
+                    <div className="relative flex-1 max-w-[360px] xl:max-w-[520px]">
+                      <div className="flex items-center gap-2 justify-end">
+                        <div className="relative w-1/2 ml-auto">
+                          <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                          <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="rounded-full border border-white/10 bg-white/[0.03] py-3 pl-10 pr-4 text-sm text-white outline-none w-full"
+                          />
+                        </div>
+                        <span className="text-sm text-slate-400 hidden sm:inline">to</span>
+                        <div className="relative w-1/2">
+                          <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                          <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="rounded-full border border-white/10 bg-white/[0.03] py-3 pl-10 pr-4 text-sm text-white outline-none w-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="relative" ref={statusRef}>
                     <button
-                      key={filter}
                       type="button"
-                      onClick={() => setStatusFilter(filter)}
-                      className={statusFilter === filter ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+                      onClick={() => setStatusOpen((s) => !s)}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none"
+                      aria-haspopup="true"
+                      aria-expanded={statusOpen}
+                      title="Filter by status"
                     >
-                      {filter}
+                      <span className="sr-only">Status</span>
+                      <span className="text-sm text-slate-200">{statusFilter}</span>
+                      <ChevronDown size={14} className="text-slate-300" />
                     </button>
-                  ))}
+
+                    {statusOpen ? (
+                      <div className="absolute right-0 mt-2 w-40 rounded-lg border border-white/6 bg-slate-900 shadow z-50">
+                        {filters.map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter(f);
+                              setStatusOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 self-start lg:self-auto">

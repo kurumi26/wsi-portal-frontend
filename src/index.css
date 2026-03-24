@@ -609,7 +609,14 @@ body.theme-light article.panel::before {
 
 /* Ensure badges and headings inside cards remain visible */
 body.theme-light article.panel .text-white { color: #0f172a !important; }
-body.theme-light article.panel .badge { color: var(--accent) !important; }
+/* Make badges inside cards use the accent background and white text for contrast */
+body.theme-light article.panel .badge {
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(62,100,255,0.12) !important;
+  box-shadow: none !important;
+}
 
 /* Remove overlay gradients inside panels in light mode and ensure contrast */
 body.theme-light .panel > .absolute.inset-0 {

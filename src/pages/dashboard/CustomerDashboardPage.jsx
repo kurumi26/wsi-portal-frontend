@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { AlertOctagon, BellRing, FolderKanban, LayoutGrid, List, Plus, ReceiptText, ShieldCheck, TriangleAlert, CreditCard, CheckCircle2, FileText, Headphones } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
+import { AlertOctagon, BellRing, FolderKanban, LayoutGrid, List, Plus, ReceiptText, ShieldCheck, TriangleAlert, CreditCard, CheckCircle2, FileText, Headphones, ChevronDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
@@ -32,6 +33,11 @@ export default function CustomerDashboardPage() {
   const BANNER_DISMISS_KEY = 'wsi-dashboard-dismissed-banner';
 
   const filters = ['All', 'Active', 'Undergoing Provisioning', 'Unpaid', 'Expired'];
+
+  const [statusOpen, setStatusOpen] = useState(false);
+  const statusRef = useRef(null);
+  const statusMenuRef = useRef(null);
+  const [statusMenuStyle, setStatusMenuStyle] = useState(null);
 
   const filteredServices = useMemo(() => {
     if (statusFilter === 'All') {
@@ -117,6 +123,46 @@ export default function CustomerDashboardPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [statusFilter, layoutMode]);
+
+  // close status dropdown on outside click
+  useEffect(() => {
+    const onDoc = (e) => {
+      const clickedInsideTrigger = statusRef.current && statusRef.current.contains(e.target);
+      const clickedInsideMenu = statusMenuRef.current && statusMenuRef.current.contains(e.target);
+      if (!clickedInsideTrigger && !clickedInsideMenu) setStatusOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!statusOpen || !statusRef.current) {
+      setStatusMenuStyle(null);
+      return;
+    }
+
+    const btn = statusRef.current.querySelector('button');
+    if (!btn) return;
+
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = 220;
+    const left = Math.max(8, rect.right - menuWidth + window.scrollX);
+    const top = rect.bottom + 8 + window.scrollY;
+
+    setStatusMenuStyle({ position: 'absolute', left: `${left}px`, top: `${top}px`, width: `${menuWidth}px`, zIndex: 9999 });
+
+    const onResize = () => {
+      const r = btn.getBoundingClientRect();
+      setStatusMenuStyle({ position: 'absolute', left: `${Math.max(8, r.right - menuWidth + window.scrollX)}px`, top: `${r.bottom + 8 + window.scrollY}px`, width: `${menuWidth}px`, zIndex: 9999 });
+    };
+
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, true);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, true);
+    };
+  }, [statusOpen]);
 
   // Ensure data is fresh when the dashboard mounts so status banners reflect admin actions
   useEffect(() => {
@@ -403,17 +449,37 @@ export default function CustomerDashboardPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-              <div className="flex flex-wrap items-center gap-2">
-                {filters.map((filter) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setStatusFilter(filter)}
-                    className={statusFilter === filter ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-                  >
-                    {filter}
-                  </button>
-                ))}
+              <div className="relative" ref={statusRef}>
+                <button
+                  type="button"
+                  onClick={() => setStatusOpen((s) => !s)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
+                >
+                  <span className="text-sm text-slate-200">{statusFilter}</span>
+                  <ChevronDown size={14} className="text-slate-400" />
+                </button>
+
+                {statusOpen && statusMenuStyle
+                  ? createPortal(
+                      <div ref={statusMenuRef} style={statusMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
+                        {filters.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter(item);
+                              setStatusOpen(false);
+                              setCurrentPage(1);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>,
+                      document.body,
+                    )
+                  : null}
               </div>
 
               <div className="flex items-center gap-2">

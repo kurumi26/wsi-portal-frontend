@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { BellRing, CheckCheck, MailOpen, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { BellRing, CheckCheck, MailOpen, Trash2, ChevronDown, Search } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import { usePortal } from '../../context/PortalContext';
@@ -13,25 +14,33 @@ export default function AdminNotificationsPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedNotification, setSelectedNotification] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusOpen, setStatusOpen] = useState(false);
+  const statusRef = useRef(null);
+  const statusMenuRef = useRef(null);
+  const [statusMenuStyle, setStatusMenuStyle] = useState(null);
 
   const unreadCount = notifications.filter((item) => !item.isRead).length;
   const filters = ['All', 'Unread', 'Read', 'info', 'warning', 'success', 'danger'];
 
   const filteredNotifications = useMemo(() => {
-    if (filter === 'All') {
-      return notifications;
-    }
+    const normalized = searchTerm.trim().toLowerCase();
 
-    if (filter === 'Unread') {
-      return notifications.filter((item) => !item.isRead);
-    }
+    return notifications.filter((item) => {
+      // status/type filtering
+      if (filter === 'Unread' && item.isRead) return false;
+      if (filter === 'Read' && !item.isRead) return false;
+      if (filter !== 'All' && filter !== 'Unread' && filter !== 'Read' && item.type !== filter) return false;
 
-    if (filter === 'Read') {
-      return notifications.filter((item) => item.isRead);
-    }
+      // search text
+      if (normalized) {
+        const hay = [item.title || '', item.message || '', item.type || '', item.id || ''].join(' ').toLowerCase();
+        return hay.includes(normalized);
+      }
 
-    return notifications.filter((item) => item.type === filter);
-  }, [notifications, filter]);
+      return true;
+    });
+  }, [notifications, filter, searchTerm]);
 
   const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / NOTIFICATIONS_PER_PAGE));
   const paginatedNotifications = filteredNotifications.slice((currentPage - 1) * NOTIFICATIONS_PER_PAGE, currentPage * NOTIFICATIONS_PER_PAGE);
@@ -39,7 +48,47 @@ export default function AdminNotificationsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter]);
+  }, [filter, searchTerm]);
+
+  // close status dropdown on outside click
+  useEffect(() => {
+    const onDoc = (e) => {
+      const clickedInsideTrigger = statusRef.current && statusRef.current.contains(e.target);
+      const clickedInsideMenu = statusMenuRef.current && statusMenuRef.current.contains(e.target);
+      if (!clickedInsideTrigger && !clickedInsideMenu) setStatusOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!statusOpen || !statusRef.current) {
+      setStatusMenuStyle(null);
+      return;
+    }
+
+    const btn = statusRef.current.querySelector('button');
+    if (!btn) return;
+
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = 220;
+    const left = Math.max(8, rect.right - menuWidth + window.scrollX);
+    const top = rect.bottom + 8 + window.scrollY;
+
+    setStatusMenuStyle({ position: 'absolute', left: `${left}px`, top: `${top}px`, width: `${menuWidth}px`, zIndex: 9999 });
+
+    const onResize = () => {
+      const r = btn.getBoundingClientRect();
+      setStatusMenuStyle({ position: 'absolute', left: `${Math.max(8, r.right - menuWidth + window.scrollX)}px`, top: `${r.bottom + 8 + window.scrollY}px`, width: `${menuWidth}px`, zIndex: 9999 });
+    };
+
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, true);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, true);
+    };
+  }, [statusOpen]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -126,17 +175,51 @@ export default function AdminNotificationsPage() {
 
       <div className="mb-6 panel p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {filters.map((item) => (
+          <div className="flex items-center gap-3">
+            <div className="relative mr-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                placeholder="Search notifications"
+                className="w-64 rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+              />
+            </div>
+
+            <div className="relative" ref={statusRef}>
               <button
-                key={item}
                 type="button"
-                onClick={() => setFilter(item)}
-                className={filter === item ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+                onClick={() => setStatusOpen((s) => !s)}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
               >
-                {item}
+                <span className="text-sm text-slate-200">{filter}</span>
+                <ChevronDown size={14} className="text-slate-400" />
               </button>
-            ))}
+
+              {statusOpen && statusMenuStyle
+                ? createPortal(
+                    <div ref={statusMenuRef} style={statusMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
+                      {filters.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => {
+                            setFilter(item);
+                            setStatusOpen(false);
+                            setCurrentPage(1);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>,
+                    document.body,
+                  )
+                : null}
+            </div>
+
           </div>
 
           <label className="inline-flex items-center gap-3 text-sm text-slate-300">
