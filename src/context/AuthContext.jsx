@@ -29,8 +29,10 @@ export function AuthProvider({ children }) {
   const [isAuthLoading, setIsAuthLoading] = useState(Boolean(portalApi.getStoredToken()));
   const [security, setSecurity] = useState({ twoFactorEnabled: false, sessions: [] });
   // Inactivity logout settings
-  const INACTIVITY_LIMIT = 60 * 1000; // 1 minute
-  const WARNING_DURATION = 10 * 1000; // show warning 10s before logout
+  // inactivity limit before warning/logout (5 minutes)
+  const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes
+  // show warning 30s before logout
+  const WARNING_DURATION = 30 * 1000;
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState(0);
   const warningTimerRef = useRef(null);
@@ -96,7 +98,7 @@ export function AuthProvider({ children }) {
 
   // listen for user interactions to reset timer
   useEffect(() => {
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'click'];
+    const events = [ 'touchstart', 'click'];
     const onActivity = () => resetInactivityTimers();
 
     if (portalApi.getStoredToken()) {
@@ -317,7 +319,7 @@ export function AuthProvider({ children }) {
       idleCountdown,
       resetInactivityTimers,
     }),
-    [user, isAuthLoading, security],
+    [user, isAuthLoading, security, showIdleWarning, idleCountdown, resetInactivityTimers, logout, login, verifyTwoFactorLogin, register, updateProfile, updatePassword, updateTwoFactor, revokeSession, revokeOtherSessions, loadSecuritySettings],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

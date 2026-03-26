@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Building2, CheckCircle2, Eye, FileText, LayoutGrid, List, Mail, MapPin, Phone, Search, UserCircle2, XCircle } from 'lucide-react';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
@@ -298,7 +299,7 @@ export default function ClientsPage() {
         <button
           type="button"
           onClick={() => handleProfileRequestDecision(row, 'approve')}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-emerald-200 transition hover:bg-emerald-400/20"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-white transition hover:bg-emerald-500"
           title="Approve registration"
           aria-label={`Approve registration for ${row.name}`}
         >
@@ -307,7 +308,7 @@ export default function ClientsPage() {
         <button
           type="button"
           onClick={() => handleProfileRequestDecision(row, 'reject')}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-rose-400/30 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/20"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-400 text-white transition hover:bg-rose-500"
           title="Reject registration"
           aria-label={`Reject registration for ${row.name}`}
         >
@@ -328,7 +329,7 @@ export default function ClientsPage() {
         <button
           type="button"
           onClick={() => openProfileRequestModal(row)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-emerald-200 transition hover:bg-emerald-400/20"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-white transition hover:bg-emerald-500"
           title="Approve profile update"
           aria-label={`Approve profile update for ${row.name}`}
         >
@@ -337,7 +338,7 @@ export default function ClientsPage() {
         <button
           type="button"
           onClick={() => openProfileRequestModal(row)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-rose-400/30 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/20"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-400 text-white transition hover:bg-rose-500"
           title="Reject profile update"
           aria-label={`Reject profile update for ${row.name}`}
         >
@@ -373,13 +374,14 @@ export default function ClientsPage() {
   );
 
   const columns = [
-    { key: 'name', label: 'Client' },
-    { key: 'company', label: 'Company' },
-    { key: 'email', label: 'Email' },
-    { key: 'services', label: 'Services' },
+    { key: 'name', label: 'Client', sortable: true },
+    { key: 'company', label: 'Company', sortable: true },
+    { key: 'email', label: 'Email', sortable: true },
+    { key: 'services', label: 'Services', sortable: true, sortValue: (r) => Number(r.services || 0) },
     {
       key: 'status',
       label: 'Status',
+      sortable: true,
       render: (value) => <StatusBadge status={value} />,
     },
     {
@@ -399,7 +401,6 @@ export default function ClientsPage() {
       <PageHeader
         eyebrow="Client Management"
         title="Registered customers"
-        description="Review client details, customer records, and service counts from the admin portal."
       />
       {reviewError ? <p className="mb-4 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{reviewError}</p> : null}
       {reviewMessage ? <p className="mb-4 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{reviewMessage}</p> : null}
@@ -601,8 +602,8 @@ export default function ClientsPage() {
         </div>
       ) : null}
 
-      {selectedClientAccount && selectedClientAccountSummary ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      {selectedClientAccount && selectedClientAccountSummary ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <div className="panel max-h-[88vh] w-full max-w-5xl overflow-hidden">
             <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
               <div className="flex items-center gap-4">
@@ -776,11 +777,12 @@ export default function ClientsPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
-      {selectedProfileRequest?.profileUpdateRequest ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      {selectedProfileRequest?.profileUpdateRequest ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="panel max-h-[85vh] w-full max-w-4xl overflow-hidden">
             <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
               <div>
@@ -794,7 +796,7 @@ export default function ClientsPage() {
                   type="button"
                   onClick={() => handleProfileRequestDecision(selectedProfileRequest, 'approve')}
                   disabled={isReviewing}
-                  className="btn-secondary border-emerald-400/30 bg-emerald-400/10 text-emerald-200 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500"
                 >
                   <CheckCircle2 size={16} /> Approve
                 </button>
@@ -802,7 +804,7 @@ export default function ClientsPage() {
                   type="button"
                   onClick={() => handleProfileRequestDecision(selectedProfileRequest, 'reject')}
                   disabled={isReviewing}
-                  className="btn-secondary border-rose-400/30 bg-rose-400/10 text-rose-200 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500"
                 >
                   <XCircle size={16} /> Reject
                 </button>
@@ -860,7 +862,7 @@ export default function ClientsPage() {
               ) : null}
             </div>
           </div>
-        </div>
+        </div>, document.body
       ) : null}
 
       {approvalDecision ? (
@@ -918,7 +920,7 @@ export default function ClientsPage() {
                 type="button"
                 onClick={confirmProfileRequestDecision}
                 disabled={isReviewing}
-                className={`btn-primary disabled:opacity-60 ${approvalDecision.decision === 'reject' ? '!bg-rose-500 hover:!bg-rose-400' : ''}`}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 disabled:opacity-60 ${approvalDecision.decision === 'reject' ? 'bg-rose-400 hover:bg-rose-500 text-white' : 'bg-emerald-400 hover:bg-emerald-500 text-white'}`}
               >
                 {isReviewing
                   ? 'Saving...'

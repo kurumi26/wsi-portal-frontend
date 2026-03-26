@@ -4,6 +4,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { usePortal } from '../context/PortalContext';
 import { formatDateTime } from '../utils/format';
 
@@ -12,7 +13,7 @@ const customerNav = [
   { label: 'Billing', to: '/dashboard/billing', icon: CreditCard },
   { label: 'Orders', to: '/dashboard/orders', icon: ReceiptText },
   { label: 'Notifications', to: '/dashboard/notifications', icon: Bell },
-  { label: 'Support', to: '/support', icon: LifeBuoy },
+//   { label: 'Support', to: '/support', icon: LifeBuoy },
   { label: 'Account', to: '/dashboard/account', icon: Settings },
 ];
 
@@ -29,6 +30,7 @@ export default function PortalLayout() {
 
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
   const recentNotifications = notifications.slice(0, 4);
+  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -209,7 +211,7 @@ export default function PortalLayout() {
                 >
                   <Bell size={18} />
                   {unreadNotifications ? (
-                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-orange-400 px-1 text-[11px] font-semibold leading-none text-white">
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full !bg-emerald-400 px-1 text-[11px] font-semibold leading-none !text-white">
                       {unreadNotifications}
                     </span>
                   ) : null}
@@ -244,7 +246,7 @@ export default function PortalLayout() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
                                   <p className="truncate text-sm font-medium text-white">{notification.title}</p>
-                                  {!notification.isRead ? <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-orange-400" /> : null}
+                                  {!notification.isRead ? <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" /> : null}
                                 </div>
                                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{notification.message}</p>
                                 <p className="mt-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">{formatDateTime(notification.createdAt)}</p>
@@ -274,18 +276,18 @@ export default function PortalLayout() {
                   aria-expanded={isProfileMenuOpen}
                 >
                   <UserAvatar user={user} />
-                  <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-slate-900 text-slate-300 shadow-lg shadow-slate-950/30">
+                  <span className={`absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border shadow-lg shadow-slate-950/30 ${isDarkMode ? 'border-white/10 bg-slate-900 text-slate-300' : 'border-slate-200/80 bg-transparent text-slate-900'}`}>
                     <ChevronDown size={12} className={`transition ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                   </span>
                 </button>
 
                 {isProfileMenuOpen ? (
-                  <div className="absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-slate-950/40 backdrop-blur">
+                  <div className="absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-slate-950/40 backdrop-blur profile-menu-panel">
                     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
                       <p className="text-sm font-medium text-white">{user?.email}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{user?.role}</p>
                     </div>
-                    <div className="mt-3 rounded-2xl border border-white/8 bg-white/[0.03] p-2">
+                    <div className="mt-3">
                       <ThemeToggle />
                     </div>
                     <button

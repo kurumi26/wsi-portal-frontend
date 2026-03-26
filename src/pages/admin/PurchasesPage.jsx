@@ -84,22 +84,27 @@ export default function PurchasesPage() {
   }, [statusOpen]);
 
   const columns = [
-    { key: 'id', label: 'Order ID' },
-    { key: 'client', label: 'Client' },
-    { key: 'serviceName', label: 'Service' },
+    { key: 'id', label: 'Order ID', sortable: true },
+    { key: 'client', label: 'Client', sortable: true },
+    { key: 'serviceName', label: 'Service', sortable: true },
     {
       key: 'amount',
       label: 'Amount',
+      sortable: true,
+      sortValue: (r) => Number(r.amount || 0),
       render: (value) => formatCurrency(value),
     },
     {
       key: 'date',
       label: 'Date',
+      sortable: true,
+      sortValue: (r) => new Date(r.date).getTime(),
       render: (value) => formatDate(value),
     },
     {
       key: 'status',
       label: 'Status',
+      sortable: true,
       render: (value) => <StatusBadge status={value} />,
     },
   ];
@@ -108,7 +113,6 @@ export default function PurchasesPage() {
       <PageHeader
         eyebrow="Purchase Ledger"
         title="Recorded Purchases"
-        description="Admin-side record of transactions, linked orders, and customer account activity."
       />
 
       <div className="panel p-4 mb-4">

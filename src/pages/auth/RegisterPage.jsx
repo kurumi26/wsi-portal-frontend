@@ -113,23 +113,10 @@ export default function RegisterPage() {
         <h2 className="mt-3 text-3xl font-semibold text-white">Create your customer portal access</h2>
         <p className="mt-3 text-sm text-slate-400">Submit your full account details. Your registration will be reviewed by the admin before sign in is enabled.</p>
 
-        <div className="mt-6">
-          <button
-            type="button"
-            onClick={handleGoogleSignup}
-            disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-sky-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white">
-              <GoogleIcon />
-            </span>
-            <span>Create account with Google</span>
-          </button>
-        </div>
 
         <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-slate-500">
           <span className="h-px flex-1 bg-white/10" />
-          <span>Or register manually</span>
+          <span>Register Here</span>
           <span className="h-px flex-1 bg-white/10" />
         </div>
 
@@ -150,13 +137,9 @@ export default function RegisterPage() {
           Address
           <input className="input mt-2" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} placeholder="Street, city, province, country" />
         </label>
-        <label className="block text-sm text-slate-300">
+        <label className="block text-sm text-slate-300 md:col-span-2">
           Email
           <input type="email" className="input mt-2" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
-        </label>
-        <label className="block text-sm text-slate-300">
-          Profile Picture URL (optional)
-          <input className="input mt-2" value={form.profilePhotoUrl} onChange={(event) => setForm((current) => ({ ...current, profilePhotoUrl: event.target.value }))} placeholder="https://example.com/photo.jpg" />
         </label>
         <label className="block text-sm text-slate-300 md:col-span-2">
           Password

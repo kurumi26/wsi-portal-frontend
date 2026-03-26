@@ -34,6 +34,8 @@ export default function BillingPage() {
   const [discountCode, setDiscountCode] = useState('');
   const [discountFeedback, setDiscountFeedback] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
 
   const invoiceRows = useMemo(
     () =>
@@ -68,7 +70,7 @@ export default function BillingPage() {
             body {
               font-family: Arial, sans-serif;
               padding: 32px;
-              color: #0f172a;
+              color: #ffffff;
               line-height: 1.6;
             }
             h1 {
@@ -333,8 +335,56 @@ export default function BillingPage() {
     [selectedInvoices],
   );
 
-  const totalPages = Math.max(1, Math.ceil(filteredInvoiceRows.length / BILLING_ITEMS_PER_PAGE));
-  const paginatedInvoiceRows = filteredInvoiceRows.slice((currentPage - 1) * BILLING_ITEMS_PER_PAGE, currentPage * BILLING_ITEMS_PER_PAGE);
+  const sortedFilteredInvoiceRows = useMemo(() => {
+    if (!sortKey) return filteredInvoiceRows;
+
+    const copy = filteredInvoiceRows.slice();
+    copy.sort((a, b) => {
+      let va;
+      let vb;
+
+      switch (sortKey) {
+        case 'invoiceNumber':
+          va = String(a.invoiceNumber || '').toLowerCase();
+          vb = String(b.invoiceNumber || '').toLowerCase();
+          break;
+        case 'dueDate':
+          va = new Date(a.dueDate).getTime();
+          vb = new Date(b.dueDate).getTime();
+          break;
+        case 'amount':
+          va = Number(a.amount || 0);
+          vb = Number(b.amount || 0);
+          break;
+        case 'status':
+          va = String(a.status || '').toLowerCase();
+          vb = String(b.status || '').toLowerCase();
+          break;
+        default:
+          va = a[sortKey];
+          vb = b[sortKey];
+      }
+
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return sortDir === 'asc' ? va - vb : vb - va;
+      }
+
+      const sa = String(va).toLowerCase();
+      const sb = String(vb).toLowerCase();
+      if (sa < sb) return sortDir === 'asc' ? -1 : 1;
+      if (sa > sb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return copy;
+  }, [filteredInvoiceRows, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFilteredInvoiceRows.length / BILLING_ITEMS_PER_PAGE));
+  const paginatedInvoiceRows = sortedFilteredInvoiceRows.slice((currentPage - 1) * BILLING_ITEMS_PER_PAGE, currentPage * BILLING_ITEMS_PER_PAGE);
 
   const allPayableSelected =
     visiblePayableInvoices.length > 0 && visiblePayableInvoices.every((order) => selectedInvoiceIds.includes(order.id));
@@ -436,12 +486,25 @@ export default function BillingPage() {
     }
   }, [currentPage, totalPages]);
 
+  const renderSortIcons = (key) => {
+    const isSorted = sortKey === key;
+    return (
+      <span className="ml-1 flex flex-col items-center gap-0">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`sort-svg sort-icon ${isSorted && sortDir === 'asc' ? 'active' : 'inactive'}`}>
+          <path d="M7 14l5-5 5 5" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`sort-svg sort-icon ${isSorted && sortDir === 'desc' ? 'active' : 'inactive'}`}>
+          <path d="M7 10l5 5 5-5" />
+        </svg>
+      </span>
+    );
+  };
+
   return (
     <div>
       <PageHeader
         eyebrow="Billing Center"
         title="Billing & Payments"
-        description="Track paid, pending, and review-state transactions with agreement-aware purchasing flows."
       />
 
       <div className="space-y-6">
@@ -565,8 +628,9 @@ export default function BillingPage() {
             </div>
           </div>
           {layoutMode === 'list' ? (
-            <div className="mt-6 overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.03]">
-              <table className="min-w-full table-fixed text-left text-sm">
+            <div className="panel overflow-hidden mt-6">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-white/10 text-left text-sm">
               <colgroup>
                 <col className="w-14" />
                 <col className="w-[25%]" />
@@ -575,9 +639,9 @@ export default function BillingPage() {
                 <col className="w-[18%]" />
                 <col className="w-[23%]" />
               </colgroup>
-              <thead className="bg-white/[0.04] text-slate-300">
-                <tr>
-                  <th className="px-4 py-4">
+                  <thead className="bg-white/5 text-slate-400">
+                    <tr>
+                      <th className="px-6 py-5">
                     <label className="flex items-center justify-center">
                       <input
                         type="checkbox"
@@ -587,22 +651,82 @@ export default function BillingPage() {
                         aria-label="Select all unpaid invoices"
                       />
                     </label>
+                      </th>
+                      <th
+                        className="px-6 py-5 font-medium cursor-pointer select-none"
+                    onClick={() => {
+                      if (sortKey !== 'invoiceNumber') {
+                        setSortKey('invoiceNumber');
+                        setSortDir('asc');
+                      } else {
+                        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Invoice #</span>
+                      {renderSortIcons('invoiceNumber')}
+                    </div>
+                      </th>
+                      <th
+                        className="px-6 py-5 font-medium cursor-pointer select-none"
+                    onClick={() => {
+                      if (sortKey !== 'dueDate') {
+                        setSortKey('dueDate');
+                        setSortDir('asc');
+                      } else {
+                        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Due Date</span>
+                      {renderSortIcons('dueDate')}
+                    </div>
+                      </th>
+                      <th
+                        className="px-6 py-5 font-medium cursor-pointer select-none"
+                    onClick={() => {
+                      if (sortKey !== 'amount') {
+                        setSortKey('amount');
+                        setSortDir('asc');
+                      } else {
+                        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Amount</span>
+                      {renderSortIcons('amount')}
+                    </div>
+                      </th>
+                      <th
+                        className="px-6 py-5 font-medium cursor-pointer select-none"
+                    onClick={() => {
+                      if (sortKey !== 'status') {
+                        setSortKey('status');
+                        setSortDir('asc');
+                      } else {
+                        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>Status</span>
+                      {renderSortIcons('status')}
+                    </div>
                   </th>
-                  <th className="px-4 py-4 font-medium">Invoice #</th>
-                  <th className="px-4 py-4 font-medium">Due Date</th>
-                  <th className="px-4 py-4 font-medium">Amount</th>
-                  <th className="px-4 py-4 font-medium">Status</th>
-                  <th className="px-4 py-4 font-medium">Actions</th>
+                      <th className="px-6 py-5 font-medium">Actions</th>
                 </tr>
-              </thead>
+                  </thead>
               <tbody className="divide-y divide-white/8">
                 {paginatedInvoiceRows.map((order) => {
                   const isPaid = order.status === 'Paid';
                   const isSelected = selectedInvoiceIds.includes(order.id);
 
                   return (
-                    <tr key={order.id} className="hover:bg-white/[0.03]">
-                      <td className="px-4 py-5 align-middle">
+                    <tr key={order.id} className="table-row-hoverable">
+                      <td className="px-6 py-5 align-middle">
                         <div className="flex items-center justify-center">
                           {isPaid ? (
                             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/10 text-emerald-300">
@@ -619,16 +743,16 @@ export default function BillingPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-5 align-middle">
+                      <td className="px-6 py-5 align-middle">
                         <div className="min-w-0">
                           <p className="truncate font-semibold text-white">{order.invoiceNumber}</p>
                           <p className="mt-1 truncate text-xs text-slate-400">{order.serviceName}</p>
                         </div>
                       </td>
-                      <td className="px-4 py-5 align-middle text-slate-300">
+                      <td className="px-6 py-5 align-middle text-slate-300">
                         <span className="whitespace-nowrap">{order.dueDate}</span>
                       </td>
-                      <td className="px-4 py-5 align-middle">
+                      <td className="px-6 py-5 align-middle">
                         <div className="min-w-0">
                           <p className="whitespace-nowrap font-semibold text-white">{formatCurrency(order.amount)}</p>
                           {order.discountPercent ? (
@@ -640,7 +764,7 @@ export default function BillingPage() {
                           <p className="mt-1 truncate text-xs text-slate-400">{order.paymentMethod}</p>
                         </div>
                       </td>
-                      <td className="px-4 py-5 align-middle">
+                      <td className="px-6 py-5 align-middle">
                         <div className="flex items-center">
                           <StatusBadge status={order.status} />
                         </div>
@@ -651,7 +775,7 @@ export default function BillingPage() {
                                     <button
                                       type="button"
                                       onClick={() => downloadChargeReceipt(order)}
-                                      className={`inline-flex h-9 min-w-[88px] items-center justify-center rounded-full px-4 text-xs font-semibold text-white transition bg-emerald-500 hover:bg-emerald-400`}
+                                      className={`inline-flex h-9 min-w-[88px] items-center justify-center rounded-full px-4 text-xs font-semibold !text-white transition bg-emerald-500 hover:bg-emerald-400`}
                                     >
                                       Receipt
                                     </button>
@@ -711,7 +835,8 @@ export default function BillingPage() {
                   );
                 })}
               </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           ) : (
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -767,7 +892,7 @@ export default function BillingPage() {
                         <button
                           type="button"
                           onClick={() => downloadChargeReceipt(order)}
-                          className={`inline-flex h-9 min-w-[88px] items-center justify-center rounded-full px-4 text-xs font-semibold text-white transition bg-emerald-500 hover:bg-emerald-400`}
+                          className={`inline-flex h-9 min-w-[88px] items-center justify-center rounded-full px-4 text-xs font-semibold !text-white transition bg-emerald-500 hover:bg-emerald-400`}
                         >
                           Receipt
                         </button>
@@ -850,14 +975,18 @@ export default function BillingPage() {
             <div className="flex w-full max-w-xl items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/95 px-5 py-4 shadow-2xl shadow-slate-950/40 backdrop-blur">
               <div className="flex items-center gap-4 text-sm">
                 <p className="text-slate-300">
-                  Selected: <span className="font-semibold text-white">{selectedInvoices.length}</span>
+                  Selected: <span className="ml-2 text-lg md:text-xl font-semibold text-sky-300">{selectedInvoices.length}</span>
                 </p>
                 <div className="h-8 w-px bg-white/10" />
                 <p className="text-slate-300">
-                  Total: <span className="font-semibold text-cyan-300">{formatCurrency(selectedInvoicesTotal)}</span>
+                  Total: <span className="ml-2 text-lg md:text-xl font-semibold text-sky-300">{formatCurrency(selectedInvoicesTotal)}</span>
                 </p>
               </div>
-              <button type="button" onClick={handlePaySelected} className="btn-primary min-w-[140px] rounded-full">
+              <button
+                type="button"
+                onClick={handlePaySelected}
+                className="inline-flex h-9 min-w-[140px] items-center justify-center rounded-full px-4 text-xs font-semibold !text-white transition bg-emerald-500 hover:bg-emerald-400"
+              >
                 Pay Selected
               </button>
             </div>
@@ -1065,7 +1194,7 @@ export default function BillingPage() {
                 <button
                   type="button"
                   onClick={handleApplyAndCloseDiscount}
-                  className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-base font-medium text-white transition hover:bg-blue-500"
+                  className="inline-flex items-center rounded-full bg-blue-600 px-6 py-3 text-base font-medium text-white transition hover:bg-blue-500 force-white"
                 >
                   Apply & Close
                 </button>

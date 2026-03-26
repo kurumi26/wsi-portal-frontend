@@ -256,8 +256,7 @@ export default function CustomerDashboardPage() {
     <div>
       <PageHeader
         eyebrow="Customer Dashboard"
-        title="Account overview"
-        description="Track service health, outstanding billing activity, and current provisioning progress from a unified dashboard."
+        title="Account Overview"
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
