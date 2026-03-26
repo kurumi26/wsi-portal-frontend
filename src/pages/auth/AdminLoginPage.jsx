@@ -72,25 +72,11 @@ export default function AdminLoginPage() {
           Admin login
         </div>
         <h2 className="mt-4 text-3xl font-semibold text-white">Access the Operations Console</h2>
-        <p className="mt-3 text-sm leading-6 text-slate-400">Use admin credentials or continue with Google below.</p>
-
-        <div className="mt-6">
-          <button
-            type="button"
-            onClick={handleSocialDemoLogin}
-            disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-100 transition hover:border-sky-300/30 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white">
-              <GoogleIcon />
-            </span>
-            <span>Continue with Google</span>
-          </button>
-        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-400">Use admin credentials below.</p>
 
         <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-slate-500">
           <span className="h-px flex-1 bg-white/10" />
-          <span>Or sign in with email</span>
+          <span>Sign in with email</span>
           <span className="h-px flex-1 bg-white/10" />
         </div>
 

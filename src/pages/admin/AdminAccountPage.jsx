@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Building2, ImagePlus, LaptopMinimal, LockKeyhole, Mail, MapPin, Phone, Save, ShieldCheck, Trash2, UserCircle2 } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
-import Pagination from '../../components/common/Pagination';
+// Pagination removed for active sessions (limit enforced to 5)
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -22,7 +22,7 @@ export default function AdminAccountPage() {
   const [isSavingTwoFactor, setIsSavingTwoFactor] = useState(false);
   const [endingSessionId, setEndingSessionId] = useState('');
   const [isLoggingOutOthers, setIsLoggingOutOthers] = useState(false);
-  const [sessionsPage, setSessionsPage] = useState(1);
+  // sessions pagination removed; we limit displayed sessions to SESSIONS_PER_PAGE
 
   const SESSIONS_PER_PAGE = 5;
 
@@ -43,9 +43,7 @@ export default function AdminAccountPage() {
 
   const { isDarkMode } = useTheme();
 
-  useEffect(() => {
-    setSessionsPage(1);
-  }, [security.sessions]);
+  // no-op: session page state removed
 
   const resizeImageFile = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -238,7 +236,7 @@ export default function AdminAccountPage() {
         description="Manage your admin identity, password, two-factor authentication, and active sessions."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      {/* <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {items.map(({ icon: Icon, label, value }) => (
           <div key={label} className="panel p-6">
             <Icon className="text-sky-300" />
@@ -246,7 +244,7 @@ export default function AdminAccountPage() {
             <p className="mt-2 text-lg font-medium text-white">{value}</p>
           </div>
         ))}
-      </div>
+      </div> */}
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <form onSubmit={handleProfileSubmit} className="panel p-6">
@@ -403,8 +401,7 @@ export default function AdminAccountPage() {
           <div className="mt-6 space-y-4">
             {(() => {
               const sessions = security.sessions || [];
-              const totalPages = Math.max(1, Math.ceil(sessions.length / SESSIONS_PER_PAGE));
-              const paginatedSessions = sessions.slice((sessionsPage - 1) * SESSIONS_PER_PAGE, sessionsPage * SESSIONS_PER_PAGE);
+              const paginatedSessions = sessions.slice(0, SESSIONS_PER_PAGE); // show only first 5 sessions
 
               return (
                 <>
@@ -443,7 +440,7 @@ export default function AdminAccountPage() {
                     <div className="panel-muted rounded-3xl p-6 text-sm text-slate-400">No active sessions were found.</div>
                   ) : null}
 
-                  <Pagination currentPage={sessionsPage} totalPages={totalPages} onPageChange={setSessionsPage} />
+                  {/* pagination removed for active sessions (limit enforced to 5) */}
                 </>
               );
             })()}

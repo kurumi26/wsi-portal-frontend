@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { BellRing, CheckCheck, MailOpen, Trash2, ChevronDown, Search } from 'lucide-react';
+import { LayoutGrid, List } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
+import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatDateTime } from '../../utils/format';
 
@@ -16,6 +18,7 @@ export default function AdminNotificationsPage() {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusOpen, setStatusOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('list');
   const statusRef = useRef(null);
   const statusMenuRef = useRef(null);
   const [statusMenuStyle, setStatusMenuStyle] = useState(null);
@@ -140,7 +143,6 @@ export default function AdminNotificationsPage() {
       <PageHeader
         eyebrow="Admin Alerts"
         title="Notifications center"
-        description="Track operational events, customer purchase activity, and system alerts from the admin portal."
         action={
           notifications.length ? (
             <div className="flex flex-wrap gap-2">
@@ -176,6 +178,16 @@ export default function AdminNotificationsPage() {
       <div className="mb-6 panel p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-3 text-sm text-slate-300 mr-2">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleSelectAllVisible}
+                className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
+              />
+              Select current page
+            </label>
+
             <div className="relative mr-3">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
               <input
@@ -186,7 +198,9 @@ export default function AdminNotificationsPage() {
                 className="w-64 rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
               />
             </div>
+          </div>
 
+          <div className="flex items-center">
             <div className="relative" ref={statusRef}>
               <button
                 type="button"
@@ -218,81 +232,110 @@ export default function AdminNotificationsPage() {
                     document.body,
                   )
                 : null}
+            <div className="inline-flex items-center gap-2 ml-3">
+              <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
+                <LayoutGrid size={16} />
+              </button>
+              <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
+                <List size={16} />
+              </button>
             </div>
-
+            </div>
           </div>
-
-          <label className="inline-flex items-center gap-3 text-sm text-slate-300">
-            <input
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={toggleSelectAllVisible}
-              className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
-            />
-            Select current page
-          </label>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {paginatedNotifications.map((item) => (
-          <div key={item.id} className={`panel p-6 ${item.isRead ? 'opacity-80' : ''}`}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="flex gap-4">
-                <label className="mt-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(item.id)}
-                    onChange={() => toggleSelect(item.id)}
-                    className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
-                    aria-label={`Select notification ${item.title}`}
-                  />
-                </label>
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${item.isRead ? 'bg-white/5 text-slate-400' : 'bg-orange-400/15 text-orange-300'}`}>
-                  <BellRing size={18} />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleOpenNotification(item)}
-                  className="min-w-0 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <p className="text-lg font-medium text-white">{item.title}</p>
-                    {!item.isRead ? <span className="badge bg-orange-400/10 text-orange-300">New</span> : null}
+      {viewMode === 'list' ? (
+        <div className="space-y-4">
+          {paginatedNotifications.map((item) => (
+            <div key={item.id} className={`panel p-6 ${item.isRead ? 'opacity-80' : ''}`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="flex gap-4">
+                  <label className="mt-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => toggleSelect(item.id)}
+                      className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
+                      aria-label={`Select notification ${item.title}`}
+                    />
+                  </label>
+                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${item.isRead ? 'bg-white/5 text-slate-400' : 'bg-emerald-400/15 text-emerald-300'}`}>
+                    <BellRing size={18} />
                   </div>
-                  <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">{item.message}</p>
-                  <p className="mt-3 text-xs uppercase tracking-[0.18em] text-sky-300">Click to view details</p>
-                </button>
-              </div>
-              <div className="flex flex-col items-start gap-3 md:items-end">
-                <p className="text-sm text-slate-500">{formatDateTime(item.createdAt)}</p>
-                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => updateNotificationStatus(item.id, !item.isRead)}
-                    className="btn-secondary gap-2 px-3"
+                    onClick={() => handleOpenNotification(item)}
+                    className="min-w-0 text-left"
                   >
-                    <MailOpen size={16} /> {item.isRead ? 'Mark unread' : 'Mark read'}
+                    <div className="flex items-center gap-3">
+                      <p className="text-lg font-medium text-white">{item.title}</p>
+                      {!item.isRead ? <StatusBadge status="New" /> : null}
+                    </div>
+                    <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">{item.message}</p>
+                    <p className="mt-3 text-xs uppercase tracking-[0.18em] text-sky-300">Click to view details</p>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => dismissNotification(item.id)}
-                    className="btn-secondary gap-2 px-3"
-                  >
-                    <Trash2 size={16} /> Dismiss
-                  </button>
+                </div>
+                <div className="flex flex-col items-start gap-3 md:items-end">
+                  <p className="text-sm text-slate-500">{formatDateTime(item.createdAt)}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateNotificationStatus(item.id, !item.isRead)}
+                      className="btn-secondary gap-2 px-3"
+                    >
+                      <MailOpen size={16} /> {item.isRead ? 'Mark unread' : 'Mark read'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dismissNotification(item.id)}
+                      className="btn-secondary gap-2 px-3"
+                    >
+                      <Trash2 size={16} /> Dismiss
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {!paginatedNotifications.length ? (
-          <div className="panel p-8 text-center text-sm text-slate-400">
-            No notifications match the selected filter.
-          </div>
-        ) : null}
-      </div>
+          {!paginatedNotifications.length ? (
+            <div className="panel p-8 text-center text-sm text-slate-400">
+              No notifications match the selected filter.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {paginatedNotifications.map((item) => (
+            <div key={item.id} className={`panel p-4 ${item.isRead ? 'opacity-80' : ''}`}>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${item.isRead ? 'bg-white/5 text-slate-400' : 'bg-emerald-400/15 text-emerald-300'}`}>
+                      <BellRing size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white truncate">{item.title}</p>
+                      <p className="mt-1 text-xs text-slate-400">{formatDateTime(item.createdAt)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => updateNotificationStatus(item.id, !item.isRead)} className="btn-secondary px-3">{item.isRead ? 'Mark unread' : 'Mark read'}</button>
+                    <button type="button" onClick={() => dismissNotification(item.id)} className="btn-secondary px-3">Dismiss</button>
+                  </div>
+                </div>
+
+                <p className="mt-2 text-sm text-slate-400 line-clamp-3">{item.message}</p>
+                <div className="mt-2 flex items-center justify-between">
+                  <button type="button" onClick={() => handleOpenNotification(item)} className="text-sm text-sky-300">View details</button>
+                  {!item.isRead ? <StatusBadge status="New" /> : null}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
 

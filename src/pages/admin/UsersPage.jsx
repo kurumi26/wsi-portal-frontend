@@ -4,14 +4,14 @@ import PageHeader from '../../components/common/PageHeader';
 import { usePortal } from '../../context/PortalContext';
 
 const roleClasses = {
-  Admin: 'border-sky-300/20 bg-sky-300/10 text-sky-200',
-  'Technical Support': 'border-white/10 bg-white/10 text-slate-100',
-  Sales: 'border-orange-300/20 bg-orange-300/10 text-orange-200',
+  Admin: 'bg-sky-300 text-white',
+  'Technical Support': 'bg-sky-600 text-white',
+  Sales: 'bg-orange-400 text-white',
 };
 
 const statusClasses = {
-  Enabled: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300',
-  Disabled: 'border-rose-400/20 bg-rose-400/10 text-rose-300',
+  Enabled: 'bg-emerald-400 text-white',
+  Disabled: 'bg-rose-400 text-white',
 };
 
 const roleOptions = [
@@ -240,7 +240,6 @@ export default function UsersPage() {
       <PageHeader
         eyebrow="Admin Users"
         title="Users"
-        description="Manage internal portal users, roles, account access, and security actions from one place."
       />
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -250,11 +249,11 @@ export default function UsersPage() {
         </div>
         <div className="panel-muted rounded-3xl p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Enabled</p>
-          <p className="mt-3 text-3xl font-semibold text-emerald-300">{summary.enabled}</p>
+          <p className="mt-3 text-3xl font-semibold text-emerald-500">{summary.enabled}</p>
         </div>
         <div className="panel-muted rounded-3xl p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Disabled</p>
-          <p className="mt-3 text-3xl font-semibold text-rose-300">{summary.disabled}</p>
+          <p className="mt-3 text-3xl font-semibold text-rose-500">{summary.disabled}</p>
         </div>
       </div>
 
@@ -336,8 +335,8 @@ export default function UsersPage() {
                 {filteredUsers.length ? filteredUsers.map((user) => {
                 const statusActionLabel = user.status === 'Enabled' ? 'Disable Account' : 'Enable Account';
                 const statusActionClass = user.status === 'Enabled'
-                  ? 'border-rose-400/20 bg-rose-400/10 text-rose-300 hover:bg-rose-400/20'
-                  : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20';
+                  ? 'bg-rose-400 text-white hover:bg-rose-500'
+                  : 'bg-emerald-400 text-white hover:bg-emerald-500';
 
                 return (
                   <tr key={user.id} className="hover:bg-white/[0.03]">
@@ -367,7 +366,7 @@ export default function UsersPage() {
                         <button
                           type="button"
                           onClick={() => handleUpdateDetails(user)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
                           title={`Update details for ${user.name}`}
                           aria-label={`Update details for ${user.name}`}
                         >
@@ -376,7 +375,7 @@ export default function UsersPage() {
                         <button
                           type="button"
                           onClick={() => handleResetPassword(user)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
                           title={`Reset password for ${user.name}`}
                           aria-label={`Reset password for ${user.name}`}
                         >
@@ -386,7 +385,7 @@ export default function UsersPage() {
                           type="button"
                           onClick={() => handleToggleStatus(user)}
                           disabled={togglingUserId === user.id}
-                          className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition ${statusActionClass}`}
+                          className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${statusActionClass}`}
                           title={`${statusActionLabel} for ${user.name}`}
                           aria-label={`${statusActionLabel} for ${user.name}`}
                         >
@@ -410,8 +409,8 @@ export default function UsersPage() {
           {filteredUsers.map((user) => {
             const statusActionLabel = user.status === 'Enabled' ? 'Disable Account' : 'Enable Account';
             const statusActionClass = user.status === 'Enabled'
-              ? 'border-rose-400/20 bg-rose-400/10 text-rose-300 hover:bg-rose-400/20'
-              : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20';
+              ? 'bg-rose-400 text-white hover:bg-rose-500'
+              : 'bg-emerald-400 text-white hover:bg-emerald-500';
 
             return (
               <div key={user.id} className="panel p-5">
@@ -443,7 +442,7 @@ export default function UsersPage() {
                   <button
                     type="button"
                     onClick={() => handleUpdateDetails(user)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
                     title={`Update details for ${user.name}`}
                     aria-label={`Update details for ${user.name}`}
                   >
@@ -452,7 +451,7 @@ export default function UsersPage() {
                   <button
                     type="button"
                     onClick={() => handleResetPassword(user)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
                     title={`Reset password for ${user.name}`}
                     aria-label={`Reset password for ${user.name}`}
                   >
@@ -462,7 +461,7 @@ export default function UsersPage() {
                     type="button"
                     onClick={() => handleToggleStatus(user)}
                     disabled={togglingUserId === user.id}
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition ${statusActionClass}`}
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${statusActionClass}`}
                     title={`${statusActionLabel} for ${user.name}`}
                     aria-label={`${statusActionLabel} for ${user.name}`}
                   >

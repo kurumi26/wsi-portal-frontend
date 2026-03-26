@@ -15,6 +15,42 @@ body.theme-light {
   color-scheme: light;
 }
 
+/* Sorting icon color tokens (theme-aware) */
+:root {
+  --sort-active: #0f172a; /* fallback dark text for light theme */
+  --sort-inactive: #475569; /* fallback muted */
+}
+
+body.theme-dark {
+  --sort-active: #E6EEF8; /* light tint */
+  --sort-inactive: #94A3B8; /* muted slate */
+}
+
+body.theme-light {
+  --sort-active: #0f172a;
+  --sort-inactive: #475569;
+}
+
+.sort-icon.active { color: var(--sort-active) !important; }
+.sort-icon.inactive { color: var(--sort-inactive) !important; }
+
+/* Force the same visible icon appearance in dark mode as light mode (matches light look) */
+body.theme-dark .sort-icon,
+body.theme-dark .sort-icon.active,
+body.theme-dark .sort-icon.inactive {
+  color: #0f172a !important;
+  stroke: #0f172a !important;
+}
+body.theme-dark .sort-icon.inactive { color: #475569 !important; stroke: #475569 !important; }
+
+/* Explicit consistent SVG sizing for sort icons to avoid Tailwind differences */
+.sort-svg {
+  width: 20px !important;
+  height: 20px !important;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 html,
 body,
 #root {
@@ -26,11 +62,13 @@ body {
   min-height: 100vh;
   background: #091413;
   color: #e2e8f0;
+  font-weight: 500 !important;
 }
 
 body.theme-light {
   background: #FCF8F8;
   color: #0f172a;
+  font-weight: 500 !important;
 }
 
 /* Accent variables for light theme — update once to change all accents */
@@ -76,7 +114,7 @@ body.theme-light {
 
 /* Primary buttons */
 .btn-primary { background-color: var(--accent) !important; }
-.btn-primary:hover { background-color: rgba(62,100,255,0.9) !important; }
+.btn-primary:hover { background-color: #3e64ffe6 !important; }
 
 /* Keep white text for accent backgrounds and buttons when active/focused */
 .btn-primary,
@@ -202,6 +240,19 @@ body.theme-dark .bg-white\/\[0\.03\] {
   box-shadow: none !important;
 }
 
+/* When a global modal is open, blur header and sidebar for focus */
+body.payment-modal-open header,
+body.payment-modal-open aside {
+  filter: blur(6px);
+  -webkit-filter: blur(6px);
+  transition: filter 120ms ease;
+}
+
+/* Slightly dim the background panels when modal is visible */
+body.payment-modal-open .panel {
+  opacity: 0.92;
+}
+
 /* Remove any overlay gradients inside panels in dark mode */
 body.theme-dark .panel > .absolute.inset-0 {
   background: none !important;
@@ -258,6 +309,16 @@ body.theme-light .panel.auth-panel {
   box-shadow: 0 12px 36px -14px rgba(15,23,42,0.06) !important;
 }
 
+/* Re-enable backdrop blur specifically for fullscreen modal overlays
+   (keeps the broader "no-blur" rules intact elsewhere) */
+body.theme-dark [class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"],
+body.theme-dark .fixed.inset-0.backdrop-blur-sm,
+body.theme-light [class*="fixed"][class*="inset-0"][class*="backdrop-blur-sm"],
+body.theme-light .fixed.inset-0.backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(8px) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
 /* Reduce/remove solid white elements inside auth panels so they blend with the blue */
 body.theme-light .panel.auth-panel .bg-white {
   background-color: transparent !important;
@@ -293,9 +354,26 @@ body.theme-light .input {
   @apply border-slate-300 bg-white text-slate-900 focus:border-sky-400/70 focus:ring-sky-400/20;
   box-shadow: 0 4px 10px -6px rgba(2,6,23,0.06);
 }
+/* Targeted fix: force readable (black) text inside the Profile Update Request panel in light mode */
+body.theme-light .profile-request-panel p,
+body.theme-light .profile-request-panel h1,
+body.theme-light .profile-request-panel h2,
+body.theme-light .profile-request-panel h3,
+body.theme-light .profile-request-panel h4,
+body.theme-light .profile-request-panel h5,
+body.theme-light .profile-request-panel h6,
+body.theme-light .profile-request-panel .panel-muted p,
+body.theme-light .profile-request-panel .panel-muted {
+  color: #0f172a !important;
+}
 
 body.theme-light .btn-secondary {
   @apply border-slate-300/80 bg-white/90 text-slate-900 hover:border-sky-300/40 hover:bg-sky-50;
+}
+
+/* Profile update request: timestamp color in light mode */
+body.theme-light .profile-request-panel .text-current\/80 {
+  color: #3e64ffe6 !important;
 }
 
 body.theme-light .text-white {
@@ -369,6 +447,29 @@ body.theme-light .bg-slate-900\/70 {
   background-color: #eef6fb !important;
 }
 
+/* Table row hover utility that works in both dark and light themes */
+.table-row-hoverable td {
+  background-color: transparent;
+  transition: background-color 150ms ease;
+}
+
+body.theme-dark .table-row-hoverable:hover td {
+  background-color: rgba(255,255,255,0.06) !important;
+}
+
+body.theme-light .table-row-hoverable:hover td {
+  background-color: rgba(15,23,42,0.03) !important;
+}
+
+/* Scoped: ensure ThemeToggle inside the profile dropdown is fully transparent in light mode */
+body.theme-light .profile-menu-panel .theme-toggle-wrapper,
+body.theme-light .profile-menu-panel .theme-toggle-wrapper *,
+body.theme-light .profile-menu-panel .theme-toggle-wrapper .theme-toggle-button {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
 body.theme-light .bg-slate-900\/60 {
   background-color: #f3f8fb !important;
 }
@@ -426,8 +527,9 @@ body.theme-light .shadow-slate-900\/80 {
 }
 
 /* Make subtle white/transparent utility backgrounds visible on white page */
+/* Use a subtle slate tint for "white/5" in light mode to avoid bright nested boxes */
 body.theme-light .bg-white\/5 {
-  background-color: #f1f5f9 !important;
+  background-color: rgba(15,23,42,0.03) !important;
 }
 
 /* Improve contrast for admin role/status in light mode */
@@ -449,6 +551,16 @@ body.theme-light .badge {
   box-shadow: none !important;
 }
 
+/* Ensure emerald-tinted badges remain readable in light mode (darker text on pale emerald bg) */
+body.theme-light .badge.bg-emerald-50,
+body.theme-light .badge.bg-emerald-400\/15,
+body.theme-light .badge.bg-emerald-500\/15 {
+  color: #065f46 !important;
+  font-weight: 700 !important;
+  border-color: rgba(6,146,62,0.12) !important;
+  background-color: rgba(6,146,62,0.06) !important;
+}
+
 /* Stronger background for status badges to improve readability */
 body.theme-light .bg-orange-50 {
   background-color: rgba(62,100,255,0.18) !important;
@@ -465,8 +577,9 @@ body.theme-light .bg-white\/10 {
   background-color: #eef2f6 !important;
 }
 
+/* Slightly darker subtle background for the very-light utility */
 body.theme-light .bg-white\/\[0\.03\] {
-  background-color: rgba(241,245,249,0.95) !important;
+  background-color: rgba(15,23,42,0.02) !important;
 }
 
 body.theme-light .border-white\/8 {
@@ -476,6 +589,74 @@ body.theme-light .border-white\/8 {
 /* Stronger accent text for light mode */
 body.theme-light .text-sky-300 {
   color: #0369a1 !important;
+}
+
+/* Recent timestamps and small sky-200 text in light mode should use the accent with full opacity */
+body.theme-light .text-sky-200 {
+  color: #3e64ffe6 !important;
+}
+
+/* Make very-light sky text readable in light mode (used by alert messages) */
+body.theme-light .text-sky-100 {
+  color: #075985 !important;
+}
+
+/* Strengthen bg/border for sky alert panels in light mode */
+body.theme-light .bg-sky-300\/10 {
+  background-color: rgba(14,165,233,0.06) !important;
+}
+
+body.theme-light .border-sky-300\/20 {
+  border-color: rgba(14,165,233,0.14) !important;
+}
+
+/* Emerald button visibility in light mode: make icon/text and tints use #06923E */
+body.theme-light .text-emerald-100,
+body.theme-light .text-emerald-100 svg {
+  color: #06923E !important;
+  fill: #06923E !important;
+}
+
+body.theme-light .bg-emerald-600\/10 {
+  /* stronger tint so the icon shows against the background */
+  background-color: rgba(6,146,62,0.32) !important;
+  color: #ffffff !important;
+  /* ensure buttons using this bg have an emerald border for contrast */
+  border-color: rgba(6,146,62,0.36) !important;
+}
+
+body.theme-light .hover\:bg-emerald-600\/20:hover {
+  background-color: rgba(6,146,62,0.42) !important;
+}
+
+body.theme-light .border-emerald-600\/20 {
+  border-color: rgba(6,146,62,0.20) !important;
+}
+
+body.theme-light .bg-emerald-50 {
+  background-color: rgba(6,146,62,0.06) !important;
+}
+
+/* Ensure icons inside emerald-tinted buttons are white in light mode (match dark-mode look) */
+body.theme-light .bg-emerald-600\/10 svg,
+body.theme-light .bg-emerald-600\/10 .icon,
+body.theme-light .bg-emerald-600\/10 > svg {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Stronger border on emerald buttons for contrast */
+body.theme-light .border-emerald-600\/20 {
+  border-color: rgba(6,146,62,0.28) !important;
+}
+
+/* Also ensure buttons that include both bg-emerald and text-emerald utilities render icon/text white */
+body.theme-light .bg-emerald-600\/10.text-emerald-100,
+body.theme-light .bg-emerald-600\/10.text-emerald-100 svg {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 body.theme-light .text-slate-100 {
@@ -492,6 +673,20 @@ body.theme-light .text-slate-300 {
   color: #475569 !important;
 }
 
+/* Make the toggle knob visible on light panels: add subtle border and shadow */
+body.theme-light [role="switch"] > span,
+body.theme-light button[role="switch"] > span {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(15,23,42,0.06) !important;
+  box-shadow: 0 1px 2px rgba(2,6,23,0.06) !important;
+}
+
+/* Ensure the knob stays visible when the switch is "on" (override bg-emerald-50) */
+body.theme-light [role="switch"][aria-checked="true"] > span,
+body.theme-light button[role="switch"][aria-checked="true"] > span {
+  background-color: #ffffff !important;
+}
+
 /* Replace the dark overlay inside the hero .panel with a light-friendly gradient */
 body.theme-light .panel > .absolute.inset-0 {
   background:
@@ -504,6 +699,23 @@ body.theme-light .panel > .absolute.inset-0 {
 /* Ensure text intended as white becomes dark in the light panel */
 body.theme-light .panel .text-white {
   color: #0f172a !important;
+}
+
+/* Slightly thicker borders for panels and rounded containers in light mode
+   to improve visual separation on pale backgrounds */
+body.theme-light .panel,
+body.theme-light .panel-muted,
+body.theme-light .rounded-3xl.border,
+body.theme-light .rounded-2xl.border,
+body.theme-light .rounded-3xl.border.px-6.py-5 {
+  border-width: 1.6px !important;
+  border-color: rgba(2,6,23,0.08) !important;
+}
+
+/* Slightly stronger divider lines inside tables */
+body.theme-light table thead,
+body.theme-light table tbody tr {
+  border-color: rgba(2,6,23,0.06) !important;
 }
 
 /* Light-mode alert overrides for better contrast */

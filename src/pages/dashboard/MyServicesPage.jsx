@@ -45,17 +45,20 @@ export default function MyServicesPage() {
   const filters = ['All', 'Active', 'Undergoing Provisioning', 'Unpaid', 'Expired'];
 
   const columns = [
-    { key: 'name', label: 'Service' },
-    { key: 'category', label: 'Category' },
-    { key: 'plan', label: 'Plan' },
+    { key: 'name', label: 'Service', sortable: true },
+    { key: 'category', label: 'Category', sortable: true },
+    { key: 'plan', label: 'Plan', sortable: true },
     {
       key: 'renewsOn',
       label: 'Renews On',
+      sortable: true,
+      sortValue: (r) => new Date(r.renewsOn).getTime(),
       render: (value) => formatDate(value),
     },
     {
       key: 'status',
       label: 'Status',
+      sortable: true,
       render: (value) => <StatusBadge status={value} />,
     },
   ];

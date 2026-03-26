@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Building2,
   CheckCircle2,
   CircleOff,
   CreditCard,
+  Percent,
   Eye,
   LayoutGrid,
   List,
@@ -599,8 +601,8 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
-      {showClientProfile && selectedClient && selectedClientSummary ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      {showClientProfile && selectedClient && selectedClientSummary ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <div className="panel max-h-[88vh] w-full max-w-5xl overflow-hidden">
             <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
               <div className="flex items-center gap-4">
@@ -708,7 +710,7 @@ export default function ManageServicesPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>, document.body
       ) : null}
 
       {showOrderModal && selectedOrderForReview ? (
@@ -770,7 +772,7 @@ export default function ManageServicesPage() {
 
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" onClick={closeOrderModal} className="btn-secondary">Close</button>
-              <button type="button" onClick={async () => { await handleApproveOrder(selectedOrderForReview.id); closeOrderModal(); }} className="btn-primary">
+              <button type="button" onClick={async () => { await handleApproveOrder(selectedOrderForReview.id); closeOrderModal(); }} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 hover:bg-emerald-500">
                 <ShieldCheck size={16} /> Approve Order
               </button>
             </div>
@@ -781,7 +783,6 @@ export default function ManageServicesPage() {
       <PageHeader
         eyebrow="Service Operations"
         title="Manage services"
-        description="Search clients, review their services, update billing details, approve new orders, and manage service cancellations from one workspace."
       />
 
       {error ? (
@@ -919,7 +920,7 @@ export default function ManageServicesPage() {
                     <button type="button" onClick={() => openOrderModal(order)} className="btn-secondary">
                       <Eye size={14} /> View details
                     </button>
-                    <button type="button" onClick={() => handleApproveOrder(order.id)} disabled={processingOrderId === order.id} className="btn-primary disabled:opacity-60">
+                    <button type="button" onClick={() => handleApproveOrder(order.id)} disabled={processingOrderId === order.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
                       <ShieldCheck size={16} />
                       {processingOrderId === order.id ? 'Approving...' : 'Approve Order'}
                     </button>
@@ -957,10 +958,10 @@ export default function ManageServicesPage() {
                 </div>
 
                 <div className="mt-4 flex flex-wrap justify-end gap-3">
-                  <button type="button" onClick={() => handleRejectCancellation(service.id)} disabled={processingCancellationId === service.id} className="btn-secondary border-white/10 disabled:opacity-60">
+                  <button type="button" onClick={() => handleRejectCancellation(service.id)} disabled={processingCancellationId === service.id} className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500">
                     <XCircle size={16} /> Keep Service
                   </button>
-                  <button type="button" onClick={() => handleApproveCancellation(service.id)} disabled={processingCancellationId === service.id} className="btn-primary disabled:opacity-60">
+                  <button type="button" onClick={() => handleApproveCancellation(service.id)} disabled={processingCancellationId === service.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
                     <CheckCircle2 size={16} />
                     {processingCancellationId === service.id ? 'Approving...' : 'Approve Cancellation'}
                   </button>
@@ -1093,7 +1094,7 @@ export default function ManageServicesPage() {
                             title="Apply discount"
                             aria-label={`Apply discount to ${service.name}`}
                           >
-                            <CreditCard size={16} />
+                            <Percent size={16} />
                           </button>
                           <button
                             type="button"

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Building2, ImagePlus, LaptopMinimal, LockKeyhole, Mail, MapPin, Phone, Save, ShieldCheck, Trash2, UserCircle2, X } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
-import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAuth } from '../../context/AuthContext';
@@ -295,6 +294,47 @@ export default function AccountProfilePage() {
     setSecurityMessage(result.message);
   };
 
+  // Auto-trim sessions client-side: keep only the most recent SESSIONS_PER_PAGE sessions.
+  const trimmingRef = useRef(false);
+  useEffect(() => {
+    const sessions = security?.sessions || [];
+    if (trimmingRef.current) return;
+    if (!sessions || sessions.length <= SESSIONS_PER_PAGE) return;
+
+    trimmingRef.current = true;
+    (async () => {
+      try {
+        // Sort sessions by lastUsedAt (newest first), fallback to createdAt
+        const sorted = sessions.slice().sort((a, b) => {
+          const ta = new Date(b.lastUsedAt || b.createdAt).getTime();
+          const tb = new Date(a.lastUsedAt || a.createdAt).getTime();
+          return ta - tb;
+        });
+
+        const toRevoke = sorted.slice(SESSIONS_PER_PAGE);
+        for (const s of toRevoke) {
+          try {
+            // revokeSession is expected to return a { success } object
+            await revokeSession(s.id);
+          } catch (e) {
+            // ignore individual revoke failures
+            console.error('Failed to revoke session', s.id, e);
+          }
+        }
+
+        // Refresh sessions
+        try {
+          await loadSecuritySettings();
+          setSecurityMessage('Older sessions removed to enforce the 5-session limit.');
+        } catch (e) {
+          // ignore
+        }
+      } finally {
+        trimmingRef.current = false;
+      }
+    })();
+  }, [security?.sessions, revokeSession, loadSecuritySettings]);
+
   const formatSessionTime = (value) => {
     if (!value) {
       return 'Recently active';
@@ -319,7 +359,7 @@ export default function AccountProfilePage() {
         description="Manage your account details, company information, and password directly from the customer portal."
       />
 
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+      {/* <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
         {items.map(({ icon: Icon, label, value }) => (
           <div key={label} className="panel p-6">
             <Icon className="text-sky-300" />
@@ -327,10 +367,10 @@ export default function AccountProfilePage() {
             <p className="mt-2 text-lg font-medium text-white">{value}</p>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {profileUpdateRequest && !isProfileRequestDismissed ? (
-        <div className={`mt-6 rounded-3xl border px-6 py-5 ${profileStatusTone[profileUpdateRequest.statusKey] ?? 'border-white/10 bg-white/5 text-slate-100'}`}>
+        <div className={`mt-6 rounded-3xl border px-6 py-5 profile-request-panel ${profileStatusTone[profileUpdateRequest.statusKey] ?? 'border-white/10 bg-white/5 text-slate-100'}`}>
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-sm uppercase tracking-[0.2em]">Profile update request</p>
@@ -586,8 +626,7 @@ export default function AccountProfilePage() {
           <div className="mt-6 space-y-4">
             {(() => {
               const sessions = security.sessions || [];
-              const totalPages = Math.max(1, Math.ceil(sessions.length / SESSIONS_PER_PAGE));
-              const paginatedSessions = sessions.slice((sessionsPage - 1) * SESSIONS_PER_PAGE, sessionsPage * SESSIONS_PER_PAGE);
+              const paginatedSessions = sessions.slice(0, SESSIONS_PER_PAGE); // show only first 5 sessions
 
               return (
                 <>
@@ -626,7 +665,7 @@ export default function AccountProfilePage() {
                     <div className="panel-muted rounded-3xl p-6 text-sm text-slate-400">No active sessions were found.</div>
                   ) : null}
 
-                  <Pagination currentPage={sessionsPage} totalPages={totalPages} onPageChange={setSessionsPage} />
+                  {/* pagination removed for active sessions (limit enforced to 5) */}
                 </>
               );
             })()}

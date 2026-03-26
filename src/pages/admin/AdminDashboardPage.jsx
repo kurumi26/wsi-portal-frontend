@@ -57,9 +57,7 @@ export default function AdminDashboardPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Admin Portal"
-        title="Operations Dashboard"
-        description="Monitor clients, active services, purchases, and provisioning activity from a centralized admin view."
+        eyebrow="Operations Dashboard"
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -104,7 +102,7 @@ export default function AdminDashboardPage() {
                   <p className="mt-1 text-sm text-slate-400">{client.email}</p>
                 </div>
                 <div className="text-right text-sm text-slate-400">
-                  <p>{client.services} services</p>
+                  <p>{client.services} Services</p>
                   <p className="text-white">{client.status}</p>
                   {client.joinedAt ? (
                     <button

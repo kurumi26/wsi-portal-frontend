@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { CheckCircle, XCircle, X } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
@@ -14,6 +15,18 @@ export default function CheckoutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const total = cart.reduce((sum, item) => sum + item.price, 0);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const cls = 'payment-modal-open';
+    if (paymentState && paymentState.status && paymentState.status !== 'idle') {
+      document.body.classList.add(cls);
+    } else {
+      document.body.classList.remove(cls);
+    }
+
+    return () => document.body.classList.remove(cls);
+  }, [paymentState.status]);
 
   const handleCheckout = async () => {
     setIsSubmitting(true);
@@ -92,21 +105,35 @@ export default function CheckoutPage() {
               <span className="text-slate-400">Total due now</span>
               <span className="text-2xl font-semibold text-white">{formatCurrency(total)}</span>
             </div>
-            <button type="button" disabled={isSubmitting} className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60" onClick={handleCheckout}>
+            <button
+              type="button"
+              disabled={isSubmitting || !agreementAccepted}
+              aria-disabled={isSubmitting || !agreementAccepted}
+              title={!agreementAccepted ? 'Please accept the agreement to complete payment' : undefined}
+              className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={handleCheckout}
+            >
               {isSubmitting ? 'Processing payment...' : 'Complete payment'}
             </button>
+            {!agreementAccepted ? (
+              <p className="mt-2 text-sm text-slate-400">Please accept the Purchase Agreement, Terms and Privacy Policy to continue.</p>
+            ) : null}
             {paymentState.status !== 'idle' ? (
-              <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-white">Payment result</p>
-                  <StatusBadge status={paymentState.status === 'success' ? 'Paid' : 'Pending'} />
+              <div>
+                <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-white">Payment result</p>
+                    <StatusBadge status={paymentState.status === 'success' ? 'Paid' : 'Pending'} />
+                  </div>
+                  <p className="text-sm text-slate-400">{paymentState.message}</p>
+                  {paymentState.status === 'failed' ? (
+                    <button type="button" className="btn-secondary w-full" onClick={retryPayment}>
+                      Retry payment
+                    </button>
+                  ) : null}
                 </div>
-                <p className="text-sm text-slate-400">{paymentState.message}</p>
-                {paymentState.status === 'failed' ? (
-                  <button type="button" className="btn-secondary w-full" onClick={retryPayment}>
-                    Retry payment
-                  </button>
-                ) : null}
+
+                {/* modal moved to top-level so it centers across viewport */}
               </div>
             ) : null}
           </div>
@@ -122,6 +149,49 @@ export default function CheckoutPage() {
           </div>
         </aside>
       </div>
+      {paymentState.status !== 'idle' ? (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="panel w-full max-w-md p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">{paymentState.status === 'success' ? 'Payment Successful' : 'Payment Result'}</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{paymentState.status === 'success' ? 'Payment completed' : 'Payment failed'}</h2>
+              </div>
+              <button type="button" onClick={() => retryPayment()} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:border-sky-300/30 hover:bg-sky-300/10" aria-label="Close payment result modal">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex items-center gap-3">
+                {paymentState.status === 'success' ? <CheckCircle size={28} className="text-emerald-400" /> : <XCircle size={28} className="text-rose-400" />}
+                <div>
+                  <p className="font-medium text-white">{paymentState.message}</p>
+                  <p className="text-sm text-slate-400 mt-1">{paymentState.status === 'success' ? 'Your order will be provisioned shortly.' : 'Please try again or contact support.'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              {paymentState.status === 'success' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    retryPayment();
+                    navigate('/dashboard/orders');
+                  }}
+                  className="btn-secondary"
+                >
+                  View orders
+                </button>
+              ) : (
+                <button type="button" onClick={() => retryPayment()} className="btn-secondary">Retry</button>
+              )}
+              <button type="button" onClick={() => retryPayment()} className="btn-primary">Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
