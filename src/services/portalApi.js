@@ -347,4 +347,18 @@ export const portalApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  async updateClientAccount(userId, payload) {
+    return apiRequest(`/admin/clients/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateClientAccountStatus(userId, enabled) {
+    return apiRequest(`/admin/clients/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    });
+  },
 };

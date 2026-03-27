@@ -601,6 +601,18 @@ export function PortalProvider({ children }) {
     return result;
   };
 
+  const updateClientAccount = async (userId, payload) => {
+    const result = await portalApi.updateClientAccount(userId, payload);
+    await refreshPortalData();
+    return result;
+  };
+
+  const updateClientAccountStatus = async (userId, enabled) => {
+    const result = await portalApi.updateClientAccountStatus(userId, enabled);
+    await refreshPortalData();
+    return result;
+  };
+
   const stats = useMemo(() => {
     const relevantOrders = adminPurchases.length ? adminPurchases : orders;
     const relevantServices = adminServices.length ? adminServices : myServices;
@@ -649,6 +661,8 @@ export function PortalProvider({ children }) {
       updateServiceStatus,
       approveAdminOrder,
       updateClientBilling,
+      updateClientAccount,
+      updateClientAccountStatus,
       approveProfileUpdateRequest,
       rejectProfileUpdateRequest,
       approveClientRegistration,

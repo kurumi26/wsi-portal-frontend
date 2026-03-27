@@ -1281,13 +1281,13 @@ export default function ManageServicesPage() {
                             type="button"
                             onClick={() => handleToggleServiceStatus(service)}
                             disabled={statusUpdatingServiceId === service.id}
-                            className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:cursor-not-allowed disabled:opacity-60 ${service.status === 'Active' ? 'border-rose-300 bg-rose-100 text-rose-700 hover:bg-rose-200 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-100 dark:hover:bg-rose-400/20' : 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/20'}`}
+                            className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${service.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
                             title={service.status === 'Active' ? 'Disable service' : 'Enable service'}
                             aria-label={`${service.status === 'Active' ? 'Disable' : 'Enable'} ${service.name}`}
                           >
                             {service.status === 'Active'
-                              ? <XCircle size={16} color="#111827" strokeWidth={2.3} className="dark:!text-rose-100" />
-                              : <CheckCircle2 size={16} color="#111827" strokeWidth={2.3} className="dark:!text-emerald-100" />}
+                              ? <XCircle size={16} strokeWidth={2.3} />
+                              : <CheckCircle2 size={16} strokeWidth={2.3} />}
                           </button>
                           <button
                             type="button"
@@ -1384,7 +1384,7 @@ export default function ManageServicesPage() {
                     type="button"
                     onClick={() => handleToggleServiceStatus(service)}
                     disabled={statusUpdatingServiceId === service.id}
-                    className={`btn-secondary px-3 py-1.5 text-xs disabled:opacity-60 ${service.status === 'Active' ? 'border-rose-400/20 bg-rose-400/10 text-rose-100' : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'}`}
+                    className={`btn-secondary px-3 py-1.5 text-xs disabled:opacity-60 ${service.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
                   >
                     {service.status === 'Active' ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
                     {service.status === 'Active' ? 'Disable' : 'Enable'}

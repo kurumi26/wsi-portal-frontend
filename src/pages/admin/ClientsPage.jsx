@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Building2, CheckCircle2, Eye, FileText, LayoutGrid, List, Mail, MapPin, Phone, Search, UserCircle2, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, Eye, EyeOff, FileText, LayoutGrid, List, Mail, MapPin, PencilLine, Phone, Power, Search, UserCircle2, XCircle } from 'lucide-react';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -9,7 +9,7 @@ import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 
 export default function ClientsPage() {
-  const { clients, adminPurchases, adminServices, approveProfileUpdateRequest, rejectProfileUpdateRequest, approveClientRegistration, rejectClientRegistration } = usePortal();
+  const { clients, adminPurchases, adminServices, approveProfileUpdateRequest, rejectProfileUpdateRequest, approveClientRegistration, rejectClientRegistration, updateClientAccount, updateClientAccountStatus } = usePortal();
   const [selectedAuditTrail, setSelectedAuditTrail] = useState(null);
   const [selectedClientAccount, setSelectedClientAccount] = useState(null);
   const [selectedProfileRequest, setSelectedProfileRequest] = useState(null);
@@ -18,6 +18,13 @@ export default function ClientsPage() {
   const [reviewMessage, setReviewMessage] = useState('');
   const [reviewError, setReviewError] = useState('');
   const [isReviewing, setIsReviewing] = useState(false);
+  const [selectedEditClient, setSelectedEditClient] = useState(null);
+  const [editClientForm, setEditClientForm] = useState({ name: '', email: '', password: '', confirmPassword: '', company: '', address: '', mobileNumber: '' });
+  const [isSavingClientEdit, setIsSavingClientEdit] = useState(false);
+  const [copySuccess, setCopySuccess] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [statusConfirmClient, setStatusConfirmClient] = useState(null);
+  const [togglingClientId, setTogglingClientId] = useState('');
   const [clientsSearch, setClientsSearch] = useState('');
   const [clientsStatusFilter, setClientsStatusFilter] = useState('All');
   const [clientsApprovalFilter, setClientsApprovalFilter] = useState('All');
@@ -32,7 +39,7 @@ export default function ClientsPage() {
     return [
       'WSI Portal Customer Audit Trail',
       '===============================',
-      `Generated: ${new Date().toLocaleString('en-PH')}`,
+      `Generated: ${formatDateTime(new Date().toISOString())}`,
       '',
       'Client Summary',
       `Name: ${client.name}`,
@@ -75,7 +82,7 @@ export default function ClientsPage() {
     );
 
     return {
-      generatedAt: new Date().toLocaleString('en-PH'),
+      generatedAt: formatDateTime(new Date().toISOString()),
       summary: {
         name: client.name,
         company: client.company,
@@ -97,6 +104,18 @@ export default function ClientsPage() {
       data: buildAuditTrailData(client),
     });
   };
+
+  useEffect(() => {
+    const shouldOpen = Boolean(selectedAuditTrail || selectedEditClient);
+
+    if (shouldOpen) {
+      document.body.classList.add('audit-modal-open');
+    } else {
+      document.body.classList.remove('audit-modal-open');
+    }
+
+    return () => document.body.classList.remove('audit-modal-open');
+  }, [selectedAuditTrail, selectedEditClient]);
 
   const openProfileRequestModal = (client) => {
     setSelectedProfileRequest(client);
@@ -370,8 +389,120 @@ export default function ClientsPage() {
       >
         <FileText size={16} />
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          setSelectedEditClient(row);
+          setEditClientForm({
+            name: row.name ?? '',
+            email: row.email ?? '',
+            password: '',
+            confirmPassword: '',
+            company: row.company ?? '',
+            address: row.address ?? '',
+            mobileNumber: row.mobileNumber ?? '',
+          });
+          setReviewError('');
+          setReviewMessage('');
+        }}
+        className="btn-secondary px-3"
+        title="Edit customer account"
+        aria-label={`Edit customer account for ${row.name}`}
+      >
+        <PencilLine size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={() => setStatusConfirmClient(row)}
+        className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${row.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
+        title={row.status === 'Active' ? 'Disable account' : 'Enable account'}
+        aria-label={`${row.status === 'Active' ? 'Disable' : 'Enable'} account for ${row.name}`}
+      >
+        <Power size={16} />
+      </button>
     </div>
   );
+
+  const handleEditClientSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!selectedEditClient) {
+      return;
+    }
+
+    setIsSavingClientEdit(true);
+    setReviewError('');
+    setReviewMessage('');
+
+    // client-side password confirmation check
+    if (editClientForm.password && editClientForm.password !== editClientForm.confirmPassword) {
+      setReviewError('Password and confirmation do not match.');
+      setIsSavingClientEdit(false);
+      return;
+    }
+
+    try {
+      const payload = {
+        name: editClientForm.name,
+        email: editClientForm.email,
+        company: editClientForm.company,
+        address: editClientForm.address,
+        mobileNumber: editClientForm.mobileNumber,
+      };
+
+      // include password only when provided
+      if (editClientForm.password) payload.password = editClientForm.password;
+
+      const response = await updateClientAccount(selectedEditClient.id, payload);
+
+      setReviewMessage(response.message || 'Customer account updated successfully.');
+      setSelectedEditClient(null);
+    } catch (requestError) {
+      setReviewError(requestError.message);
+    } finally {
+      setIsSavingClientEdit(false);
+    }
+  };
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+';
+    const length = 12;
+    let pwd = '';
+    for (let i = 0; i < length; i += 1) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setEditClientForm((current) => ({ ...current, password: pwd, confirmPassword: pwd }));
+    try {
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pwd);
+        setCopySuccess('Copied to clipboard');
+        setTimeout(() => setCopySuccess(''), 2000);
+      }
+    } catch (e) {
+      // ignore clipboard errors
+    }
+  };
+
+  const handleConfirmToggleClientStatus = async () => {
+    if (!statusConfirmClient) {
+      return;
+    }
+
+    const nextEnabled = statusConfirmClient.status !== 'Active';
+    setTogglingClientId(statusConfirmClient.id);
+    setReviewError('');
+    setReviewMessage('');
+
+    try {
+      const response = await updateClientAccountStatus(statusConfirmClient.id, nextEnabled);
+      setReviewMessage(response.message || `Client account ${nextEnabled ? 'enabled' : 'disabled'} successfully.`);
+      setStatusConfirmClient(null);
+    } catch (requestError) {
+      setReviewError(requestError.message);
+    } finally {
+      setTogglingClientId('');
+    }
+  };
 
   const columns = [
     { key: 'name', label: 'Client', sortable: true },
@@ -400,7 +531,7 @@ export default function ClientsPage() {
     <div>
       <PageHeader
         eyebrow="Client Management"
-        title="Registered customers"
+        title="Registered Customers"
       />
       {reviewError ? <p className="mb-4 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{reviewError}</p> : null}
       {reviewMessage ? <p className="mb-4 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{reviewMessage}</p> : null}
@@ -927,6 +1058,99 @@ export default function ClientsPage() {
                   : approvalDecision.decision === 'approve'
                     ? 'Approve Request'
                     : 'Reject Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedEditClient ? (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <form onSubmit={handleEditClientSubmit} className="panel w-full max-w-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Edit Customer Account</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{selectedEditClient.name}</h2>
+              </div>
+              <button type="button" onClick={() => setSelectedEditClient(null)} className="btn-secondary px-4">Close</button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Full Name
+                <input className="input mt-2" value={editClientForm.name} onChange={(event) => setEditClientForm((current) => ({ ...current, name: event.target.value }))} required />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Company
+                <input className="input mt-2" value={editClientForm.company} onChange={(event) => setEditClientForm((current) => ({ ...current, company: event.target.value }))} />
+              </label>
+              <label className="block text-sm text-slate-300">
+                Mobile Number
+                <input className="input mt-2" value={editClientForm.mobileNumber} onChange={(event) => setEditClientForm((current) => ({ ...current, mobileNumber: event.target.value }))} />
+              </label>
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Address
+                <input className="input mt-2" value={editClientForm.address} onChange={(event) => setEditClientForm((current) => ({ ...current, address: event.target.value }))} />
+              </label>
+                <label className="block text-sm text-slate-300 md:col-span-2">
+                Email
+                <input type="email" className="input mt-2" value={editClientForm.email} onChange={(event) => setEditClientForm((current) => ({ ...current, email: event.target.value }))} required />
+              </label>
+              <label className="block text-sm text-slate-300">
+                Password
+                <div className="mt-2 flex items-center gap-2">
+                  <input type={showPasswords ? 'text' : 'password'} className="input flex-1" value={editClientForm.password} onChange={(event) => setEditClientForm((current) => ({ ...current, password: event.target.value }))} placeholder="Leave blank to keep current password" />
+                  <button type="button" onClick={() => setShowPasswords((s) => !s)} className="btn-secondary px-3" aria-pressed={showPasswords} aria-label={showPasswords ? 'Hide password' : 'Show password'}>
+                    {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  <button type="button" onClick={generatePassword} className="btn-secondary px-3">Generate</button>
+                </div>
+                {copySuccess ? <p className="mt-2 text-xs text-sky-300">{copySuccess}</p> : null}
+              </label>
+              <label className="block text-sm text-slate-300">
+                Confirm password
+                <input type={showPasswords ? 'text' : 'password'} className="input mt-2" value={editClientForm.confirmPassword} onChange={(event) => setEditClientForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Repeat password" />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setSelectedEditClient(null)} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={isSavingClientEdit} className="btn-primary disabled:opacity-60">
+                {isSavingClientEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {statusConfirmClient ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <div className="panel w-full max-w-lg p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Confirm Action</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">
+                  {statusConfirmClient.status === 'Active' ? 'Disable customer account' : 'Enable customer account'}
+                </h2>
+              </div>
+              <button type="button" onClick={() => setStatusConfirmClient(null)} className="btn-secondary px-4">Close</button>
+            </div>
+
+            <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300">
+              Are you sure you want to {statusConfirmClient.status === 'Active' ? 'disable' : 'enable'}{' '}
+              <span className="font-semibold text-white">{statusConfirmClient.name}</span>?
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setStatusConfirmClient(null)} className="btn-secondary">Cancel</button>
+              <button
+                type="button"
+                onClick={handleConfirmToggleClientStatus}
+                disabled={togglingClientId === statusConfirmClient.id}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 disabled:opacity-60 ${statusConfirmClient.status === 'Active' ? 'bg-rose-400 hover:bg-rose-500 text-white' : 'bg-emerald-400 hover:bg-emerald-500 text-white'}`}
+              >
+                {togglingClientId === statusConfirmClient.id ? 'Saving...' : (statusConfirmClient.status === 'Active' ? 'Disable' : 'Enable')}
               </button>
             </div>
           </div>

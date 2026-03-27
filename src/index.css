@@ -248,6 +248,18 @@ body.payment-modal-open aside {
   transition: filter 120ms ease;
 }
 
+/* When the audit trail modal is open, hide header and sidebar entirely for a focused print-like view */
+body.audit-modal-open header,
+body.audit-modal-open aside {
+  display: none !important;
+}
+
+/* Make the main content fill the viewport when header/sidebar hidden */
+body.audit-modal-open .mx-auto {
+  max-width: 100% !important;
+  margin-left: 0 !important;
+}
+
 /* Slightly dim the background panels when modal is visible */
 body.payment-modal-open .panel {
   opacity: 0.92;
