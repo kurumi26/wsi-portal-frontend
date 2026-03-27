@@ -678,7 +678,7 @@ export default function ApprovalsPage() {
                         {renderPendingSortIndicator('amount')}
                       </button>
                     </th>
-                    <th className="px-5 py-4 font-semibold text-white text-center">
+                    <th className="px-5 py-4 font-semibold text-white">
                       <button type="button" onClick={() => handlePendingTableSort('status')} className="inline-flex items-center gap-1 hover:text-sky-200">
                         <span>Status</span>
                         {renderPendingSortIndicator('status')}
@@ -698,12 +698,12 @@ export default function ApprovalsPage() {
                       <td className="px-5 py-4 align-middle">
                         <p className="font-medium text-white">{row.client}</p>
                       </td>
-                      <td className="px-5 py-4 align-middle text-center">
+                      <td className="px-5 py-4 align-middler">
                         {row.amount != null ? <p className="font-semibold text-sky-300">{formatCurrency(row.amount)}</p> : <span className="text-sm text-slate-500">—</span>}
                       </td>
-                      <td className="px-5 py-4 align-middle text-center"><StatusBadge status={row.status} /></td>
-                      <td className="px-5 py-4 align-middle text-center">
-                        <div className="flex items-start justify-center gap-3">
+                      <td className="px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="flex items-center justify-center gap-3">
                           {row.type === 'order' ? (
                             <>
                               <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary">View</button>
