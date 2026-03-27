@@ -390,9 +390,15 @@ export default function OrderHistoryPage() {
                     <h2 className="mt-2 text-2xl font-semibold text-white">{selectedOrder.id}</h2>
                     <p className="mt-2 text-sm text-slate-400">Customer order record for phase 1 portal activity</p>
                   </div>
-                  <button type="button" onClick={() => setSelectedOrder(null)} className="btn-secondary px-4">
-                    Close
-                  </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <button type="button" onClick={() => setSelectedOrder(null)} className="btn-secondary px-4">
+                      Close
+                    </button>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-sm uppercase tracking-[0.12em] text-slate-400">Status</span>
+                      <StatusBadge status={selectedOrder.status} />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 px-6 py-5 md:grid-cols-2">
@@ -412,13 +418,8 @@ export default function OrderHistoryPage() {
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Date</p>
                     <p className="mt-2 text-lg font-medium text-white">{formatDate(selectedOrder.date)}</p>
                   </div>
-                  <div className="panel-muted p-4 md:col-span-2">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Status</p>
-                    <div className="mt-2">
-                      <StatusBadge status={selectedOrder.status} />
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-3 md:col-span-2">
+                  {/* Status now shown in header */}
+                  <div className="flex flex-wrap gap-3 md:col-span-2 justify-center">
                     <button
                       type="button"
                       onClick={() => downloadOrderPdf(selectedOrder)}

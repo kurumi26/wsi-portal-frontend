@@ -132,9 +132,26 @@ export default function AdminNotificationsPage() {
       await updateNotificationStatus(notification.id, true);
     }
 
+    const maybeTarget =
+      notification.link ||
+      notification.url ||
+      notification.target ||
+      (notification.data && (notification.data.link || notification.data.url || notification.data.path)) ||
+      (notification.meta && (notification.meta.link || notification.meta.path));
+
+    const data = notification.data || notification.meta || {};
+
+    // Only navigate immediately for external links
+    if (typeof maybeTarget === 'string' && (maybeTarget.startsWith('http://') || maybeTarget.startsWith('https://'))) {
+      window.location.href = maybeTarget;
+      return;
+    }
+
     setSelectedNotification({
       ...notification,
       isRead: true,
+      _target: maybeTarget || null,
+      _data: data,
     });
   };
 
@@ -358,26 +375,27 @@ export default function AdminNotificationsPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  await updateNotificationStatus(selectedNotification.id, false);
-                  setSelectedNotification((current) => (current ? { ...current, isRead: false } : current));
-                }}
-                className="btn-secondary"
-              >
-                Mark unread
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  await dismissNotification(selectedNotification.id);
-                  setSelectedNotification(null);
-                }}
-                className="btn-secondary"
-              >
-                Dismiss
-              </button>
+              {selectedNotification && selectedNotification._target ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = selectedNotification._target;
+                    if (typeof t === 'string') {
+                      if (t.startsWith('http://') || t.startsWith('https://')) {
+                        window.open(t, '_blank');
+                      } else {
+                        // internal route
+                        window.location.href = t;
+                      }
+                    } else if (t && t.path) {
+                      window.location.href = t.path;
+                    }
+                  }}
+                  className="btn-primary"
+                >
+                  Open link
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, Bell, ChevronDown, LayoutDashboard, LayoutGrid, List, LogOut, ReceiptText, Search, Settings, Shield, ShieldAlert, UserCircle2, Users, X } from 'lucide-react';
+import { Bell, ChevronDown, LayoutDashboard, LayoutGrid, List, LogOut, ReceiptText, ClipboardList, Settings, Shield, ShieldAlert, UserCircle2, Users } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
@@ -13,6 +13,7 @@ const adminNav = [
   { label: 'Dashboard', to: '/admin', icon: LayoutDashboard },
   { label: 'Clients', to: '/admin/clients', icon: Users },
   { label: 'Users', to: '/admin/users', icon: Settings },
+    { label: 'Approvals', to: '/admin/approvals', icon: ClipboardList },
   { label: 'Manage Service', to: '/admin/services', icon: ShieldAlert },
   { label: 'Purchases', to: '/admin/purchases', icon: ReceiptText },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
@@ -25,12 +26,8 @@ export default function AdminLayout() {
   const { stats, clients, adminServices, notifications, updateNotificationStatus } = usePortal();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isActiveServicesOpen, setIsActiveServicesOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [activeServicesSearch, setActiveServicesSearch] = useState('');
-  const [activeServicesCategory, setActiveServicesCategory] = useState('All');
-  const [activeServicesRenewal, setActiveServicesRenewal] = useState('All');
-  const [activeServicesView, setActiveServicesView] = useState('grid');
+
   const notificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -45,27 +42,12 @@ export default function AdminLayout() {
   const handleOpenLogoutModal = () => {
     setIsProfileMenuOpen(false);
     setIsNotificationsOpen(false);
-    setIsActiveServicesOpen(false);
     setIsLogoutModalOpen(true);
   };
 
   const provisioningCount = adminServices.filter((service) => service.status === 'Undergoing Provisioning').length;
   const pendingClients = clients.filter((client) => client.status === 'Pending').length;
-  const activeServices = adminServices.filter((service) => service.status === 'Active');
-  const activeServiceCategories = ['All', ...new Set(activeServices.map((service) => service.category).filter(Boolean))];
-  const filteredActiveServices = activeServices.filter((service) => {
-    const matchesSearch = [service.name, service.category, service.plan]
-      .filter(Boolean)
-      .some((value) => value.toLowerCase().includes(activeServicesSearch.toLowerCase()));
 
-    const matchesCategory = activeServicesCategory === 'All' || service.category === activeServicesCategory;
-    const hasRenewalDate = Boolean(service.renewsOn);
-    const matchesRenewal = activeServicesRenewal === 'All'
-      || (activeServicesRenewal === 'With renewal date' && hasRenewalDate)
-      || (activeServicesRenewal === 'No renewal date' && !hasRenewalDate);
-
-    return matchesSearch && matchesCategory && matchesRenewal;
-  });
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
   const recentNotifications = notifications.slice(0, 4);
   const { isDarkMode } = useTheme();
@@ -176,25 +158,7 @@ export default function AdminLayout() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <div className="group relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsActiveServicesOpen(true);
-                    setIsNotificationsOpen(false);
-                    setIsProfileMenuOpen(false);
-                  }}
-                  className="inline-flex h-12 min-w-12 items-center justify-center gap-2 rounded-2xl border border-sky-300/15 bg-sky-300/10 px-3 text-sm font-semibold text-white transition hover:border-sky-300/30 hover:bg-sky-300/15"
-                  aria-label="Active services"
-                  title="Active services"
-                >
-                  <Activity size={16} />
-                  <span>{stats.activeServices}</span>
-                </button>
-                <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-xs font-medium text-white opacity-0 shadow-xl shadow-slate-950/30 transition group-hover:opacity-100">
-                  Active services
-                </div>
-              </div>
+              {/* Active services quick widget removed */}
               <div ref={notificationsRef} className="relative">
                 <button
                   type="button"
@@ -328,111 +292,7 @@ export default function AdminLayout() {
         </div>
       </div>
 
-      {isActiveServicesOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="panel w-full max-w-5xl p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Service Overview</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">Active services</h2>
-                <p className="mt-2 text-sm text-slate-400">
-                  {filteredActiveServices.length} of {activeServices.length} active service{activeServices.length === 1 ? '' : 's'} currently shown.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsActiveServicesOpen(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:border-sky-300/30 hover:bg-sky-300/10 hover:text-white"
-                aria-label="Close active services modal"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
-                <label className="relative block flex-1">
-                  <span className="sr-only">Search active services</span>
-                  <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input
-                    type="text"
-                    value={activeServicesSearch}
-                    onChange={(event) => setActiveServicesSearch(event.target.value)}
-                    placeholder="Search service, category, or plan"
-                    className="input pl-11"
-                  />
-                </label>
-
-                <select className="input lg:w-52" value={activeServicesCategory} onChange={(event) => setActiveServicesCategory(event.target.value)}>
-                  {activeServiceCategories.map((category) => (
-                    <option key={category} value={category}>{category === 'All' ? 'All categories' : category}</option>
-                  ))}
-                </select>
-
-                <select className="input lg:w-52" value={activeServicesRenewal} onChange={(event) => setActiveServicesRenewal(event.target.value)}>
-                  <option value="All">All renewal dates</option>
-                  <option value="With renewal date">With renewal date</option>
-                  <option value="No renewal date">No renewal date</option>
-                </select>
-              </div>
-
-              <div className="inline-flex items-center gap-2 self-end rounded-2xl border border-white/10 bg-slate-900/70 p-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveServicesView('grid')}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${activeServicesView === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                  aria-label="Grid view"
-                  title="Grid view"
-                >
-                  <LayoutGrid size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveServicesView('list')}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${activeServicesView === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                  aria-label="List view"
-                  title="List view"
-                >
-                  <List size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-6 max-h-[26rem] overflow-y-auto pr-1">
-              {filteredActiveServices.length ? (
-                <div className={activeServicesView === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-                  {filteredActiveServices.map((service) => (
-                    <div key={service.id} className="panel-muted p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-base font-semibold text-white">{service.name}</p>
-                          <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
-                        </div>
-                        <StatusBadge status={service.status} />
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Category</p>
-                          <p className="mt-2 text-sm font-medium text-white">{service.category}</p>
-                        </div>
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Renews on</p>
-                          <p className="mt-2 text-sm font-medium text-white">{service.renewsOn ? formatDateTime(service.renewsOn) : 'Not available'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-8 text-center text-sm text-slate-400">
-                  No active services match the current search and filters.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* Active services modal removed */}
 
       {isLogoutModalOpen ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

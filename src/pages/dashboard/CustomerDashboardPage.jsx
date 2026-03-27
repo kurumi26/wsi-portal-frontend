@@ -587,13 +587,13 @@ export default function CustomerDashboardPage() {
                     ) : service.status === 'Active' ? (
                       <div className="flex flex-col items-center">
                         <div className="flex items-center gap-3 mb-3">
-                          <button
+                          {/* <button
                             title="Service support"
                             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900"
                             onClick={() => setSelectedSupportService(service)}
                           >
                             <Headphones size={16} />
-                          </button>
+                          </button> */}
 
                           <button
                             title="View orders"
@@ -621,13 +621,13 @@ export default function CustomerDashboardPage() {
                       </div>
                     ) : service.status === 'Undergoing Provisioning' ? (
                       <div className="flex items-center gap-3">
-                        <button
+                        {/* <button
                           title="Service support"
                           className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-900"
                           onClick={() => setSelectedSupportService(service)}
                         >
                           <Headphones size={16} />
-                        </button>
+                        </button> */}
 
                         <button
                           title="View orders"

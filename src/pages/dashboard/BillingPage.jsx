@@ -1004,9 +1004,15 @@ export default function BillingPage() {
                     <h2 className="mt-2 text-2xl font-semibold text-white">{selectedCharge.invoiceNumber}</h2>
                     <p className="mt-2 text-sm text-slate-400">Billing summary for this recent charge entry.</p>
                   </div>
-                  <button type="button" onClick={() => setSelectedCharge(null)} className="btn-secondary px-4">
-                    Close
-                  </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <button type="button" onClick={() => setSelectedCharge(null)} className="btn-secondary px-4">
+                      Close
+                    </button>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="text-sm uppercase tracking-[0.12em] text-slate-400">Status</span>
+                      <StatusBadge status={selectedCharge.status} />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid gap-x-4 gap-y-3 px-6 py-5 md:grid-cols-2 items-start">
@@ -1068,12 +1074,7 @@ export default function BillingPage() {
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Recorded Date</p>
                     <p className="mt-2 text-lg font-medium text-white">{formatDate(selectedCharge.date)}</p>
                   </div>
-                  <div className="panel-muted p-4 md:col-span-2">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Status</p>
-                    <div className="mt-2">
-                      <StatusBadge status={selectedCharge.status} />
-                    </div>
-                  </div>
+                  {/* Status shown in header */}
                   <div className="flex flex-wrap gap-3 md:col-span-2">
                     {(() => {
                       const isPaid = selectedCharge?.statusKey === 'paid' || selectedCharge?.status === 'Paid';

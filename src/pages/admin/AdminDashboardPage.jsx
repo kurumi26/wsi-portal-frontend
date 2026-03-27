@@ -1,12 +1,25 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { LayoutGrid, List } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
+import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDateTime } from '../../utils/format';
 
 export default function AdminDashboardPage() {
   const { stats, clients, adminServices } = usePortal();
   const [selectedTimeline, setSelectedTimeline] = useState(null);
+  const [provPage, setProvPage] = useState(1);
+  const [clientsView, setClientsView] = useState('grid');
+  const [provView, setProvView] = useState('grid');
+
+  const provisioningList = adminServices.filter((service) => service.status === 'Undergoing Provisioning');
+  const provPerPage = 2;
+  const provTotalPages = Math.max(1, Math.ceil(provisioningList.length / provPerPage));
+
+  useEffect(() => {
+    if (provPage > provTotalPages) setProvPage(provTotalPages);
+  }, [provPage, provTotalPages]);
 
   const rateCards = useMemo(() => {
     const totalManagedServices = adminServices.length;
@@ -67,7 +80,7 @@ export default function AdminDashboardPage() {
         <StatCard label="Revenue Logged" value={formatCurrency(stats.totalRevenue)} helper="Across recorded purchases" accent="violet" />
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-3">
+      <div className="mt-3 grid gap-4 xl:grid-cols-3">
         {rateCards.map((card) => (
           <div key={card.label} className="panel p-5">
             <div className="flex items-start justify-between gap-4">
@@ -91,63 +104,158 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
+      <div className="mt-3 grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="panel p-6">
-          <h2 className="text-xl font-semibold text-white">Recent clients</h2>
-          <div className="mt-6 space-y-4">
-            {clients.map((client) => (
-              <div key={client.id} className="panel-muted flex items-center justify-between p-4">
-                <div>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-white">Recent clients</h2>
+            <div className="inline-flex items-center gap-2">
+              <button type="button" onClick={() => setClientsView('grid')} className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${clientsView === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
+                <LayoutGrid size={16} />
+              </button>
+              <button type="button" onClick={() => setClientsView('list')} className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${clientsView === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
+                <List size={16} />
+              </button>
+            </div>
+          </div>
+
+          {clientsView === 'list' ? (
+            <div className="mt-6 space-y-4">
+              {clients.map((client) => (
+                <div key={client.id} className="panel-muted flex items-center justify-between p-4">
+                  <div>
+                    <p className="font-medium text-white">{client.name}</p>
+                    <p className="mt-1 text-sm text-slate-400">{client.email}</p>
+                  </div>
+                  <div className="text-right text-sm text-slate-400 flex flex-col items-end">
+                    <p>{client.services} Services</p>
+                    <div className="mt-1"><StatusBadge status={client.status} /></div>
+                    {client.joinedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTimeline({
+                          title: client.name,
+                          subtitle: client.email,
+                          label: 'Joined At',
+                          value: client.joinedAt,
+                        })}
+                        className="mt-1 text-xs text-sky-200 underline decoration-sky-400/40 underline-offset-4 transition hover:text-sky-100"
+                      >
+                        {formatDateTime(client.joinedAt)}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {clients.map((client) => (
+                <div key={client.id} className="panel-muted p-4">
                   <p className="font-medium text-white">{client.name}</p>
                   <p className="mt-1 text-sm text-slate-400">{client.email}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-sm text-slate-400">{client.services} Services</div>
+                    <div><StatusBadge status={client.status} /></div>
+                  </div>
                 </div>
-                <div className="text-right text-sm text-slate-400">
-                  <p>{client.services} Services</p>
-                  <p className="text-white">{client.status}</p>
-                  {client.joinedAt ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTimeline({
-                        title: client.name,
-                        subtitle: client.email,
-                        label: 'Joined At',
-                        value: client.joinedAt,
-                      })}
-                      className="mt-1 text-xs text-sky-200 underline decoration-sky-400/40 underline-offset-4 transition hover:text-sky-100"
-                    >
-                      {formatDateTime(client.joinedAt)}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="panel p-6">
-          <h2 className="text-xl font-semibold text-white">Provisioning watchlist</h2>
-          <div className="mt-6 space-y-4">
-            {adminServices.filter((service) => service.status === 'Undergoing Provisioning').map((service) => (
-              <div key={service.id} className="panel-muted p-4">
-                <p className="font-medium text-white">{service.name}</p>
-                <p className="mt-1 text-sm text-slate-400">Plan: {service.plan}</p>
-                {service.renewsOn ? (
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-white">Provisioning watchlist</h2>
+            <div className="inline-flex items-center gap-2">
+              <button type="button" onClick={() => setProvView('grid')} className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${provView === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
+                <LayoutGrid size={16} />
+              </button>
+              <button type="button" onClick={() => setProvView('list')} className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition ${provView === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
+                <List size={16} />
+              </button>
+            </div>
+          </div>
+
+          {provView === 'list' ? (
+            <div className="mt-6 space-y-4 max-h-[48vh] overflow-auto pr-2">
+              {provisioningList.slice((provPage - 1) * provPerPage, provPage * provPerPage).map((service) => (
+                <div key={service.id} className="panel-muted p-4">
+                  <p className="font-medium text-white">{service.name}</p>
+                  <p className="mt-1 text-sm text-slate-400">Plan: {service.plan}</p>
+                  {service.renewsOn ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTimeline({
+                        title: service.name,
+                        subtitle: `Plan: ${service.plan}`,
+                        label: 'Renewal Timeline',
+                        value: service.renewsOn,
+                      })}
+                      className="mt-2 text-xs text-sky-200 underline decoration-sky-400/40 underline-offset-4 transition hover:text-sky-100"
+                    >
+                      {formatDateTime(service.renewsOn)}
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+
+              <div className="mt-3 flex items-center justify-between px-2">
+                <div className="text-sm text-slate-400">Page {provPage} / {provTotalPages}</div>
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedTimeline({
-                      title: service.name,
-                      subtitle: `Plan: ${service.plan}`,
-                      label: 'Renewal Timeline',
-                      value: service.renewsOn,
-                    })}
-                    className="mt-2 text-xs text-sky-200 underline decoration-sky-400/40 underline-offset-4 transition hover:text-sky-100"
+                    onClick={() => setProvPage((p) => Math.max(1, p - 1))}
+                    disabled={provPage <= 1}
+                    className="btn-secondary px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {formatDateTime(service.renewsOn)}
+                    Prev
                   </button>
-                ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setProvPage((p) => Math.min(provTotalPages, p + 1))}
+                    disabled={provPage >= provTotalPages}
+                    className="btn-secondary px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 md:grid-cols-1 lg:grid-cols-2">
+              {provisioningList.slice((provPage - 1) * provPerPage, provPage * provPerPage).map((service) => (
+                <div key={service.id} className="panel-muted p-4">
+                  <p className="font-medium text-white">{service.name}</p>
+                  <p className="mt-1 text-sm text-slate-400">Plan: {service.plan}</p>
+                  {service.renewsOn ? (
+                    <div className="mt-2 text-xs text-sky-200">{formatDateTime(service.renewsOn)}</div>
+                  ) : null}
+                </div>
+              ))}
+
+              <div className="col-span-full mt-2 flex items-center justify-between px-2">
+                <div className="text-sm text-slate-400">Page {provPage} / {provTotalPages}</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProvPage((p) => Math.max(1, p - 1))}
+                    disabled={provPage <= 1}
+                    className="btn-secondary px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProvPage((p) => Math.min(provTotalPages, p + 1))}
+                    disabled={provPage >= provTotalPages}
+                    className="btn-secondary px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

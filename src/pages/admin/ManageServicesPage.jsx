@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Building2,
@@ -20,19 +20,23 @@ import {
   XCircle,
 } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
+import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 
-const statuses = ['Active', 'Expired', 'Unpaid', 'Undergoing Provisioning'];
+const serviceCategories = ['Shared Hosting', 'Domains', 'Dedicated server'];
+const SERVICES_PER_PAGE = 10;
 
 export default function ManageServicesPage() {
   const {
+    services,
     adminServices,
     adminPurchases,
     clients,
     createCatalogService,
+    updateCatalogService,
     updateServiceStatus,
     requestServiceCancellation,
     approveServiceCancellation,
@@ -42,7 +46,10 @@ export default function ManageServicesPage() {
   } = usePortal();
   const [servicesSearch, setServicesSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [priceFilter, setPriceFilter] = useState('Price: Low to High');
   const [viewMode, setViewMode] = useState('list');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [tableSort, setTableSort] = useState({ key: 'name', direction: 'asc' });
   const [showAddModal, setShowAddModal] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -50,6 +57,7 @@ export default function ManageServicesPage() {
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [showClientProfile, setShowClientProfile] = useState(false);
+  const [selectedServiceSubscribers, setSelectedServiceSubscribers] = useState(null);
   const [billingModalClient, setBillingModalClient] = useState(null);
   const [billingForm, setBillingForm] = useState({
     company: '',
@@ -71,6 +79,10 @@ export default function ManageServicesPage() {
   const [discountForm, setDiscountForm] = useState({ type: 'percentage', value: '', expiresOn: '' });
   const [showPricingLogsModal, setShowPricingLogsModal] = useState(false);
   const [pricingLogsService, setPricingLogsService] = useState(null);
+  const [addonsPreviewService, setAddonsPreviewService] = useState(null);
+  const [statusUpdatingServiceId, setStatusUpdatingServiceId] = useState('');
+  const [editingService, setEditingService] = useState(null);
+  const [localCatalogServices, setLocalCatalogServices] = useState([]);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -121,20 +133,228 @@ export default function ManageServicesPage() {
     };
   }, [adminPurchases, adminServices, selectedClient]);
 
+  const subscribedClients = useMemo(() => {
+    if (!selectedServiceSubscribers) {
+      return [];
+    }
+
+    const relatedServices = adminServices.filter((service) => (
+      service.name === selectedServiceSubscribers.name
+      && (service.category ?? '') === (selectedServiceSubscribers.category ?? '')
+    ));
+
+    const uniqueSubscribers = new Map();
+    relatedServices.forEach((service) => {
+      const key = service.clientEmail || service.client || service.id;
+      if (!key || uniqueSubscribers.has(key)) {
+        return;
+      }
+
+      uniqueSubscribers.set(key, {
+        key,
+        name: service.client || 'Unknown client',
+        email: service.clientEmail || 'No email',
+        renewsOn: service.renewsOn,
+        status: service.status,
+      });
+    });
+
+    return Array.from(uniqueSubscribers.values());
+  }, [adminServices, selectedServiceSubscribers]);
+
   const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/api\/?$/i, '');
 
+  const catalogServices = useMemo(() => {
+    const merged = [...services, ...localCatalogServices];
+    const deduped = new Map();
+
+    merged.forEach((service) => {
+      const key = String(service.id ?? `${service.name}-${service.category}-${service.price ?? service.basePrice}`);
+      deduped.set(key, service);
+    });
+
+    return Array.from(deduped.values());
+  }, [localCatalogServices, services]);
+
   const filteredServices = useMemo(() => {
-    return adminServices.filter((service) => {
-      const matchesSearch = [service.name, service.category, service.plan, service.client, service.clientEmail]
+    return catalogServices.filter((service) => {
+      const matchesSearch = [service.name, service.category, service.description, service.billingCycle]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(servicesSearch.toLowerCase()));
 
-      const matchesStatus = statusFilter === 'All' || service.status === statusFilter;
-      const matchesClient = !selectedClient || service.clientEmail === selectedClient.email || service.client === selectedClient.name;
+      const normalizedFilter = statusFilter.toLowerCase();
+      const normalizedCategory = (service.category ?? '').toLowerCase();
+      const matchesStatus = statusFilter === 'All' || normalizedCategory === normalizedFilter;
 
-      return matchesSearch && matchesStatus && matchesClient;
+      return matchesSearch && matchesStatus;
     });
-  }, [adminServices, selectedClient, servicesSearch, statusFilter]);
+  }, [catalogServices, servicesSearch, statusFilter]);
+
+  const displayedServices = useMemo(() => {
+    const list = [...filteredServices];
+    const isNew = (service) => {
+      if (!service?.createdAt) return false;
+      const createdTime = new Date(service.createdAt).getTime();
+      if (!Number.isFinite(createdTime)) return false;
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      return Date.now() - createdTime <= SEVEN_DAYS_MS;
+    };
+    const getPrice = (service) => (
+      typeof service.basePrice === 'number'
+        ? service.basePrice
+        : (typeof service.price === 'number' ? service.price : 0)
+    );
+
+    // Always keep newly added services at the top.
+    list.sort((a, b) => Number(isNew(b)) - Number(isNew(a)));
+
+    if (priceFilter === 'Price: High to Low') {
+      return list.sort((a, b) => {
+        const newPriority = Number(isNew(b)) - Number(isNew(a));
+        if (newPriority !== 0) return newPriority;
+        return getPrice(b) - getPrice(a);
+      });
+    }
+
+    if (priceFilter === 'Most Popular') {
+      const popularityMap = adminServices.reduce((accumulator, service) => {
+        const key = `${service.name ?? ''}::${service.category ?? ''}`;
+        accumulator.set(key, (accumulator.get(key) ?? 0) + 1);
+        return accumulator;
+      }, new Map());
+
+      return list.sort((a, b) => {
+        const newPriority = Number(isNew(b)) - Number(isNew(a));
+        if (newPriority !== 0) return newPriority;
+        const aKey = `${a.name ?? ''}::${a.category ?? ''}`;
+        const bKey = `${b.name ?? ''}::${b.category ?? ''}`;
+        return (popularityMap.get(bKey) ?? 0) - (popularityMap.get(aKey) ?? 0);
+      });
+    }
+
+    return list.sort((a, b) => {
+      const newPriority = Number(isNew(b)) - Number(isNew(a));
+      if (newPriority !== 0) return newPriority;
+      return getPrice(a) - getPrice(b);
+    });
+  }, [adminServices, filteredServices, priceFilter]);
+
+  const getServiceBasePrice = (service) => (
+    typeof service.basePrice === 'number'
+      ? service.basePrice
+      : (typeof service.price === 'number' ? service.price : null)
+  );
+
+  const isNewCatalogService = (service) => {
+    if (!service?.createdAt) {
+      return false;
+    }
+
+    const createdTime = new Date(service.createdAt).getTime();
+    if (!Number.isFinite(createdTime)) {
+      return false;
+    }
+
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    return Date.now() - createdTime <= SEVEN_DAYS_MS;
+  };
+
+  const handleTableSort = (key) => {
+    setTableSort((current) => (
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    ));
+  };
+
+  const renderTableSortIndicator = (key) => {
+    const isSorted = tableSort.key === key;
+    return (
+      <span className="ml-1 flex flex-col items-center gap-0">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`sort-svg sort-icon ${isSorted && tableSort.direction === 'asc' ? 'active' : 'inactive'}`}
+        >
+          <path d="M7 14l5-5 5 5" />
+        </svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`sort-svg sort-icon ${isSorted && tableSort.direction === 'desc' ? 'active' : 'inactive'}`}
+        >
+          <path d="M7 10l5 5 5-5" />
+        </svg>
+      </span>
+    );
+  };
+
+  const sortedDisplayedServices = useMemo(() => {
+    const list = [...displayedServices];
+    const directionMultiplier = tableSort.direction === 'asc' ? 1 : -1;
+    const getPrice = (service) => (
+      typeof service.basePrice === 'number'
+        ? service.basePrice
+        : (typeof service.price === 'number' ? service.price : 0)
+    );
+    const getAddonCount = (service) => {
+      const raw = Array.isArray(service?.addons)
+        ? service.addons
+        : Array.isArray(service?.addOns)
+          ? service.addOns
+          : [];
+      return raw.length;
+    };
+
+    return list.sort((a, b) => {
+      const newPriority = Number(isNewCatalogService(b)) - Number(isNewCatalogService(a));
+      if (newPriority !== 0) return newPriority;
+
+      if (tableSort.key === 'price') {
+        return (getPrice(a) - getPrice(b)) * directionMultiplier;
+      }
+
+      if (tableSort.key === 'addons') {
+        return (getAddonCount(a) - getAddonCount(b)) * directionMultiplier;
+      }
+
+      if (tableSort.key === 'migrations') {
+        const migrationsA = Array.isArray(a.migrationPaths) ? a.migrationPaths.length : 0;
+        const migrationsB = Array.isArray(b.migrationPaths) ? b.migrationPaths.length : 0;
+        return (migrationsA - migrationsB) * directionMultiplier;
+      }
+
+      const valueA = String(a.name ?? '').toLowerCase();
+      const valueB = String(b.name ?? '').toLowerCase();
+      return valueA.localeCompare(valueB) * directionMultiplier;
+    });
+  }, [displayedServices, tableSort]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedDisplayedServices.length / SERVICES_PER_PAGE));
+  const paginatedServices = useMemo(
+    () => sortedDisplayedServices.slice((currentPage - 1) * SERVICES_PER_PAGE, currentPage * SERVICES_PER_PAGE),
+    [currentPage, sortedDisplayedServices],
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [servicesSearch, statusFilter, priceFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const pendingOrders = useMemo(
     () => adminPurchases.filter((purchase) => purchase.status === 'Pending Review' && (!selectedClient || purchase.client === selectedClient.name)),
@@ -158,14 +378,58 @@ export default function ManageServicesPage() {
     setError('');
   };
 
+  const serializeAddonLines = (service) => {
+    const addons = Array.isArray(service?.addons)
+      ? service.addons
+      : Array.isArray(service?.addOns)
+        ? service.addOns
+        : [];
+
+    return addons
+      .map((addon) => {
+        if (typeof addon === 'string') {
+          return addon;
+        }
+
+        if (!addon || typeof addon !== 'object') {
+          return '';
+        }
+
+        const label = addon.label ?? addon.name ?? '';
+        if (!label) {
+          return '';
+        }
+
+        const parsedPrice = typeof addon.price === 'number' ? addon.price : Number(addon.price);
+        return Number.isFinite(parsedPrice) ? `${label}|${parsedPrice}` : label;
+      })
+      .filter(Boolean)
+      .join('\n');
+  };
+
   const closeAddModal = () => {
     setShowAddModal(false);
+    setEditingService(null);
     resetForm();
   };
 
-  const openAddModal = () => {
+  const openAddModal = (service = null) => {
     setMessage('');
     setError('');
+    if (service) {
+      setEditingService(service);
+      setForm({
+        name: service.name ?? '',
+        description: service.description ?? '',
+        category: service.category ?? 'Domains',
+        price: String(service.basePrice ?? service.price ?? ''),
+        billingCycle: service.billingCycle ?? service.billing?.cycle ?? 'monthly',
+        addonLines: serializeAddonLines(service),
+      });
+    } else {
+      setEditingService(null);
+      resetForm();
+    }
     setShowAddModal(true);
   };
 
@@ -174,27 +438,56 @@ export default function ManageServicesPage() {
     setError('');
     setMessage('');
     setIsCreating(true);
+    const addonPayload = form.addonLines
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [label, price] = line.split('|').map((part) => part.trim());
+
+        return {
+          label,
+          price: price ? Number(price) : 0,
+        };
+      });
 
     try {
-      const response = await createCatalogService({
+      const payload = {
         name: form.name,
         description: form.description,
         category: form.category,
         price: Number(form.price),
         billingCycle: form.billingCycle,
-        addons: form.addonLines
-          .split('\n')
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => {
-            const [label, price] = line.split('|').map((part) => part.trim());
+        addons: addonPayload,
+      };
+      const response = editingService
+        ? await updateCatalogService(editingService.id, payload)
+        : await createCatalogService(payload);
 
-            return {
-              label,
-              price: price ? Number(price) : 0,
-            };
-          }),
-      });
+      // Ensure immediate visibility in the table while backend list sync catches up.
+      if (editingService) {
+        setLocalCatalogServices((current) => current.map((service) => (
+          String(service.id) === String(editingService.id)
+            ? { ...service, ...payload, basePrice: payload.price, addons: payload.addons, updatedAt: new Date().toISOString() }
+            : service
+        )));
+      } else {
+        const fallbackId = `local-${Date.now()}`;
+        const createdService = {
+          id: response?.service?.id ?? response?.id ?? fallbackId,
+          name: payload.name,
+          description: payload.description,
+          category: payload.category,
+          price: payload.price,
+          basePrice: payload.price,
+          billingCycle: payload.billingCycle,
+          addons: payload.addons,
+          createdAt: response?.service?.createdAt ?? response?.createdAt ?? new Date().toISOString(),
+        };
+
+        setLocalCatalogServices((current) => [createdService, ...current]);
+      }
+
       setMessage(response.message);
       closeAddModal();
     } catch (requestError) {
@@ -241,17 +534,8 @@ export default function ManageServicesPage() {
     }
   };
 
-  const findClientForService = (service) => clients.find((client) => client.email === service.clientEmail || client.name === service.client) ?? null;
-
   const handleViewClientFromService = (service) => {
-    const client = findClientForService(service);
-
-    if (!client) {
-      setError('Unable to locate the linked client profile for this service.');
-      return;
-    }
-
-    setSelectedClientId(client.id);
+    setSelectedServiceSubscribers(service);
     setShowClientProfile(true);
   };
 
@@ -365,6 +649,63 @@ export default function ManageServicesPage() {
     }
   };
 
+  const openAddonsPreview = (service) => {
+    setAddonsPreviewService(service);
+  };
+
+  const closeAddonsPreview = () => {
+    setAddonsPreviewService(null);
+  };
+
+  const handleToggleServiceStatus = async (service) => {
+    const currentStatus = (service.status ?? '').toLowerCase();
+    const nextStatus = currentStatus === 'active' ? 'Expired' : 'Active';
+
+    setStatusUpdatingServiceId(service.id);
+    setError('');
+
+    try {
+      await updateServiceStatus(service.id, nextStatus);
+      setMessage(`${service.name} is now ${nextStatus}.`);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setStatusUpdatingServiceId('');
+    }
+  };
+
+  const getServiceAddons = (service) => {
+    const rawAddons = Array.isArray(service?.addons)
+      ? service.addons
+      : Array.isArray(service?.addOns)
+        ? service.addOns
+        : [];
+
+    return rawAddons
+      .map((addon) => {
+        if (typeof addon === 'string') {
+          return { label: addon, price: null };
+        }
+
+        if (!addon || typeof addon !== 'object') {
+          return null;
+        }
+
+        const label = addon.label ?? addon.name ?? '';
+        if (!label) {
+          return null;
+        }
+
+        const parsedPrice = typeof addon.price === 'number' ? addon.price : Number(addon.price);
+
+        return {
+          label,
+          price: Number.isFinite(parsedPrice) ? parsedPrice : null,
+        };
+      })
+      .filter(Boolean);
+  };
+
   return (
     <div>
       {showAddModal ? (
@@ -373,8 +714,8 @@ export default function ManageServicesPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Service Management</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">Add New Service</h2>
-                <p className="mt-2 text-sm text-slate-400">Create a new service offering for the portal catalog.</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{editingService ? 'Edit Service' : 'Add New Service'}</h2>
+                <p className="mt-2 text-sm text-slate-400">{editingService ? 'Update service details and add-ons.' : 'Create a new service offering for the portal catalog.'}</p>
               </div>
               <button type="button" onClick={closeAddModal} className="btn-secondary px-4">Close</button>
             </div>
@@ -438,7 +779,7 @@ export default function ManageServicesPage() {
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" onClick={closeAddModal} className="btn-secondary">Cancel</button>
               <button type="submit" disabled={isCreating} className="btn-primary disabled:opacity-60">
-                {isCreating ? 'Adding...' : 'Add New Service'}
+                {isCreating ? (editingService ? 'Saving...' : 'Adding...') : (editingService ? 'Save Changes' : 'Add New Service')}
               </button>
             </div>
           </form>
@@ -574,6 +915,43 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
+      {addonsPreviewService ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="panel w-full max-w-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Service Add-ons</p>
+                <h2 className="mt-2 text-lg font-semibold text-white">{addonsPreviewService.name}</h2>
+              </div>
+              <button type="button" onClick={closeAddonsPreview} className="btn-secondary px-3">Close</button>
+            </div>
+
+            <div className="mt-6 overflow-auto">
+              {getServiceAddons(addonsPreviewService).length ? (
+                <table className="min-w-full text-left text-sm text-slate-200">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="px-4 py-2">Add-on</th>
+                      <th className="px-4 py-2">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getServiceAddons(addonsPreviewService).map((addon, index) => (
+                      <tr key={`addons-preview-${index}`} className="border-t border-white/6">
+                        <td className="px-4 py-3 text-slate-300">{addon.label}</td>
+                        <td className="px-4 py-3">{typeof addon.price === 'number' ? formatCurrency(addon.price) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-sm text-slate-400">No add-ons available for this service.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {selectedCancellationService ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <form onSubmit={handleQueueCancellation} className="panel w-full max-w-xl p-6">
@@ -601,113 +979,43 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
-      {showClientProfile && selectedClient && selectedClientSummary ? createPortal(
+      {showClientProfile && selectedServiceSubscribers ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="panel max-h-[88vh] w-full max-w-5xl overflow-hidden">
-            <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
-              <div className="flex items-center gap-4">
-                <UserAvatar user={selectedClient} size="h-16 w-16" textSize="text-2xl" />
-                <div>
-                  <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Client Profile</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">{selectedClient.name}</h2>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-400">
-                    <span>Joined {formatDateTime(selectedClient.joinedAt)}</span>
-                    <StatusBadge status={selectedClient.status} />
-                  </div>
-                </div>
+          <div className="panel max-h-[82vh] w-full max-w-2xl overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Service Subscribers</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Active Subscribers: {selectedServiceSubscribers.name}</h2>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => openBillingModal(selectedClient)} className="btn-secondary">
-                  <PencilLine size={16} /> Edit Billing Details
-                </button>
-                <button type="button" onClick={() => setShowClientProfile(false)} className="btn-secondary px-4">Close</button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClientProfile(false);
+                  setSelectedServiceSubscribers(null);
+                }}
+                className="btn-secondary px-4"
+              >
+                Close
+              </button>
             </div>
 
-            <div className="max-h-[calc(88vh-110px)] space-y-6 overflow-y-auto px-6 py-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                {[
-                  { icon: UserCircle2, label: 'Client Name', value: selectedClient.name },
-                  { icon: Mail, label: 'Email', value: selectedClient.email },
-                  { icon: Building2, label: 'Company', value: selectedClient.company || 'Not set' },
-                  { icon: MapPin, label: 'Address', value: selectedClient.address || 'Not set' },
-                  { icon: Phone, label: 'Contact Info', value: selectedClient.mobileNumber || 'Not set' },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="panel-muted rounded-3xl p-4">
-                    <Icon className="text-sky-300" size={18} />
-                    <p className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
-                    <p className="mt-2 text-sm font-medium text-white">{value}</p>
+            <div className="max-h-[calc(82vh-92px)] space-y-3 overflow-y-auto px-6 py-5">
+              {subscribedClients.length ? subscribedClients.map((subscriber) => (
+                <div key={subscriber.key} className="panel-muted rounded-2xl p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-white">{subscriber.name}</p>
+                      <p className="mt-1 text-sm text-slate-400">{subscriber.email}</p>
+                      <p className="mt-2 text-xs text-slate-500">Renewing: {formatDate(subscriber.renewsOn)}</p>
+                    </div>
+                    <StatusBadge status={subscriber.status} />
                   </div>
-                ))}
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="panel-muted rounded-3xl p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Services Availed</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">{selectedClientSummary.relatedServices.length}</p>
-                  <p className="mt-2 text-sm text-slate-400">Current and historical service records.</p>
                 </div>
-                <div className="panel-muted rounded-3xl p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Orders</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">{selectedClientSummary.relatedPurchases.length}</p>
-                  <p className="mt-2 text-sm text-slate-400">Recorded purchase transactions for this client.</p>
+              )) : (
+                <div className="panel-muted rounded-2xl p-4 text-sm text-slate-400">
+                  No subscribed clients found for this service.
                 </div>
-                <div className="panel-muted rounded-3xl p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total Spent</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">{formatCurrency(selectedClientSummary.totalSpent)}</p>
-                  <p className="mt-2 text-sm text-slate-400">Combined amount from approved and logged orders.</p>
-                </div>
-              </div>
-
-              <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Client Services</p>
-                    <h3 className="mt-2 text-lg font-semibold text-white">Services availed</h3>
-                  </div>
-
-                  <div className="mt-4 space-y-3">
-                    {selectedClientSummary.relatedServices.length ? selectedClientSummary.relatedServices.map((service) => (
-                      <div key={service.id} className="panel-muted rounded-3xl p-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div>
-                            <p className="font-medium text-white">{service.name}</p>
-                            <p className="mt-1 text-sm text-slate-400">{service.category} • {service.plan}</p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <StatusBadge status={service.status} />
-                            <span className="text-xs text-slate-500">Renews {formatDate(service.renewsOn)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )) : (
-                      <div className="panel-muted rounded-3xl p-4 text-sm text-slate-400">No services are currently linked to this client.</div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Billing Profile</p>
-                    <h3 className="mt-2 text-lg font-semibold text-white">Client information</h3>
-                  </div>
-
-                  <div className="mt-4 space-y-3">
-                    {[
-                      { label: 'Billing Email', value: selectedClient.email },
-                      { label: 'Billing Address', value: selectedClient.address || 'Not set' },
-                      { label: 'TIN', value: selectedClient.tin || 'Not set' },
-                      { label: 'Contact Number', value: selectedClient.mobileNumber || 'Not set' },
-                    ].map((item) => (
-                      <div key={item.label} className="panel-muted rounded-3xl p-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                        <p className="mt-2 text-sm font-medium text-white">{item.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
+              )}
             </div>
           </div>
         </div>, document.body
@@ -771,7 +1079,7 @@ export default function ManageServicesPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={closeOrderModal} className="btn-secondary">Close</button>
+
               <button type="button" onClick={async () => { await handleApproveOrder(selectedOrderForReview.id); closeOrderModal(); }} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 hover:bg-emerald-500">
                 <ShieldCheck size={16} /> Approve Order
               </button>
@@ -780,10 +1088,7 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
-      <PageHeader
-        eyebrow="Service Operations"
-        title="Manage services"
-      />
+      <PageHeader eyebrow="Manage Services" />
 
       {error ? (
         <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">
@@ -797,412 +1102,309 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
-      <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="grid flex-1 gap-4 md:grid-cols-[1fr_320px]">
-            <label className="relative block">
-              <span className="sr-only">Search and select client</span>
-              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input type="text" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Search and select client" className="input pl-11" />
-            </label>
 
-            <select className="input" value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)}>
-              <option value="">All clients</option>
-              {matchedClients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name} · {client.email}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={openAddModal} className="btn-primary inline-flex items-center gap-2">
-              <Plus size={16} />
-              Add New Service
-            </button>
-            {selectedClient ? (
-              <>
-                <button type="button" onClick={() => setShowClientProfile(true)} className="btn-secondary inline-flex items-center gap-2">
-                  <Eye size={16} />
-                  View Client Profile
-                </button>
-                <button type="button" onClick={() => openBillingModal(selectedClient)} className="btn-secondary inline-flex items-center gap-2">
-                  <PencilLine size={16} />
-                  Edit Billing Details
-                </button>
-              </>
-            ) : null}
-          </div>
+      <div className="mt-8">
+        <div>
+          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">All Services</p>
         </div>
 
-        {selectedClient && selectedClientSummary ? (
-          <div className="mt-5 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="panel-muted rounded-3xl p-5">
-              <div className="flex items-start gap-4">
-                <UserAvatar user={selectedClient} size="h-14 w-14" textSize="text-xl" />
-                <div>
-                  <p className="text-lg font-semibold text-white">{selectedClient.name}</p>
-                  <p className="mt-1 text-sm text-slate-400">{selectedClient.company || 'No company listed'}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <StatusBadge status={selectedClient.status} />
-                    <span className="text-xs text-slate-500">Joined {formatDateTime(selectedClient.joinedAt)}</span>
-                  </div>
-                </div>
+        <div className="mt-4 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1 min-w-0">
+                <label className="sr-only">Search services</label>
+                <input
+                  type="text"
+                  value={servicesSearch}
+                  onChange={(event) => setServicesSearch(event.target.value)}
+                  placeholder="Search services"
+                  className="input pl-11 w-full"
+                />
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {[
-                  { icon: Mail, label: 'Email', value: selectedClient.email },
-                  { icon: Phone, label: 'Contact', value: selectedClient.mobileNumber || 'Not set' },
-                  { icon: MapPin, label: 'Address', value: selectedClient.address || 'Not set' },
-                  { icon: CreditCard, label: 'TIN', value: selectedClient.tin || 'Not set' },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                    <Icon size={16} className="text-sky-300" />
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                    <p className="mt-2 text-sm font-medium text-white">{value}</p>
-                  </div>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-200 outline-none sm:w-auto"
+              >
+                <option value="All">All categories</option>
+                {serviceCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
                 ))}
-              </div>
+              </select>
+
+              <select
+                value={priceFilter}
+                onChange={(event) => setPriceFilter(event.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-200 outline-none sm:w-auto"
+              >
+                <option value="Price: Low to High">Price: Low to High</option>
+                <option value="Price: High to Low">Price: High to Low</option>
+                <option value="Most Popular">Most Popular</option>
+              </select>
+          </div>
+
+          <div className="flex items-center gap-2 self-end xl:self-auto">
+            <button type="button" onClick={() => openAddModal()} className="btn-primary gap-2 px-3 py-2">
+              <Plus size={16} /> Add Service
+            </button>
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+              <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
+                <LayoutGrid size={16} />
+              </button>
+              <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
+                <List size={16} />
+              </button>
             </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="panel-muted rounded-3xl p-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Services Availed</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{selectedClientSummary.relatedServices.length}</p>
-                <p className="mt-2 text-sm text-slate-400">Linked service records for the selected client.</p>
-              </div>
-              <div className="panel-muted rounded-3xl p-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pending Orders</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{pendingOrders.length}</p>
-                <p className="mt-2 text-sm text-slate-400">Orders currently waiting for admin approval.</p>
-              </div>
-              <div className="panel-muted rounded-3xl p-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total Spent</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{formatCurrency(selectedClientSummary.totalSpent)}</p>
-                <p className="mt-2 text-sm text-slate-400">Recorded order value for this client.</p>
-              </div>
-            </div>
           </div>
-        ) : null}
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Admin Actions</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Approve new orders</h2>
-            </div>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">
-              {pendingOrders.length} pending
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {pendingOrders.length ? pendingOrders.map((order) => (
-              <div key={order.id} className="panel-muted rounded-3xl p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <p className="font-medium text-white">{order.serviceName}</p>
-                    <p className="mt-1 text-sm text-slate-400">{order.client} • {order.id}</p>
-                    <p className="mt-1 text-sm text-slate-500">{formatDate(order.date)} • {order.paymentMethod}</p>
-                  </div>
-                  <div className="text-left md:text-right">
-                    <p className="text-base font-semibold text-sky-200">{formatCurrency(order.amount)}</p>
-                    <div className="mt-2"><StatusBadge status={order.status} /></div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => openOrderModal(order)} className="btn-secondary">
-                      <Eye size={14} /> View details
-                    </button>
-                    <button type="button" onClick={() => handleApproveOrder(order.id)} disabled={processingOrderId === order.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
-                      <ShieldCheck size={16} />
-                      {processingOrderId === order.id ? 'Approving...' : 'Approve Order'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )) : (
-              <div className="panel-muted rounded-3xl p-4 text-sm text-slate-400">No pending orders require approval right now.</div>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Admin Actions</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">Approve service cancellations</h2>
-            </div>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-300">
-              {pendingCancellationServices.length} pending
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {pendingCancellationServices.length ? pendingCancellationServices.map((service) => (
-              <div key={service.id} className="panel-muted rounded-3xl p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <p className="font-medium text-white">{service.name}</p>
-                    <p className="mt-1 text-sm text-slate-400">{service.client || 'No client assigned'} • {service.plan}</p>
-                    <p className="mt-1 text-sm text-slate-500">Requested {formatDateTime(service.cancellationRequest?.requestedAt)}</p>
-                    {service.cancellationRequest?.reason ? <p className="mt-2 text-sm text-slate-300">{service.cancellationRequest.reason}</p> : null}
-                  </div>
-                  <StatusBadge status={service.cancellationRequest?.status ?? 'Pending Approval'} />
-                </div>
-
-                <div className="mt-4 flex flex-wrap justify-end gap-3">
-                  <button type="button" onClick={() => handleRejectCancellation(service.id)} disabled={processingCancellationId === service.id} className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500">
-                    <XCircle size={16} /> Keep Service
-                  </button>
-                  <button type="button" onClick={() => handleApproveCancellation(service.id)} disabled={processingCancellationId === service.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
-                    <CheckCircle2 size={16} />
-                    {processingCancellationId === service.id ? 'Approving...' : 'Approve Cancellation'}
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <div className="panel-muted rounded-3xl p-4 text-sm text-slate-400">No service cancellations are waiting for approval.</div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
-          <label className="relative block flex-1">
-            <span className="sr-only">Search services</span>
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input type="text" value={servicesSearch} onChange={(event) => setServicesSearch(event.target.value)} placeholder="Search service, client, plan, or category" className="input pl-11" />
-          </label>
-
-          <select className="input lg:w-56" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="All">All statuses</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
         </div>
 
-        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
-          <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view" title="Grid view">
-            <LayoutGrid size={16} />
-          </button>
-          <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view" title="List view">
-            <List size={16} />
-          </button>
-        </div>
-      </div>
-
-      {viewMode === 'list' ? (
-        <div className="panel mt-6 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-white/10 text-left">
-              <thead className="bg-white/5 text-sm text-slate-400">
+        {viewMode === 'list' ? (
+          <div className="panel mt-6 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-white/10 text-left">
+                <thead className="bg-white/5 text-sm text-slate-400">
                 <tr>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Service</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Client</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Base Price</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Add-ons</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Status</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center w-40">Update Status</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Cancellation</th>
-                  <th className="px-5 py-4 font-semibold text-white text-center">Actions</th>
+                  <th className="px-5 py-4 text-center font-semibold text-white">
+                    <button type="button" onClick={() => handleTableSort('name')} className="inline-flex items-center gap-1 hover:text-sky-200">
+                      <span>Service Name</span>
+                      {renderTableSortIndicator('name')}
+                    </button>
+                  </th>
+                  <th className="px-5 py-4 text-center font-semibold text-white">
+                    <button type="button" onClick={() => handleTableSort('price')} className="inline-flex items-center gap-1 hover:text-sky-200">
+                      <span>Base Price</span>
+                      {renderTableSortIndicator('price')}
+                    </button>
+                  </th>
+                  <th className="px-5 py-4 text-center font-semibold text-white">
+                    <button type="button" onClick={() => handleTableSort('addons')} className="inline-flex items-center gap-1 hover:text-sky-200">
+                      <span>Add-ons</span>
+                      {renderTableSortIndicator('addons')}
+                    </button>
+                  </th>
+                  <th className="px-5 py-4 text-center font-semibold text-white">
+                    <button type="button" onClick={() => handleTableSort('migrations')} className="inline-flex items-center gap-1 hover:text-sky-200">
+                      <span>Migration Paths</span>
+                      {renderTableSortIndicator('migrations')}
+                    </button>
+                  </th>
+                  <th className="px-5 py-4 text-center font-semibold text-white">Actions</th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
-                {filteredServices.length ? filteredServices.map((service) => {
-                  const hasPendingCancellation = service.cancellationRequest?.statusKey === 'pending';
-                  const canQueueCancellation = !hasPendingCancellation && service.status !== 'Expired';
+                </thead>
+                <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
+                  {paginatedServices.length ? paginatedServices.map((service) => {
+                    const addons = getServiceAddons(service);
+                    const visibleAddons = addons.slice(0, 2);
+                    const remainingAddonCount = addons.length - visibleAddons.length;
 
-                  return (
-                    <tr key={service.id} className="hover:bg-white/[0.03]">
+                    return (
+                    <tr key={`all-${service.id}`} className="table-row-hoverable">
                       <td className="px-5 py-4 align-top">
-                        <p className="font-semibold text-white">{service.name}</p>
-                        <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-white">{service.name}</p>
+                          {isNewCatalogService(service) ? <StatusBadge status="New" /> : null}
+                        </div>
+                        <p className="mt-1 text-sm text-slate-400">{service.category}</p>
                       </td>
                       <td className="px-5 py-4 align-top">
-                        <p className="font-medium text-white">{service.client || 'No client assigned'}</p>
-                        {service.clientEmail ? <p className="mt-1 text-sm text-slate-400">{service.clientEmail}</p> : null}
+                        {typeof getServiceBasePrice(service) === 'number' ? (
+                          <p className="font-semibold text-sky-300">{formatCurrency(getServiceBasePrice(service))} <span className="text-sm text-slate-400">/mo</span></p>
+                        ) : (
+                          <span className="text-sm text-slate-500">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-4 align-top">
-                        {typeof service.basePrice === 'number' ? (
-                          <div>
-                            <p className="font-semibold text-sky-300">{formatCurrency(service.basePrice)}</p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">{service.billing ?? '—'}</p>
+                        {addons.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {visibleAddons.map((addon, i) => (
+                              <span key={`addon-${service.id}-${i}`} className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
+                                {addon.label.length > 28 ? `${addon.label.slice(0, 28)}...` : addon.label}
+                              </span>
+                            ))}
+                            {remainingAddonCount > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openAddonsPreview(service)}
+                                className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 transition hover:bg-white/10"
+                              >
+                                +{remainingAddonCount} more
+                              </button>
+                            ) : null}
                           </div>
                         ) : (
                           <span className="text-sm text-slate-500">—</span>
                         )}
                       </td>
                       <td className="px-5 py-4 align-top">
-                        {service.addons?.length ? (
-                          (() => {
-                            const raw = service.addons ?? [];
-                            const addons = raw.map((a) => (typeof a === 'string' ? { label: a, price: 0 } : a));
-
-                            return (
-                              <select className="input bg-slate-900 text-slate-200 w-44" defaultValue="" aria-label={`View add-ons for ${service.name}`}>
-                                <option value="" disabled>{`${addons.length} add-on${addons.length > 1 ? 's' : ''}`}</option>
-                                {addons.map((addon, idx) => (
-                                  <option key={`${service.id}-addon-${idx}`} value={addon.label}>{addon.label}</option>
-                                ))}
-                              </select>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-sm text-slate-500">No add-ons</span>
-                        )}
-                      </td>
-
-                      <td className="px-5 py-4 align-top">
-                        <StatusBadge status={service.status} />
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        <select className="input w-40" value={service.status} onChange={(event) => updateServiceStatus(service.id, event.target.value)}>
-                          {statuses.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        {service.cancellationRequest ? (
-                          <div>
-                            <span className="text-sm text-orange-200">{service.cancellationRequest.status}</span>
-                            {service.cancellationRequest.reason ? <p className="mt-1 max-w-xs text-xs text-slate-500">{service.cancellationRequest.reason}</p> : null}
+                        {service.migrationPaths && service.migrationPaths.length ? (
+                          <div className="flex flex-col gap-2">
+                            {service.migrationPaths.map((m, i) => (
+                              <span key={`mig-${service.id}-${i}`} className="inline-flex items-center rounded-md bg-white/5 px-3 py-1 text-sm text-slate-300">→ {m}</span>
+                            ))}
                           </div>
                         ) : (
-                          <span className="text-sm text-slate-500">No request</span>
+                          <span className="text-sm text-slate-500">—</span>
                         )}
                       </td>
                       <td className="px-5 py-4 align-top">
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
+                            onClick={() => handleViewClientFromService(service)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-800 shadow-sm transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
+                            title="View client"
+                            aria-label={`View client for ${service.name}`}
+                          >
+                            <Eye size={16} color="#111827" strokeWidth={2.3} className="dark:!text-slate-100" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => openDiscountModal(service)}
-                            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-emerald-600/10 text-emerald-100 transition hover:bg-emerald-600/20"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm transition hover:bg-emerald-200 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/20"
                             title="Apply discount"
                             aria-label={`Apply discount to ${service.name}`}
                           >
-                            <Percent size={16} />
+                            <Percent size={16} color="#111827" strokeWidth={2.3} className="dark:!text-emerald-100" />
                           </button>
                           <button
                             type="button"
                             onClick={() => openPricingLogs(service)}
-                            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
-                            title="Pricing logs"
-                            aria-label={`Pricing logs for ${service.name}`}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-300 bg-sky-100 text-sky-800 shadow-sm transition hover:bg-sky-200 dark:border-sky-400/25 dark:bg-sky-400/10 dark:text-sky-100 dark:hover:bg-sky-400/20"
+                            title="View pricing logs"
+                            aria-label={`View pricing logs for ${service.name}`}
                           >
-                            <CheckCircle2 size={16} />
+                            <CreditCard size={16} color="#111827" strokeWidth={2.3} className="dark:!text-sky-100" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleViewClientFromService(service)}
-                            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10"
-                            title="View client profile"
-                            aria-label={`View client profile for ${service.name}`}
+                            onClick={() => handleToggleServiceStatus(service)}
+                            disabled={statusUpdatingServiceId === service.id}
+                            className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:cursor-not-allowed disabled:opacity-60 ${service.status === 'Active' ? 'border-rose-300 bg-rose-100 text-rose-700 hover:bg-rose-200 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-100 dark:hover:bg-rose-400/20' : 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/20'}`}
+                            title={service.status === 'Active' ? 'Disable service' : 'Enable service'}
+                            aria-label={`${service.status === 'Active' ? 'Disable' : 'Enable'} ${service.name}`}
                           >
-                            <Eye size={16} />
+                            {service.status === 'Active'
+                              ? <XCircle size={16} color="#111827" strokeWidth={2.3} className="dark:!text-rose-100" />
+                              : <CheckCircle2 size={16} color="#111827" strokeWidth={2.3} className="dark:!text-emerald-100" />}
                           </button>
-                          {canQueueCancellation ? (
-                            <button
-                              type="button"
-                              onClick={() => openCancellationModal(service)}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 text-orange-100 transition hover:bg-orange-400/20"
-                              title="Queue cancellation"
-                              aria-label={`Queue cancellation for ${service.name}`}
-                            >
-                              <CircleOff size={16} />
-                            </button>
-                          ) : hasPendingCancellation ? (
-                            <span className="inline-flex items-center rounded-2xl border border-orange-400/20 bg-orange-400/10 px-3 py-2 text-xs text-orange-100">
-                              Pending
-                            </span>
-                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => openAddModal(service)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-300 bg-violet-100 text-violet-800 shadow-sm transition hover:bg-violet-200 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100 dark:hover:bg-violet-400/20"
+                            title="Edit service"
+                            aria-label={`Edit ${service.name}`}
+                          >
+                            <PencilLine size={16} color="#111827" strokeWidth={2.3} className="dark:!text-violet-100" />
+                          </button>
                         </div>
                       </td>
                     </tr>
-                  );
-                }) : (
-                  <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-slate-400">No services match the current search and filters.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    );
+                  }) : (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-12 text-center text-slate-400">No services match your filters.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      ) : filteredServices.length ? (
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredServices.map((service) => {
-            const hasPendingCancellation = service.cancellationRequest?.statusKey === 'pending';
-            const canQueueCancellation = !hasPendingCancellation && service.status !== 'Expired';
+        ) : (
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {paginatedServices.length ? paginatedServices.map((service) => {
+              const addons = getServiceAddons(service);
+              const visibleAddons = addons.slice(0, 2);
+              const remainingAddonCount = addons.length - visibleAddons.length;
 
-            return (
-              <div key={service.id} className="panel p-5">
-                <div className="flex items-start justify-between gap-4">
+              return (
+              <div key={`card-${service.id}`} className="panel-muted rounded-3xl p-5">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-lg font-medium text-white">{service.name}</p>
-                    <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-semibold text-white">{service.name}</p>
+                      {isNewCatalogService(service) ? <StatusBadge status="New" /> : null}
+                    </div>
+                    <p className="mt-1 text-sm text-slate-400">{service.category}</p>
                   </div>
                   <StatusBadge status={service.status} />
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Client</p>
-                  <p className="mt-2 text-sm text-slate-300">{service.client || 'No client assigned'}</p>
-                  {service.clientEmail ? <p className="mt-1 break-all text-sm text-slate-500">{service.clientEmail}</p> : null}
-                </div>
-
-                {service.cancellationRequest ? (
-                  <div className="mt-4 rounded-2xl border border-orange-400/20 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">
-                    Cancellation {service.cancellationRequest.status.toLowerCase()}
-                  </div>
-                ) : null}
+                <p className="mt-4 text-xl font-semibold text-sky-300">
+                  {typeof getServiceBasePrice(service) === 'number' ? `${formatCurrency(getServiceBasePrice(service))} /mo` : '—'}
+                </p>
 
                 <div className="mt-4">
-                  <select className="input w-full" value={service.status} onChange={(event) => updateServiceStatus(service.id, event.target.value)}>
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Add-ons</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {addons.length ? visibleAddons.map((addon, index) => (
+                      <span key={`addon-card-${service.id}-${index}`} className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-medium text-sky-700">
+                        {addon.label.length > 24 ? `${addon.label.slice(0, 24)}...` : addon.label}
+                      </span>
+                    )) : (
+                      <span className="text-sm text-slate-500">—</span>
+                    )}
+                    {remainingAddonCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => openAddonsPreview(service)}
+                        className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-slate-200 transition hover:bg-white/10"
+                      >
+                        +{remainingAddonCount} more
+                      </button>
+                    ) : (
+                      null
+                    )}
+                  </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap justify-end gap-2">
-                  <button type="button" onClick={() => openDiscountModal(service)} className="btn-secondary px-3">
-                    <CreditCard size={16} />
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Migration Paths</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {service.migrationPaths && service.migrationPaths.length ? service.migrationPaths.map((path, index) => (
+                      <span key={`migration-card-${service.id}-${index}`} className="inline-flex items-center rounded-md bg-white/5 px-2.5 py-1 text-xs text-slate-300">→ {path}</span>
+                    )) : (
+                      <span className="text-sm text-slate-500">—</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => handleViewClientFromService(service)} className="btn-secondary px-3 py-1.5 text-xs">
+                    <Eye size={14} /> View Client
                   </button>
-                  <button type="button" onClick={() => openPricingLogs(service)} className="btn-secondary px-3">
-                    <CheckCircle2 size={16} />
+                  <button type="button" onClick={() => openDiscountModal(service)} className="btn-secondary px-3 py-1.5 text-xs">
+                    <Percent size={14} /> Discount
                   </button>
-                  <button type="button" onClick={() => handleViewClientFromService(service)} className="btn-secondary px-3">
-                    <Eye size={16} />
+                  <button type="button" onClick={() => openPricingLogs(service)} className="btn-secondary px-3 py-1.5 text-xs">
+                    <CreditCard size={14} /> Logs
                   </button>
-                  {canQueueCancellation ? (
-                    <button type="button" onClick={() => openCancellationModal(service)} className="btn-secondary border-orange-400/20 bg-orange-400/10 px-3 text-orange-100 hover:bg-orange-400/20">
-                      <CircleOff size={16} />
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleServiceStatus(service)}
+                    disabled={statusUpdatingServiceId === service.id}
+                    className={`btn-secondary px-3 py-1.5 text-xs disabled:opacity-60 ${service.status === 'Active' ? 'border-rose-400/20 bg-rose-400/10 text-rose-100' : 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'}`}
+                  >
+                    {service.status === 'Active' ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                    {service.status === 'Active' ? 'Disable' : 'Enable'}
+                  </button>
+                  <button type="button" onClick={() => openAddModal(service)} className="btn-secondary px-3 py-1.5 text-xs">
+                    <PencilLine size={14} /> Edit
+                  </button>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="panel mt-6 px-5 py-12 text-center text-sm text-slate-400">No services match the current search and filters.</div>
-      )}
+              );
+            }) : (
+              <div className="panel col-span-full p-8 text-center text-sm text-slate-400">
+                No services match your filters.
+              </div>
+            )}
+          </div>
+        )}
+
+        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+      </div>
     </div>
   );
 }

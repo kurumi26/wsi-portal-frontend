@@ -400,6 +400,16 @@ body.theme-light .text-slate-500 {
   color: #64748b !important;
 }
 
+/* Utility to force white text even when global theme overrides apply */
+.force-white {
+  color: #ffffff !important;
+}
+
+/* Ensure the utility works in light theme where .text-white is remapped */
+body.theme-light .force-white {
+  color: #ffffff !important;
+}
+
 body.theme-light .bg-slate-950 {
   background-color: #e2e8f0 !important;
 }
