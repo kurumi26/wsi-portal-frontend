@@ -231,6 +231,13 @@ export const portalApi = {
     });
   },
 
+  async updateCatalogService(serviceId, payload) {
+    return apiRequest(`/admin/catalog-services/${serviceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async createAdminService(payload) {
     return apiRequest('/admin/customer-services', {
       method: 'POST',
@@ -295,6 +302,13 @@ export const portalApi = {
   async updateAdminUser(userId, payload) {
     return apiRequest(`/admin/users/${userId}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createAdminUser(payload) {
+    return apiRequest('/admin/users', {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
   },

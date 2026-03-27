@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { KeyRound, LayoutGrid, List, PencilLine, Power, Search, UsersRound } from 'lucide-react';
+import { KeyRound, LayoutGrid, List, PencilLine, Plus, Power, Search, UsersRound } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
+import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 
 const roleClasses = {
@@ -21,15 +22,24 @@ const roleOptions = [
 ];
 
 export default function UsersPage() {
-  const { adminUsers, updateAdminUser, resetAdminUserPassword, updateAdminUserStatus } = usePortal();
+  const { adminUsers, createAdminUser, updateAdminUser, resetAdminUserPassword, updateAdminUserStatus } = usePortal();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [selectedEditUser, setSelectedEditUser] = useState(null);
   const [selectedPasswordUser, setSelectedPasswordUser] = useState(null);
   const [statusConfirmUser, setStatusConfirmUser] = useState(null);
+  const [addForm, setAddForm] = useState({
+    name: '',
+    email: '',
+    role: 'admin',
+    password: '',
+    passwordConfirmation: '',
+  });
   const [editForm, setEditForm] = useState({ name: '', email: '', role: 'admin' });
   const [passwordForm, setPasswordForm] = useState({ password: '', passwordConfirmation: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isSavingAdd, setIsSavingAdd] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [togglingUserId, setTogglingUserId] = useState('');
   const [usersSearch, setUsersSearch] = useState('');
@@ -139,6 +149,52 @@ export default function UsersPage() {
       setError(requestError.message);
     } finally {
       setIsSavingEdit(false);
+    }
+  };
+
+  const handleAddUserSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!addForm.name.trim() || !addForm.email.trim()) {
+      setError('Name and email are required.');
+      return;
+    }
+
+    if (addForm.password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+
+    if (addForm.password !== addForm.passwordConfirmation) {
+      setError('Password confirmation does not match.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    setIsSavingAdd(true);
+
+    try {
+      const response = await createAdminUser({
+        name: addForm.name.trim(),
+        email: addForm.email.trim(),
+        role: addForm.role,
+        password: addForm.password,
+        password_confirmation: addForm.passwordConfirmation,
+      });
+      showMessage(response.message || 'User added successfully.');
+      setShowAddUserModal(false);
+      setAddForm({
+        name: '',
+        email: '',
+        role: 'admin',
+        password: '',
+        passwordConfirmation: '',
+      });
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setIsSavingAdd(false);
     }
   };
 
@@ -296,8 +352,19 @@ export default function UsersPage() {
             <option value="Disabled">Disabled</option>
           </select>
         </div>
-
+          <button
+            type="button"
+            onClick={() => {
+              setError('');
+              setMessage('');
+              setShowAddUserModal(true);
+            }}
+            className="btn-primary gap-2 px-6 py-2"
+          >
+            <Plus size={20} /> Add User
+          </button>
         <div className="inline-flex items-center gap-2 self-end rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+
           <button
             type="button"
             onClick={() => setUsersView('grid')}
@@ -339,7 +406,7 @@ export default function UsersPage() {
                   : 'bg-emerald-400 text-white hover:bg-emerald-500';
 
                 return (
-                  <tr key={user.id} className="hover:bg-white/[0.03]">
+                  <tr key={user.id} className="table-row-hoverable">
                     <td className="px-5 py-4">
                       <div className="flex items-start gap-3">
                         <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300">
@@ -352,14 +419,12 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'}`}>
+                      <span className={`badge ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'} text-white`}>
                         {user.role}
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${statusClasses[user.status] ?? 'border-white/10 bg-white/10 text-slate-100'}`}>
-                        {user.status}
-                      </span>
+                      <StatusBadge status={user.status} />
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-2">
@@ -424,18 +489,16 @@ export default function UsersPage() {
                       <p className="mt-1 text-sm text-slate-400 break-all">{user.email}</p>
                     </div>
                   </div>
-                  <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${statusClasses[user.status] ?? 'border-white/10 bg-white/10 text-slate-100'}`}>
-                    {user.status}
-                  </span>
+                  <StatusBadge status={user.status} />
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Role</p>
-                  <p className="mt-2">
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'}`}>
+                    <p className="mt-2">
+                    <span className={`badge ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'} text-white`}>
                       {user.role}
                     </span>
-                  </p>
+                    </p>
                 </div>
 
                 <div className="mt-4 flex justify-end gap-2">
@@ -475,6 +538,83 @@ export default function UsersPage() {
       ) : (
         <div className="panel mt-6 px-5 py-12 text-center text-sm text-slate-400">No users match the current search and filters.</div>
       )}
+
+      {showAddUserModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <form onSubmit={handleAddUserSubmit} className="panel w-full max-w-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Create User</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Add Admin User</h2>
+              </div>
+              <button type="button" onClick={() => setShowAddUserModal(false)} className="btn-secondary px-4">Close</button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Full Name
+                <input
+                  className="input mt-2"
+                  value={addForm.name}
+                  onChange={(event) => setAddForm((current) => ({ ...current, name: event.target.value }))}
+                  required
+                />
+              </label>
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Email
+                <input
+                  type="email"
+                  className="input mt-2"
+                  value={addForm.email}
+                  onChange={(event) => setAddForm((current) => ({ ...current, email: event.target.value }))}
+                  required
+                />
+              </label>
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Role
+                <select
+                  className="input mt-2"
+                  value={addForm.role}
+                  onChange={(event) => setAddForm((current) => ({ ...current, role: event.target.value }))}
+                >
+                  {roleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm text-slate-300">
+                Password
+                <input
+                  type="password"
+                  className="input mt-2"
+                  value={addForm.password}
+                  onChange={(event) => setAddForm((current) => ({ ...current, password: event.target.value }))}
+                  required
+                />
+              </label>
+              <label className="block text-sm text-slate-300">
+                Confirm Password
+                <input
+                  type="password"
+                  className="input mt-2"
+                  value={addForm.passwordConfirmation}
+                  onChange={(event) => setAddForm((current) => ({ ...current, passwordConfirmation: event.target.value }))}
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowAddUserModal(false)} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={isSavingAdd} className="btn-primary disabled:opacity-60">
+                {isSavingAdd ? 'Adding...' : 'Add User'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {selectedEditUser ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

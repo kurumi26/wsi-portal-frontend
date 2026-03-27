@@ -18,6 +18,7 @@ import NotificationsPage from './pages/dashboard/NotificationsPage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import ClientsPage from './pages/admin/ClientsPage';
 import ManageServicesPage from './pages/admin/ManageServicesPage';
+import ApprovalsPage from './pages/admin/ApprovalsPage';
 import PurchasesPage from './pages/admin/PurchasesPage';
 import AdminNotificationsPage from './pages/admin/AdminNotificationsPage';
 import UsersPage from './pages/admin/UsersPage';
@@ -102,6 +103,7 @@ export default function App() {
         <Route path="/admin/clients" element={<ClientsPage />} />
         <Route path="/admin/users" element={<UsersPage />} />
         <Route path="/admin/services" element={<ManageServicesPage />} />
+        <Route path="/admin/approvals" element={<ApprovalsPage />} />
         <Route path="/admin/purchases" element={<PurchasesPage />} />
         <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
         <Route path="/admin/account" element={<AdminAccountPage />} />

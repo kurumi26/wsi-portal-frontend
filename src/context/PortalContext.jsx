@@ -57,12 +57,48 @@ export function PortalProvider({ children }) {
     return Array.from(byName.values());
   };
   const [notifications, setNotifications] = useState([]);
+  const DISMISSED_SYNTH_KEY = 'wsi-dismissed-synth-notifications';
+
+  const getDismissedSynthIds = () => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem(DISMISSED_SYNTH_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch (e) {
+      return new Set();
+    }
+  };
+
+  const addDismissedSynthId = (id) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const set = getDismissedSynthIds();
+      set.add(id);
+      localStorage.setItem(DISMISSED_SYNTH_KEY, JSON.stringify(Array.from(set)));
+    } catch (e) {
+      // ignore
+    }
+  };
   const [clients, setClients] = useState([]);
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminPurchases, setAdminPurchases] = useState([]);
   const [adminServices, setAdminServices] = useState([]);
   const [paymentState, setPaymentState] = useState({ status: 'idle', message: '' });
   const [isLoadingPortal, setIsLoadingPortal] = useState(false);
+
+  const sortNotificationsByTime = (list = []) => {
+    return [...list].sort((a, b) => {
+      const timeA = new Date(a?.createdAt ?? 0).getTime();
+      const timeB = new Date(b?.createdAt ?? 0).getTime();
+
+      if (Number.isNaN(timeA) && Number.isNaN(timeB)) return 0;
+      if (Number.isNaN(timeA)) return 1;
+      if (Number.isNaN(timeB)) return -1;
+      return timeB - timeA;
+    });
+  };
 
   useEffect(() => {
     const loadServices = async () => {
@@ -105,7 +141,7 @@ export function PortalProvider({ children }) {
         setAdminUsers(userData);
         setAdminPurchases(purchaseData);
         setAdminServices(serviceData);
-        setNotifications(notificationData);
+        setNotifications(sortNotificationsByTime(notificationData));
         setOrders([]);
         setMyServices([]);
       } else {
@@ -146,7 +182,7 @@ export function PortalProvider({ children }) {
                     id: `synth-expire-${svc.id}`,
                     title: `${svc.name} renewal upcoming`,
                     message: `${svc.name} will renew in ${timeRemaining(svc.renewsOn)}.`,
-                    createdAt: new Date().toISOString(),
+                    createdAt: svc.renewsOn || new Date().toISOString(),
                     isRead: false,
                     type: 'warning',
                     data: { serviceId: svc.id },
@@ -160,7 +196,7 @@ export function PortalProvider({ children }) {
                   id: `synth-provision-${svc.id}`,
                   title: `${svc.name} provisioning`,
                   message: `${svc.name} is currently provisioning. We'll notify you when it's active.`,
-                  createdAt: new Date().toISOString(),
+                  createdAt: svc.updatedAt || svc.createdAt || new Date().toISOString(),
                   isRead: false,
                   type: 'info',
                   data: { serviceId: svc.id },
@@ -173,9 +209,35 @@ export function PortalProvider({ children }) {
                   id: `synth-cancel-${svc.id}`,
                   title: `${svc.name} cancellation requested`,
                   message: `A cancellation request for ${svc.name} is pending admin review.`,
-                  createdAt: new Date().toISOString(),
+                  createdAt: (svc.cancellationRequest.updatedAt || svc.cancellationRequest.createdAt || new Date().toISOString()),
                   isRead: false,
                   type: 'info',
+                  data: { serviceId: svc.id },
+                  isLocal: true,
+                });
+              }
+
+              if (svc.cancellationRequest && svc.cancellationRequest.statusKey === 'approved') {
+                synth.push({
+                  id: `synth-cancel-approved-${svc.id}`,
+                  title: `${svc.name} cancellation approved`,
+                  message: `Your cancellation request for ${svc.name} has been approved by admin.`,
+                  createdAt: (svc.cancellationRequest.updatedAt || svc.cancellationRequest.createdAt || new Date().toISOString()),
+                  isRead: false,
+                  type: 'success',
+                  data: { serviceId: svc.id },
+                  isLocal: true,
+                });
+              }
+
+              if (svc.cancellationRequest && svc.cancellationRequest.statusKey === 'rejected') {
+                synth.push({
+                  id: `synth-cancel-rejected-${svc.id}`,
+                  title: `${svc.name} cancellation declined`,
+                  message: `Your cancellation request for ${svc.name} was declined by admin.`,
+                  createdAt: (svc.cancellationRequest.updatedAt || svc.cancellationRequest.createdAt || new Date().toISOString()),
+                  isRead: false,
+                  type: 'danger',
                   data: { serviceId: svc.id },
                   isLocal: true,
                 });
@@ -189,10 +251,13 @@ export function PortalProvider({ children }) {
           // Avoid duplicating synth entries if they already exist in notifications
           const serverNotifications = notificationData || [];
           const serverIds = new Set(serverNotifications.map((n) => n.id));
-          const uniqueSynth = synth.filter((s) => !serverIds.has(s.id));
-          setNotifications([...uniqueSynth, ...serverNotifications]);
+          let uniqueSynth = synth.filter((s) => !serverIds.has(s.id));
+          // Filter out synth notifications the user has dismissed locally
+          const dismissed = getDismissedSynthIds();
+          uniqueSynth = uniqueSynth.filter((s) => !dismissed.has(s.id));
+          setNotifications(sortNotificationsByTime([...uniqueSynth, ...serverNotifications]));
         } catch (e) {
-          setNotifications(notificationData);
+          setNotifications(sortNotificationsByTime(notificationData));
         }
         setClients([]);
         setAdminUsers([]);
@@ -386,6 +451,8 @@ export function PortalProvider({ children }) {
   const dismissNotification = async (notificationId) => {
     // Client-side notifications can be dismissed locally
     if (String(notificationId).startsWith('synth-')) {
+      // persist dismissal so synthetic notifications do not reappear after refresh
+      addDismissedSynthId(notificationId);
       setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
       return null;
     }
@@ -428,6 +495,14 @@ export function PortalProvider({ children }) {
 
   const createCatalogService = async (payload) => {
     const result = await portalApi.createCatalogService(payload);
+    const catalog = await portalApi.getServices();
+    setServices(catalog);
+    return result;
+  };
+
+  const updateCatalogService = async (serviceId, payload) => {
+    const result = await portalApi.updateCatalogService(serviceId, payload);
+    await refreshPortalData();
     const catalog = await portalApi.getServices();
     setServices(catalog);
     return result;
@@ -483,6 +558,13 @@ export function PortalProvider({ children }) {
 
     setAdminUsers((current) => current.map((user) => (user.id === userId ? result.user : user)));
 
+    return result;
+  };
+
+  const createAdminUser = async (payload) => {
+    const result = await portalApi.createAdminUser(payload);
+    // Always re-fetch from backend to ensure the new user is persisted and visible after reload.
+    await refreshPortalData();
     return result;
   };
 
@@ -559,6 +641,7 @@ export function PortalProvider({ children }) {
       markAllNotificationsRead,
       dismissNotification,
       createCatalogService,
+      updateCatalogService,
       createAdminService,
       requestServiceCancellation,
       approveServiceCancellation,
@@ -571,6 +654,7 @@ export function PortalProvider({ children }) {
       approveClientRegistration,
       rejectClientRegistration,
       updateAdminUser,
+      createAdminUser,
       resetAdminUserPassword,
       updateAdminUserStatus,
       refreshPortalData,

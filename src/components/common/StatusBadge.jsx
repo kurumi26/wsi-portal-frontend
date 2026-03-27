@@ -1,6 +1,8 @@
 import { useTheme } from '../../context/ThemeContext';
 
 const classesDark = {
+  Enabled: 'bg-emerald-400/15 text-emerald-300',
+  Disabled: 'bg-rose-400/15 text-rose-300',
   Active: 'bg-sky-400/15 text-sky-300',
   Expired: 'bg-orange-400/15 text-orange-300',
   Unpaid: 'bg-orange-400/15 text-orange-300',
@@ -15,6 +17,8 @@ const classesDark = {
 };
 
 const classesLight = {
+  Enabled: '!bg-emerald-50 !text-emerald-600',
+  Disabled: '!bg-rose-200 !text-rose-700',
   Active: '!bg-emerald-50 !text-emerald-600',
   Expired: '!bg-rose-200 !text-rose-700',
   Unpaid: 'bg-orange-50 text-orange-600',

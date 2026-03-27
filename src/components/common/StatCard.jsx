@@ -7,10 +7,10 @@ export default function StatCard({ label, value, helper, accent = 'cyan' }) {
   };
 
   return (
-    <div className={`panel bg-gradient-to-br ${accentClasses[accent]} p-5`}>
+    <div className={`panel bg-gradient-to-br ${accentClasses[accent]} p-4`}>
       <p className="text-sm text-slate-300">{label}</p>
-      <p className="mt-4 text-4xl font-semibold text-white">{value}</p>
-      {helper ? <p className="mt-2 text-sm text-slate-400">{helper}</p> : null}
+      <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
+      {helper ? <p className="mt-1 text-sm text-slate-400">{helper}</p> : null}
     </div>
   );
 }

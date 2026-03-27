@@ -62,7 +62,11 @@ export default function CheckoutPage() {
                     </div>
                     <div className="flex items-center gap-4">
                       <p className="font-semibold text-white">{formatCurrency(item.price)}</p>
-                      <button type="button" className="btn-secondary" onClick={() => removeFromCart(item.lineId)}>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 items-center gap-2 rounded-2xl bg-rose-400 text-white px-3 py-1 hover:bg-rose-500 transition force-white"
+                        onClick={() => removeFromCart(item.lineId)}
+                      >
                         Remove
                       </button>
                     </div>

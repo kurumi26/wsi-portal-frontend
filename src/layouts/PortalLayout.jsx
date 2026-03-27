@@ -29,7 +29,9 @@ export default function PortalLayout() {
   const profileMenuRef = useRef(null);
 
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
-  const recentNotifications = notifications.slice(0, 4);
+  const recentNotifications = [...notifications]
+    .sort((a, b) => new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime())
+    .slice(0, 4);
   const { isDarkMode } = useTheme();
 
   useEffect(() => {

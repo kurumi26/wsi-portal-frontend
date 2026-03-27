@@ -29,15 +29,15 @@ export default function NotificationsPage() {
   const statusMenuRef = useRef(null);
 
   const unreadCount = notifications.filter((item) => !item.isRead).length;
-  const filters = ['All', 'Unread', 'Read', 'Info', 'Warning', 'Success', 'Danger'];
+  const filters = ['All', 'Unread', 'Read', 'info', 'warning', 'success', 'danger'];
   const STATUS_ICONS = {
     All: BellRing,
     Unread: MailOpen,
     Read: CheckCheck,
-    Info: Info,
-    Warning: AlertTriangle,
-    Success: CheckCircle,
-    Danger: XCircle,
+    info: Info,
+    warning: AlertTriangle,
+    success: CheckCircle,
+    danger: XCircle,
   };
 
   const filteredNotifications = useMemo(() => {
@@ -146,7 +146,7 @@ export default function NotificationsPage() {
       await updateNotificationStatus(notification.id, true);
     }
 
-    // Check for explicit link/url/target first
+    // Prefer showing an inline details modal. Only navigate immediately for absolute external URLs.
     const maybeTarget =
       notification.link ||
       notification.url ||
@@ -156,46 +156,18 @@ export default function NotificationsPage() {
 
     const data = notification.data || notification.meta || {};
 
-    if (maybeTarget) {
-      if (typeof maybeTarget === 'string') {
-        if (maybeTarget.startsWith('http://') || maybeTarget.startsWith('https://')) {
-          window.location.href = maybeTarget;
-        } else {
-          navigate(maybeTarget);
-        }
-      } else if (typeof maybeTarget === 'object' && maybeTarget.path) {
-        navigate(maybeTarget.path);
-      }
-
+    if (typeof maybeTarget === 'string' && (maybeTarget.startsWith('http://') || maybeTarget.startsWith('https://'))) {
+      // external link -> navigate away
+      window.location.href = maybeTarget;
       return;
     }
 
-    // Known shapes
-    const orderId = data.orderId || data.order_id || data.order || null;
-    if (orderId) {
-      const path = isAdmin ? `/admin/purchases/${orderId}` : `/dashboard/orders/${orderId}`;
-      navigate(path);
-      return;
-    }
-
-    const serviceId = data.serviceId || data.service_id || data.svcId || null;
-    if (serviceId) {
-      const path = isAdmin ? `/admin/customer-services/${serviceId}` : `/dashboard/services/${serviceId}`;
-      navigate(path);
-      return;
-    }
-
-    const userId = data.userId || data.user_id || data.clientId || null;
-    if (userId) {
-      const path = isAdmin ? `/admin/clients/${userId}` : '/dashboard/account';
-      navigate(path);
-      return;
-    }
-
-    // Otherwise show the inline details modal
+    // For internal links or structured payloads, show the inline modal and include the target/path
     setSelectedNotification({
       ...notification,
       isRead: true,
+      _target: maybeTarget || null,
+      _data: data,
     });
   };
 
@@ -423,26 +395,26 @@ export default function NotificationsPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  await updateNotificationStatus(selectedNotification.id, false);
-                  setSelectedNotification((current) => (current ? { ...current, isRead: false } : current));
-                }}
-                className="btn-secondary"
-              >
-                Mark unread
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  await dismissNotification(selectedNotification.id);
-                  setSelectedNotification(null);
-                }}
-                className="btn-secondary"
-              >
-                Dismiss
-              </button>
+              {selectedNotification && selectedNotification._target ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const t = selectedNotification._target;
+                    if (typeof t === 'string') {
+                      if (t.startsWith('http://') || t.startsWith('https://')) {
+                        window.open(t, '_blank');
+                      } else {
+                        navigate(t);
+                      }
+                    } else if (t && t.path) {
+                      navigate(t.path);
+                    }
+                  }}
+                  className="btn-primary"
+                >
+                  Open link
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
