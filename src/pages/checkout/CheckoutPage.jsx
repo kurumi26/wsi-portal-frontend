@@ -9,7 +9,7 @@ import { formatCurrency } from '../../utils/format';
 const paymentMethods = ['Credit Card', 'PayPal', 'Bank Transfer'];
 
 export default function CheckoutPage() {
-  const { cart, paymentState, placeOrder, removeFromCart, retryPayment } = usePortal();
+  const { cart, services, paymentState, placeOrder, removeFromCart, retryPayment } = usePortal();
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,6 +40,30 @@ export default function CheckoutPage() {
     return String(opt);
   };
 
+  const getAddonPrice = (addon, item) => {
+    if (!addon) return 0;
+
+    if (typeof addon === 'object') {
+      return Number(addon.price || 0);
+    }
+
+    // string addon - try to resolve from service definition
+    const svc = services && services.find((s) => String(s.id) === String(item.serviceId));
+    if (svc && Array.isArray(svc.addons)) {
+      const found = svc.addons.find((opt) => {
+        if (opt === null || opt === undefined) return false;
+        if (typeof opt === 'object') return (opt.label ?? opt.name) === addon;
+        return String(opt) === addon;
+      });
+
+      if (found && typeof found === 'object' && typeof found.price === 'number') {
+        return Number(found.price);
+      }
+    }
+
+    return 0;
+  };
+
   return (
     <div>
       <PageHeader
@@ -58,7 +82,23 @@ export default function CheckoutPage() {
                   <div key={item.lineId} className="panel-muted flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="font-medium text-white">{item.serviceName}</p>
-                      <p className="mt-2 text-sm text-slate-400">Config: {renderOption(item.configuration)} · Add-on: {renderOption(item.addon)}</p>
+                      <p className="mt-2 text-sm text-slate-400">Config: {renderOption(item.configuration)}</p>
+
+                      {Array.isArray(item.addon) && item.addon.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {item.addon.map((a, i) => {
+                            const price = getAddonPrice(a, item);
+                            return (
+                              <span key={`addon-${item.lineId}-${i}`} className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-200">
+                                <span>{renderOption(a)}</span>
+                                {price ? <span className="ml-2 text-xs text-slate-400">{formatCurrency(price)}</span> : null}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : item.addon ? (
+                        <p className="mt-2 text-sm text-slate-400">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs text-slate-400">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}</p>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-4">
                       <p className="font-semibold text-white">{formatCurrency(item.price)}</p>

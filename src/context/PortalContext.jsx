@@ -311,12 +311,51 @@ export function PortalProvider({ children }) {
   }, [isAdmin, isAuthLoading]);
 
   const addToCart = (service, configuration, addon) => {
+    const computeAddonTotal = (addonInput) => {
+      if (addonInput === null || addonInput === undefined) return 0;
+
+      const items = Array.isArray(addonInput) ? addonInput : [addonInput];
+      let total = 0;
+
+      items.forEach((a) => {
+        if (a === null || a === undefined) return;
+
+        if (typeof a === 'object') {
+          if (typeof a.price === 'number') {
+            total += Number(a.price);
+          }
+          return;
+        }
+
+        if (typeof a === 'string') {
+          // try to match against the provided service's addons (which may contain objects with price)
+          if (service && Array.isArray(service.addons)) {
+            const found = service.addons.find((opt) => {
+              if (opt === null || opt === undefined) return false;
+              if (typeof opt === 'object') return (opt.label ?? opt.name) === a;
+              return String(opt) === a;
+            });
+
+            if (found && typeof found === 'object' && typeof found.price === 'number') {
+              total += Number(found.price);
+            }
+          }
+        }
+      });
+
+      return total;
+    };
+
+    const addonTotal = computeAddonTotal(addon);
+    const basePrice = typeof service.price === 'number' ? Number(service.price) : Number(service.price || 0);
+    const linePrice = Number(basePrice) + Number(addonTotal || 0);
+
     const lineItem = {
       lineId: `${service.id}-${Date.now()}`,
       serviceId: service.id,
       serviceName: service.name,
       category: service.category,
-      price: service.price,
+      price: linePrice,
       billing: service.billing,
       configuration,
       addon,
