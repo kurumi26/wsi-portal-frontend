@@ -346,9 +346,45 @@ export function PortalProvider({ children }) {
       return total;
     };
 
+    const computeConfigPrice = (configInput) => {
+      if (configInput === null || configInput === undefined) return 0;
+
+      const items = Array.isArray(configInput) ? configInput : [configInput];
+      let total = 0;
+
+      items.forEach((c) => {
+        if (c === null || c === undefined) return;
+
+        if (typeof c === 'object') {
+          if (typeof c.price === 'number') {
+            total += Number(c.price);
+          }
+          return;
+        }
+
+        if (typeof c === 'string') {
+          // try to match against the provided service's configurations (which may contain objects with price)
+          if (service && Array.isArray(service.configurations)) {
+            const found = service.configurations.find((opt) => {
+              if (opt === null || opt === undefined) return false;
+              if (typeof opt === 'object') return (opt.label ?? opt.name) === c;
+              return String(opt) === c;
+            });
+
+            if (found && typeof found === 'object' && typeof found.price === 'number') {
+              total += Number(found.price);
+            }
+          }
+        }
+      });
+
+      return total;
+    };
+
     const addonTotal = computeAddonTotal(addon);
+    const configTotal = computeConfigPrice(configuration);
     const basePrice = typeof service.price === 'number' ? Number(service.price) : Number(service.price || 0);
-    const linePrice = Number(basePrice) + Number(addonTotal || 0);
+    const linePrice = Number(basePrice) + Number(addonTotal || 0) + Number(configTotal || 0);
 
     const lineItem = {
       lineId: `${service.id}-${Date.now()}`,
