@@ -9,7 +9,7 @@ export default function ServicesPage() {
   const { services, addToCart } = usePortal();
   const [selections, setSelections] = useState(() =>
     Object.fromEntries(
-      services.map((service) => [service.id, { configuration: service.configurations[0], addon: service.addons[0] }]),
+      services.map((service) => [service.id, { configuration: service.configurations[0] ?? '', addon: '' }]),
     ),
   );
   const [category, setCategory] = useState('All');
@@ -63,8 +63,8 @@ export default function ServicesPage() {
           <ServiceCard
             key={service.id}
             service={service}
-            configuration={selections[service.id]?.configuration ?? service.configurations[0]}
-            addon={selections[service.id]?.addon ?? service.addons[0]}
+            configuration={selections[service.id]?.configuration ?? (service.configurations[0] ?? '')}
+            addon={selections[service.id]?.addon ?? ''}
             onConfigure={handleConfigure}
             onAdd={handleAdd}
           />

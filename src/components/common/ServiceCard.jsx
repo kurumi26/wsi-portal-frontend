@@ -54,13 +54,14 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
           </label>
           <label className="text-xs uppercase tracking-[0.18em] text-slate-500">
             Add-on
-            <select value={selectedAddon} onChange={(event) => onConfigure(service.id, 'addon', event.target.value)} className="input mt-2">
-              {service.addons.map((option) => (
-                <option key={getValue(option)} value={getValue(option)}>
-                  {getLabel(option)}
-                </option>
-              ))}
-            </select>
+              <select value={selectedAddon} onChange={(event) => onConfigure(service.id, 'addon', event.target.value)} className="input mt-2">
+                <option value="">None</option>
+                {(service.addons || []).map((option) => (
+                  <option key={getValue(option)} value={getValue(option)}>
+                    {getLabel(option)}
+                  </option>
+                ))}
+              </select>
           </label>
         </div>
       </div>
