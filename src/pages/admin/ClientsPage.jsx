@@ -415,8 +415,8 @@ export default function ClientsPage() {
         type="button"
         onClick={() => setStatusConfirmClient(row)}
         className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${row.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
-        title={row.status === 'Active' ? 'Disable account' : 'Enable account'}
-        aria-label={`${row.status === 'Active' ? 'Disable' : 'Enable'} account for ${row.name}`}
+        title={row.status === 'Active' ? 'Deactivate Account' : 'Activate Account'}
+        aria-label={`${row.status === 'Active' ? 'Deactivate' : 'Activate'} account for ${row.name}`}
       >
         <Power size={16} />
       </button>

@@ -244,7 +244,7 @@ export default function UsersPage() {
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Confirm Action</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">
-                  {statusConfirmUser.status === 'Enabled' ? 'Disable account' : 'Enable account'}
+                  {statusConfirmUser.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account'}
                 </h2>
               </div>
               <button
@@ -400,7 +400,7 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
                 {filteredUsers.length ? filteredUsers.map((user) => {
-                const statusActionLabel = user.status === 'Enabled' ? 'Disable Account' : 'Enable Account';
+                const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
                 const statusActionClass = user.status === 'Enabled'
                   ? 'bg-rose-400 text-white hover:bg-rose-500'
                   : 'bg-emerald-400 text-white hover:bg-emerald-500';
@@ -472,7 +472,7 @@ export default function UsersPage() {
       ) : filteredUsers.length ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredUsers.map((user) => {
-            const statusActionLabel = user.status === 'Enabled' ? 'Disable Account' : 'Enable Account';
+            const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
             const statusActionClass = user.status === 'Enabled'
               ? 'bg-rose-400 text-white hover:bg-rose-500'
               : 'bg-emerald-400 text-white hover:bg-emerald-500';
