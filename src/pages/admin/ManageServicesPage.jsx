@@ -25,6 +25,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
+import { getDesiredDomainValue } from '../../utils/orders';
 
 const serviceCategories = ['Shared Hosting', 'Domains', 'Dedicated server'];
 const SERVICES_PER_PAGE = 10;
@@ -1045,6 +1046,12 @@ export default function ManageServicesPage() {
                 <p className="mt-2 text-sm text-slate-300">{selectedOrderForReview.paymentMethod}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">Recorded Date</p>
                 <p className="mt-2 text-sm text-slate-300">{formatDate(selectedOrderForReview.date)}</p>
+                {getDesiredDomainValue(selectedOrderForReview) ? (
+                  <>
+                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">Customer Note / Desired Domain</p>
+                    <p className="mt-2 break-all text-sm text-slate-300">{getDesiredDomainValue(selectedOrderForReview)}</p>
+                  </>
+                ) : null}
               </div>
 
               <div className="panel-muted p-3">

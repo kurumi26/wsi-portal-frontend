@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
+import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
 
 const PortalContext = createContext(null);
 
@@ -88,6 +89,45 @@ export function PortalProvider({ children }) {
   const [paymentState, setPaymentState] = useState({ status: 'idle', message: '' });
   const [isLoadingPortal, setIsLoadingPortal] = useState(false);
 
+  const normalizeServiceCancellationRecord = (service) => {
+    if (!service || typeof service !== 'object') {
+      return service;
+    }
+
+    const cancellationReason = getCancellationReasonValue(service);
+    const cancellationRequest = service.cancellationRequest && typeof service.cancellationRequest === 'object'
+      ? {
+          ...service.cancellationRequest,
+          ...(cancellationReason ? {
+            reason: service.cancellationRequest.reason ?? cancellationReason,
+            customerNote: service.cancellationRequest.customerNote ?? cancellationReason,
+            customer_note: service.cancellationRequest.customer_note ?? cancellationReason,
+            note: service.cancellationRequest.note ?? cancellationReason,
+            comment: service.cancellationRequest.comment ?? cancellationReason,
+          } : {}),
+        }
+      : service.cancellationRequest;
+
+    return {
+      ...service,
+      ...(cancellationReason ? {
+        customerNote: service.customerNote ?? cancellationReason,
+        customer_note: service.customer_note ?? cancellationReason,
+        note: service.note ?? cancellationReason,
+        comment: service.comment ?? cancellationReason,
+      } : {}),
+      cancellationRequest,
+    };
+  };
+
+  const normalizeServiceCancellationRecords = (list) => {
+    if (!Array.isArray(list)) {
+      return [];
+    }
+
+    return list.map((service) => normalizeServiceCancellationRecord(service));
+  };
+
   const sortNotificationsByTime = (list = []) => {
     return [...list].sort((a, b) => {
       const timeA = new Date(a?.createdAt ?? 0).getTime();
@@ -139,8 +179,8 @@ export function PortalProvider({ children }) {
 
         setClients(clientData);
         setAdminUsers(userData);
-        setAdminPurchases(purchaseData);
-        setAdminServices(serviceData);
+        setAdminPurchases(normalizeOrderNoteRecords(purchaseData));
+        setAdminServices(normalizeServiceCancellationRecords(serviceData));
         setNotifications(sortNotificationsByTime(notificationData));
         setOrders([]);
         setMyServices([]);
@@ -151,9 +191,9 @@ export function PortalProvider({ children }) {
           portalApi.getNotifications(),
         ]);
 
-        setOrders(orderData);
+        setOrders(normalizeOrderNoteRecords(orderData));
         // Dedupe services to avoid duplicate entries after renew/pay cycles
-        setMyServices(dedupeServices(serviceData));
+        setMyServices(dedupeServices(normalizeServiceCancellationRecords(serviceData)));
         // Generate lightweight client-side alerts based on service lifecycle events
         try {
           const synth = [];
@@ -173,7 +213,7 @@ export function PortalProvider({ children }) {
             return 'less than a minute left';
           };
 
-          (serviceData || []).forEach((svc) => {
+          (normalizeServiceCancellationRecords(serviceData) || []).forEach((svc) => {
             try {
               if (svc.renewsOn) {
                 const t = new Date(svc.renewsOn).getTime() - now;
@@ -395,6 +435,7 @@ export function PortalProvider({ children }) {
       billing: service.billing,
       configuration,
       addon,
+      desiredDomain: '',
     };
 
     setCart((current) => [...current, lineItem]);
@@ -405,12 +446,21 @@ export function PortalProvider({ children }) {
     setCart((current) => current.filter((item) => item.lineId !== lineId));
   };
 
+  const updateCartItem = (lineId, updates) => {
+    setCart((current) => current.map((item) => (item.lineId === lineId ? { ...item, ...updates } : item)));
+  };
+
   const clearCart = () => setCart([]);
 
   const placeOrder = async ({ paymentMethod, agreementAccepted }) => {
     if (!agreementAccepted) {
       setPaymentState({ status: 'failed', message: 'You must accept the agreement before completing payment.' });
       return { success: false, message: 'Agreement not accepted' };
+    }
+
+    const missingDesiredDomain = cart.some((item) => requiresDesiredDomain(item) && !getDesiredDomainValue(item));
+    if (missingDesiredDomain) {
+      return { success: false, message: desiredDomainRequiredMessage };
     }
 
     const sanitizedCart = cart.map((item) => {
@@ -420,6 +470,8 @@ export function PortalProvider({ children }) {
         return String(v);
       };
 
+      const customerNote = requiresDesiredDomain(item) ? getDesiredDomainValue(item) : '';
+
       return {
         serviceId: Number(item.serviceId),
         serviceName: String(item.serviceName),
@@ -427,16 +479,28 @@ export function PortalProvider({ children }) {
         configuration: normalize(item.configuration),
         addon: normalize(item.addon),
         price: Number(item.price),
+        ...(customerNote ? {
+          customerNote,
+          customer_note: customerNote,
+          desiredDomain: customerNote,
+          desired_domain: customerNote,
+          note: customerNote,
+          comment: customerNote,
+        } : {}),
       };
     });
 
     try {
       console.debug('Checkout payload', { cart: sanitizedCart, paymentMethod, agreementAccepted });
-      const response = await portalApi.checkout({ cart: sanitizedCart, paymentMethod, agreementAccepted });
+      const response = await portalApi.checkout({
+        cart: sanitizedCart,
+        paymentMethod,
+        agreementAccepted,
+      });
       clearCart();
       setPaymentState({ status: 'success', message: response.message });
       await refreshPortalData();
-      return { success: true, orders: response.orders };
+      return { success: true, orders: normalizeOrderNoteRecords(response?.orders ?? []) };
     } catch (error) {
       console.error('Checkout failed', error);
       setPaymentState({ status: 'failed', message: error.message });
@@ -481,6 +545,7 @@ export function PortalProvider({ children }) {
           billing: 'one_time',
           configuration: 'Invoice',
           addon: '',
+          desiredDomain: getDesiredDomainValue(order),
           _invoiceFallback: true,
         };
       }
@@ -494,6 +559,7 @@ export function PortalProvider({ children }) {
         billing: matchingService.billing,
         configuration: matchingService.configurations[0] ?? 'Standard',
         addon: matchingService.addons[0] ?? '',
+        desiredDomain: getDesiredDomainValue(order),
       };
     });
 
@@ -584,10 +650,16 @@ export function PortalProvider({ children }) {
   };
 
   const requestServiceCancellation = async (serviceId, reason = '') => {
+    const normalizedReason = reason.trim();
+
+    if (!isAdmin && !normalizedReason) {
+      throw new Error('Cancellation reason is required.');
+    }
+
     // Use the admin API when the current user is an admin, otherwise hit the customer endpoint
     const result = isAdmin
-      ? await portalApi.requestServiceCancellation(serviceId, reason)
-      : await portalApi.requestCustomerServiceCancellation(serviceId, reason);
+      ? await portalApi.requestServiceCancellation(serviceId, normalizedReason)
+      : await portalApi.requestCustomerServiceCancellation(serviceId, normalizedReason);
     await refreshPortalData();
     return result;
   };
@@ -720,6 +792,7 @@ export function PortalProvider({ children }) {
       isLoadingPortal,
       addToCart,
       removeFromCart,
+      updateCartItem,
       clearCart,
       placeOrder,
       retryPayment,

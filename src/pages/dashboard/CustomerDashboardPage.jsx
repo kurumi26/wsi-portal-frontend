@@ -117,6 +117,7 @@ export default function CustomerDashboardPage() {
       ? `pending-${approvalPendingServicesFiltered.join(',')}`
       : null
     : null;
+  const hasCancellationReason = cancellationReason.trim().length > 0;
   const totalPages = Math.max(1, Math.ceil(filteredServices.length / SERVICES_PER_PAGE));
   const paginatedServices = filteredServices.slice((currentPage - 1) * SERVICES_PER_PAGE, currentPage * SERVICES_PER_PAGE);
 
@@ -260,10 +261,42 @@ export default function CustomerDashboardPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Purchased Services" value={myServices.length} helper="Across hosting, security, and domain products" accent="cyan" />
-        <StatCard label="Active Services" value={stats.activeServices} helper="Live customer environments" accent="emerald" />
-        <StatCard label="Monthly Spend" value={formatCurrency(stats.totalRevenue / Math.max(orders.length, 1))} helper="Average payment amount" accent="violet" />
-        <StatCard label="Orders Logged" value={orders.length} helper="Recorded purchase history in phase 1" accent="amber" />
+        <Link to="/dashboard/services" className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+          <StatCard
+            label="Purchased Services"
+            value={myServices.length}
+            helper="Across hosting, security, and domain products"
+            accent="cyan"
+            className="h-full cursor-pointer transition duration-200 hover:-translate-y-1 hover:border-white/20 hover:shadow-xl hover:shadow-slate-950/15"
+          />
+        </Link>
+        <Link to="/dashboard/services" state={{ statusFilter: 'Active' }} className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+          <StatCard
+            label="Active Services"
+            value={stats.activeServices}
+            helper="Live customer environments"
+            accent="emerald"
+            className="h-full cursor-pointer transition duration-200 hover:-translate-y-1 hover:border-white/20 hover:shadow-xl hover:shadow-slate-950/15"
+          />
+        </Link>
+        <Link to="/dashboard/billing" className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+          <StatCard
+            label="Monthly Spend"
+            value={formatCurrency(stats.totalRevenue / Math.max(orders.length, 1))}
+            helper="Average payment amount"
+            accent="violet"
+            className="h-full cursor-pointer transition duration-200 hover:-translate-y-1 hover:border-white/20 hover:shadow-xl hover:shadow-slate-950/15"
+          />
+        </Link>
+        <Link to="/dashboard/orders" className="block rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+          <StatCard
+            label="Orders Logged"
+            value={orders.length}
+            helper="Recorded purchase history in phase 1"
+            accent="amber"
+            className="h-full cursor-pointer transition duration-200 hover:-translate-y-1 hover:border-white/20 hover:shadow-xl hover:shadow-slate-950/15"
+          />
+        </Link>
       </div>
 
       <div className="mt-6 space-y-6">
@@ -768,10 +801,18 @@ export default function CustomerDashboardPage() {
 
             <form onSubmit={async (e) => {
               e.preventDefault();
+
+              if (!hasCancellationReason) {
+                setToastMessage('Please tell us why you want to cancel this service.');
+                setShowToast(true);
+                setTimeout(() => setShowToast(false), 5000);
+                return;
+              }
+
               setIsRequestingCancellation(true);
 
               try {
-                const res = await requestServiceCancellation(selectedCancellationService.id, cancellationReason.trim());
+                const res = await requestServiceCancellation(selectedCancellationService.id, cancellationReason);
                 setSelectedCancellationService(null);
                 setCancellationReason('');
                 setToastMessage(res?.message ?? 'Cancellation request sent — waiting for admin approval. Admin will be notified.');
@@ -796,14 +837,22 @@ export default function CustomerDashboardPage() {
               }
             }}>
               <div className="mt-6">
-                <label className="block text-sm text-slate-300">Reason (optional)
-                  <textarea className="input mt-2" value={cancellationReason} onChange={(ev) => setCancellationReason(ev.target.value)} placeholder="Tell us why you're cancelling (optional)" />
+                <label className="block text-sm text-slate-300">Reason for cancellation
+                  <textarea
+                    required
+                    rows={4}
+                    className="input mt-2"
+                    value={cancellationReason}
+                    onChange={(ev) => setCancellationReason(ev.target.value)}
+                    placeholder="Tell us why you're cancelling this service"
+                  />
                 </label>
+                <p className="mt-2 text-sm text-slate-400">A cancellation reason is required before you can submit this request.</p>
               </div>
 
               <div className="mt-6 flex justify-end gap-3">
                 <button type="button" onClick={() => setSelectedCancellationService(null)} className="btn-secondary">Close</button>
-                <button type="submit" disabled={isRequestingCancellation} className="btn-primary">
+                <button type="submit" disabled={isRequestingCancellation || !hasCancellationReason} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
                   {isRequestingCancellation ? 'Requesting...' : 'Submit cancellation request'}
                 </button>
               </div>

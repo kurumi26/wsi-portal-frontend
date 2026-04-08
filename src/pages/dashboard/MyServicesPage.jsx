@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
@@ -10,9 +11,16 @@ import { formatDate } from '../../utils/format';
 export default function MyServicesPage() {
   usePageTitle('My Services');
 
+  const location = useLocation();
   const { myServices } = usePortal();
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState(location.state?.statusFilter ?? 'All');
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (location.state?.statusFilter) {
+      setStatusFilter(location.state.statusFilter);
+    }
+  }, [location.state]);
 
   const summary = useMemo(() => {
     const active = myServices.filter((service) => service.status === 'Active').length;

@@ -1,10 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ShieldCheck, Eye, LayoutGrid, List, CheckCircle2, XCircle, CircleOff, Percent, CreditCard, PencilLine } from 'lucide-react';
+import { ShieldCheck, Eye, MessageSquare, LayoutGrid, List, CheckCircle2, XCircle, CircleOff, Percent, CreditCard, PencilLine } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
+import { getCancellationReasonValue, getCustomerCommentValue, getDesiredDomainValue, isDomainOrder } from '../../utils/orders';
 import StatusBadge from '../../components/common/StatusBadge';
 
 export default function ApprovalsPage() {
@@ -12,6 +13,8 @@ export default function ApprovalsPage() {
   const [processingOrderId, setProcessingOrderId] = useState('');
   const [selectedOrderForReview, setSelectedOrderForReview] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedOrderForNote, setSelectedOrderForNote] = useState(null);
+  const [showOrderNoteModal, setShowOrderNoteModal] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [clientSearch, setClientSearch] = useState('');
@@ -75,17 +78,22 @@ export default function ApprovalsPage() {
   );
 
   const combinedPending = useMemo(() => {
-    const orders = pendingOrders.map((o) => ({
-      id: `order-${o.id}`,
-      type: 'order',
-      serviceName: o.serviceName,
-      client: o.client,
-      clientId: null,
-      amount: o.amount,
-      status: o.status,
-      raw: o,
-      meta: { date: o.date, paymentMethod: o.paymentMethod },
-    }));
+    const orders = pendingOrders.map((o) => {
+      const customerNote = getDesiredDomainValue(o);
+
+      return {
+        id: `order-${o.id}`,
+        type: 'order',
+        serviceName: o.serviceName,
+        client: o.client,
+        clientId: null,
+        amount: o.amount,
+        status: o.status,
+        raw: o,
+        customerNote,
+        meta: { date: o.date, paymentMethod: o.paymentMethod },
+      };
+    });
 
     const cancels = pendingCancellationServices.map((s) => ({
       id: `cancel-${s.id}`,
@@ -96,6 +104,7 @@ export default function ApprovalsPage() {
       amount: null,
       status: s.cancellationRequest?.status ?? 'Pending Approval',
       raw: s,
+      customerNote: getCancellationReasonValue(s),
       meta: { requestedAt: s.cancellationRequest?.requestedAt },
     }));
 
@@ -249,6 +258,18 @@ export default function ApprovalsPage() {
     });
   }, [filteredCombinedPending, pendingTableSort]);
 
+  const selectedOrderReviewNote = getDesiredDomainValue(selectedOrderForReview);
+  const selectedOrderActionNote = getCustomerCommentValue(selectedOrderForNote);
+  const shouldShowCommentAction = (row) => {
+    if (row.type === 'order') {
+      return isDomainOrder(row.raw);
+    }
+
+    return Boolean(row.customerNote || getCancellationReasonValue(row.raw));
+  };
+  const selectedOrderForNoteTitle = selectedOrderForNote?.serviceName ?? selectedOrderForNote?.name ?? 'Customer Comment';
+  const selectedOrderForNoteIsCancellation = Boolean(selectedOrderForNote?.cancellationRequest);
+
   const findClientForService = (service) => clients.find((client) => client.email === service.clientEmail || client.name === service.client) ?? null;
 
   const handleViewClientFromService = (service) => {
@@ -292,7 +313,7 @@ export default function ApprovalsPage() {
 
   const openCancellationModal = (service) => {
     setSelectedCancellationService(service);
-    setCancellationReason(service.cancellationRequest?.reason ?? '');
+    setCancellationReason(getCancellationReasonValue(service));
   };
 
   const closeCancellationModal = () => {
@@ -376,6 +397,8 @@ export default function ApprovalsPage() {
   };
 
   const openOrderModal = (order) => {
+    setSelectedOrderForNote(null);
+    setShowOrderNoteModal(false);
     setSelectedOrderForReview(order);
     setShowOrderModal(true);
   };
@@ -383,6 +406,18 @@ export default function ApprovalsPage() {
   const closeOrderModal = () => {
     setSelectedOrderForReview(null);
     setShowOrderModal(false);
+  };
+
+  const openOrderNoteModal = (order) => {
+    setSelectedOrderForReview(null);
+    setShowOrderModal(false);
+    setSelectedOrderForNote(order);
+    setShowOrderNoteModal(true);
+  };
+
+  const closeOrderNoteModal = () => {
+    setSelectedOrderForNote(null);
+    setShowOrderNoteModal(false);
   };
 
   const handleApproveCancellation = async (serviceId) => {
@@ -706,6 +741,17 @@ export default function ApprovalsPage() {
                         <div className="flex items-center justify-center gap-3">
                           {row.type === 'order' ? (
                             <>
+                              {shouldShowCommentAction(row) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openOrderNoteModal(row.raw)}
+                                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
+                                  title="View desired domain comment"
+                                  aria-label={`View desired domain comment for ${row.serviceName}`}
+                                >
+                                  <MessageSquare size={16} />
+                                </button>
+                              ) : null}
                               <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary">View</button>
                               <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
                                 <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}
@@ -713,6 +759,17 @@ export default function ApprovalsPage() {
                             </>
                           ) : (
                             <>
+                              {shouldShowCommentAction(row) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openOrderNoteModal(row.raw)}
+                                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
+                                  title="View cancellation reason"
+                                  aria-label={`View cancellation reason for ${row.serviceName}`}
+                                >
+                                  <MessageSquare size={16} />
+                                </button>
+                              ) : null}
                               <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500">
                                 <XCircle size={16} /> Keep Service
                               </button>
@@ -743,7 +800,6 @@ export default function ApprovalsPage() {
                     </div>
                     <StatusBadge status={row.status} />
                   </div>
-
                   <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{row.type === 'order' ? 'Amount' : 'Requested'}</p>
                     <p className="mt-2 text-sm text-sky-200">{row.type === 'order' ? formatCurrency(row.amount) : (row.meta.requestedAt ? formatDateTime(row.meta.requestedAt) : '—')}</p>
@@ -752,11 +808,33 @@ export default function ApprovalsPage() {
                   <div className="mt-4 flex justify-end gap-2">
                     {row.type === 'order' ? (
                       <>
+                        {shouldShowCommentAction(row) ? (
+                          <button
+                            type="button"
+                            onClick={() => openOrderNoteModal(row.raw)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
+                            title="View desired domain comment"
+                            aria-label={`View desired domain comment for ${row.serviceName}`}
+                          >
+                            <MessageSquare size={16} />
+                          </button>
+                        ) : null}
                         <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary px-3">View</button>
                         <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="btn-primary px-3">{processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}</button>
                       </>
                     ) : (
                       <>
+                        {shouldShowCommentAction(row) ? (
+                          <button
+                            type="button"
+                            onClick={() => openOrderNoteModal(row.raw)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
+                            title="View cancellation reason"
+                            aria-label={`View cancellation reason for ${row.serviceName}`}
+                          >
+                            <MessageSquare size={16} />
+                          </button>
+                        ) : null}
                         <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-secondary px-3">Keep</button>
                         <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-primary px-3">{processingCancellationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
                       </>
@@ -1226,6 +1304,28 @@ export default function ApprovalsPage() {
           </form>
         </div>, document.body) : null}
 
+      {showOrderNoteModal && selectedOrderForNote ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="panel w-full max-w-lg p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Customer Comment</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{selectedOrderForNoteTitle}</h2>
+                <p className="mt-2 text-sm text-slate-400">{selectedOrderForNoteIsCancellation ? 'Cancellation reason submitted by the customer.' : 'Desired domain details submitted during checkout.'}</p>
+              </div>
+              <button type="button" onClick={closeOrderNoteModal} className="btn-secondary px-4">Close</button>
+            </div>
+
+            <div className="panel-muted mt-6 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{selectedOrderForNoteIsCancellation ? 'Cancellation Reason / Customer Note' : 'Desired Domain / Customer Note'}</p>
+              <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-300">
+                {selectedOrderActionNote || (selectedOrderForNoteIsCancellation ? 'No cancellation reason was saved for this request.' : 'No desired domain comment was saved for this order.')}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showOrderModal && selectedOrderForReview ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <div className="panel w-full max-w-2xl p-6">
@@ -1257,6 +1357,13 @@ export default function ApprovalsPage() {
                 <p className="mt-2 text-sm text-slate-400">Open external proof links from the orders list to review uploaded files.</p>
               </div>
             </div>
+
+            {selectedOrderReviewNote ? (
+              <div className="panel-muted mt-4 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer Note / Desired Domain</p>
+                <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-300">{selectedOrderReviewNote}</p>
+              </div>
+            ) : null}
 
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" onClick={async () => { await handleApproveOrder(selectedOrderForReview.id); closeOrderModal(); }} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 hover:bg-emerald-500">

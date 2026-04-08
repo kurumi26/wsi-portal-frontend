@@ -246,16 +246,38 @@ export const portalApi = {
   },
 
   async requestServiceCancellation(serviceId, reason) {
+    const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+    const payload = {
+      reason: normalizedReason,
+      ...(normalizedReason ? {
+        customerNote: normalizedReason,
+        customer_note: normalizedReason,
+        note: normalizedReason,
+        comment: normalizedReason,
+      } : {}),
+    };
+
     return apiRequest(`/admin/customer-services/${serviceId}/request-cancellation`, {
       method: 'PATCH',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(payload),
     });
   },
 
   async requestCustomerServiceCancellation(serviceId, reason) {
+    const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+    const payload = {
+      reason: normalizedReason,
+      ...(normalizedReason ? {
+        customerNote: normalizedReason,
+        customer_note: normalizedReason,
+        note: normalizedReason,
+        comment: normalizedReason,
+      } : {}),
+    };
+
     return apiRequest(`/customer-services/${serviceId}/request-cancellation`, {
       method: 'PATCH',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(payload),
     });
   },
 

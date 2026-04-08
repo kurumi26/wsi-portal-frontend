@@ -5,16 +5,19 @@ import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency } from '../../utils/format';
+import { desiredDomainRequiredMessage, getDesiredDomainValue, requiresDesiredDomain } from '../../utils/orders';
 
 const paymentMethods = ['Credit Card', 'PayPal', 'Bank Transfer'];
 
 export default function CheckoutPage() {
-  const { cart, services, paymentState, placeOrder, removeFromCart, retryPayment } = usePortal();
+  const { cart, services, paymentState, placeOrder, removeFromCart, retryPayment, updateCartItem } = usePortal();
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const total = cart.reduce((sum, item) => sum + item.price, 0);
+  const missingDesiredDomainItems = cart.filter((item) => requiresDesiredDomain(item) && !getDesiredDomainValue(item));
+  const hasMissingDesiredDomains = missingDesiredDomainItems.length > 0;
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,9 +32,17 @@ export default function CheckoutPage() {
   }, [paymentState.status]);
 
   const handleCheckout = async () => {
+    if (hasMissingDesiredDomains) {
+      return;
+    }
+
     setIsSubmitting(true);
     await placeOrder({ paymentMethod, agreementAccepted });
     setIsSubmitting(false);
+  };
+
+  const handleDesiredDomainChange = (lineId, value) => {
+    updateCartItem(lineId, { desiredDomain: value });
   };
 
   const renderOption = (opt) => {
@@ -101,43 +112,67 @@ export default function CheckoutPage() {
             <h2 className="text-xl font-semibold text-white">Order summary</h2>
             <div className="mt-6 space-y-4">
               {cart.length ? (
-                cart.map((item) => (
-                  <div key={item.lineId} className="panel-muted flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-medium text-white">{item.serviceName}</p>
-                      <p className="mt-2 text-sm text-slate-400">
-                        Config: {renderOption(item.configuration)}
-                        {getConfigPrice(item.configuration, item) ? <span className="ml-2 text-xs text-slate-400">{formatCurrency(getConfigPrice(item.configuration, item))}</span> : null}
-                      </p>
+                cart.map((item) => {
+                  const desiredDomain = getDesiredDomainValue(item);
+                  const desiredDomainInputValue = typeof item.desiredDomain === 'string' ? item.desiredDomain : desiredDomain;
+                  const showDesiredDomainField = requiresDesiredDomain(item);
 
-                      {Array.isArray(item.addon) && item.addon.length ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {item.addon.map((a, i) => {
-                            const price = getAddonPrice(a, item);
-                            return (
-                              <span key={`addon-${item.lineId}-${i}`} className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-200">
-                                <span>{renderOption(a)}</span>
-                                {price ? <span className="ml-2 text-xs text-white">{formatCurrency(price)}</span> : null}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : item.addon ? (
-                        <p className="mt-2 text-sm text-slate-400">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs text-white">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}</p>
-                      ) : null}
+                  return (
+                    <div key={item.lineId} className="panel-muted flex flex-col gap-4 p-4 md:flex-row md:items-start md:justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-white">{item.serviceName}</p>
+                        <p className="mt-2 text-sm text-slate-400">
+                          Config: {renderOption(item.configuration)}
+                          {getConfigPrice(item.configuration, item) ? <span className="ml-2 text-xs text-slate-400">{formatCurrency(getConfigPrice(item.configuration, item))}</span> : null}
+                        </p>
+
+                        {Array.isArray(item.addon) && item.addon.length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {item.addon.map((a, i) => {
+                              const price = getAddonPrice(a, item);
+                              return (
+                                <span key={`addon-${item.lineId}-${i}`} className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-200">
+                                  <span>{renderOption(a)}</span>
+                                  {price ? <span className="ml-2 text-xs text-white">{formatCurrency(price)}</span> : null}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : item.addon ? (
+                          <p className="mt-2 text-sm text-slate-400">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs text-white">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}</p>
+                        ) : null}
+
+                        {showDesiredDomainField ? (
+                          <div className="mt-4">
+                            <label htmlFor={`desired-domain-${item.lineId}`} className="text-sm font-medium text-white">
+                              Desired domain / note
+                            </label>
+                            <textarea
+                              id={`desired-domain-${item.lineId}`}
+                              rows={3}
+                              value={desiredDomainInputValue}
+                              onChange={(event) => handleDesiredDomainChange(item.lineId, event.target.value)}
+                              placeholder="Enter the exact domain name you want to register, or add a short note for admin review."
+                              className={`input mt-3 w-full resize-y ${!desiredDomain ? 'border-white/10' : ''}`}
+                              aria-required="true"
+                            />
+                            <p className="mt-2 text-xs text-slate-500">Required for domain orders. This note is visible to the admin team during review.</p>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-4 md:pt-1">
+                        <p className="font-semibold text-white">{formatCurrency(item.price)}</p>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 items-center gap-2 rounded-2xl bg-rose-400 text-white px-3 py-1 hover:bg-rose-500 transition force-white"
+                          onClick={() => removeFromCart(item.lineId)}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <p className="font-semibold text-white">{formatCurrency(item.price)}</p>
-                      <button
-                        type="button"
-                        className="inline-flex h-8 items-center gap-2 rounded-2xl bg-rose-400 text-white px-3 py-1 hover:bg-rose-500 transition force-white"
-                        onClick={() => removeFromCart(item.lineId)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="panel-muted p-8 text-center text-sm text-slate-400">
                   Your cart is empty. <Link to="/services" className="text-sky-300">Browse services</Link>
@@ -177,15 +212,23 @@ export default function CheckoutPage() {
             </div>
             <button
               type="button"
-              disabled={isSubmitting || !agreementAccepted}
-              aria-disabled={isSubmitting || !agreementAccepted}
-              title={!agreementAccepted ? 'Please accept the agreement to complete payment' : undefined}
+              disabled={isSubmitting || !agreementAccepted || hasMissingDesiredDomains}
+              aria-disabled={isSubmitting || !agreementAccepted || hasMissingDesiredDomains}
+              title={
+                hasMissingDesiredDomains
+                  ? 'Add the desired domain for each domain order to complete payment'
+                  : !agreementAccepted
+                    ? 'Please accept the agreement to complete payment'
+                    : undefined
+              }
               className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleCheckout}
             >
               {isSubmitting ? 'Processing payment...' : 'Complete payment'}
             </button>
-            {!agreementAccepted ? (
+            {hasMissingDesiredDomains ? (
+              <p className="mt-2 text-sm text-slate-400">{desiredDomainRequiredMessage}</p>
+            ) : !agreementAccepted ? (
               <p className="mt-2 text-sm text-slate-400">Please accept the Purchase Agreement, Terms and Privacy Policy to continue.</p>
             ) : null}
             {paymentState.status !== 'idle' ? (

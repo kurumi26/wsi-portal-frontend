@@ -7,6 +7,7 @@ import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate } from '../../utils/format';
+import { getDesiredDomainValue } from '../../utils/orders';
 
 const PURCHASES_PER_PAGE = 6;
 
@@ -30,7 +31,7 @@ export default function PurchasesPage() {
       if (!matchesStatus) return false;
 
       if (normalized) {
-        const hay = [p.id, p.client, p.serviceName, p.status, p.paymentMethod].join(' ').toLowerCase();
+        const hay = [p.id, p.client, p.serviceName, p.status, p.paymentMethod, getDesiredDomainValue(p)].join(' ').toLowerCase();
         return hay.includes(normalized);
       }
 
@@ -86,7 +87,17 @@ export default function PurchasesPage() {
   const columns = [
     { key: 'id', label: 'Order ID', sortable: true },
     { key: 'client', label: 'Client', sortable: true },
-    { key: 'serviceName', label: 'Service', sortable: true },
+    {
+      key: 'serviceName',
+      label: 'Service',
+      sortable: true,
+      render: (value, row) => (
+        <div>
+          <p className="font-medium text-white">{value}</p>
+          {getDesiredDomainValue(row) ? <p className="mt-1 break-all text-xs text-sky-200">Customer note / desired domain: {getDesiredDomainValue(row)}</p> : null}
+        </div>
+      ),
+    },
     {
       key: 'amount',
       label: 'Amount',
@@ -197,6 +208,7 @@ export default function PurchasesPage() {
                   <div>
                     <p className="font-semibold text-white">{p.id}</p>
                     <p className="mt-1 text-sm text-slate-400">{p.serviceName}</p>
+                    {getDesiredDomainValue(p) ? <p className="mt-2 break-all text-xs text-sky-200">Customer note / desired domain: {getDesiredDomainValue(p)}</p> : null}
                   </div>
                   <StatusBadge status={p.status} />
                 </div>
