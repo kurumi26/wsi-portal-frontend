@@ -738,7 +738,7 @@ export default function ApprovalsPage() {
                       </td>
                       <td className="px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
                       <td className="px-5 py-4 align-middle">
-                        <div className="flex items-center justify-center gap-3">
+                        <div className="ml-auto grid w-fit grid-cols-[44px_minmax(96px,auto)_minmax(156px,auto)] items-center justify-end gap-3">
                           {row.type === 'order' ? (
                             <>
                               {shouldShowCommentAction(row) ? (
@@ -751,9 +751,9 @@ export default function ApprovalsPage() {
                                 >
                                   <MessageSquare size={16} />
                                 </button>
-                              ) : null}
-                              <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary">View</button>
-                              <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
+                              ) : <span className="h-11 w-11" aria-hidden="true" />}
+                              <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center">View</button>
+                              <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-emerald-500">
                                 <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}
                               </button>
                             </>
@@ -769,11 +769,11 @@ export default function ApprovalsPage() {
                                 >
                                   <MessageSquare size={16} />
                                 </button>
-                              ) : null}
-                              <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500">
+                              ) : <span className="h-11 w-11" aria-hidden="true" />}
+                              <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-rose-500">
                                 <XCircle size={16} /> Keep Service
                               </button>
-                              <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500">
+                              <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-emerald-500">
                                 <CheckCircle2 size={16} /> {processingCancellationId === row.raw.id ? 'Approving...' : 'Approve Cancellation'}
                               </button>
                             </>
@@ -805,7 +805,7 @@ export default function ApprovalsPage() {
                     <p className="mt-2 text-sm text-sky-200">{row.type === 'order' ? formatCurrency(row.amount) : (row.meta.requestedAt ? formatDateTime(row.meta.requestedAt) : '—')}</p>
                   </div>
 
-                  <div className="mt-4 flex justify-end gap-2">
+                  <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-right">
                     {row.type === 'order' ? (
                       <>
                         {shouldShowCommentAction(row) ? (
@@ -819,8 +819,8 @@ export default function ApprovalsPage() {
                             <MessageSquare size={16} />
                           </button>
                         ) : null}
-                        <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary px-3">View</button>
-                        <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="btn-primary px-3">{processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}</button>
+                        <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center px-3">View</button>
+                        <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}</button>
                       </>
                     ) : (
                       <>
@@ -835,8 +835,8 @@ export default function ApprovalsPage() {
                             <MessageSquare size={16} />
                           </button>
                         ) : null}
-                        <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-secondary px-3">Keep</button>
-                        <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-primary px-3">{processingCancellationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
+                        <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-secondary min-w-[140px] justify-center px-3">Keep Service</button>
+                        <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingCancellationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
                       </>
                     )}
                   </div>
