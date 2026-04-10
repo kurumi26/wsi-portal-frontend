@@ -299,18 +299,39 @@ export default function UsersPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="panel-muted rounded-3xl p-5">
+        <button
+          type="button"
+          onClick={() => setStatusFilter('All')}
+          aria-pressed={statusFilter === 'All'}
+          className={`panel-muted rounded-3xl p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-500/70 ${
+            statusFilter === 'All' ? 'border-sky-400/80 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''
+          }`}
+        >
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total Users</p>
           <p className="mt-3 text-3xl font-semibold text-white">{summary.total}</p>
-        </div>
-        <div className="panel-muted rounded-3xl p-5">
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('Enabled')}
+          aria-pressed={statusFilter === 'Enabled'}
+          className={`panel-muted rounded-3xl p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-500/70 ${
+            statusFilter === 'Enabled' ? 'border-sky-400/80 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''
+          }`}
+        >
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Enabled</p>
           <p className="mt-3 text-3xl font-semibold text-emerald-500">{summary.enabled}</p>
-        </div>
-        <div className="panel-muted rounded-3xl p-5">
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('Disabled')}
+          aria-pressed={statusFilter === 'Disabled'}
+          className={`panel-muted rounded-3xl p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-500/70 ${
+            statusFilter === 'Disabled' ? 'border-sky-400/80 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''
+          }`}
+        >
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Disabled</p>
           <p className="mt-3 text-3xl font-semibold text-rose-500">{summary.disabled}</p>
-        </div>
+        </button>
       </div>
 
       {error ? (

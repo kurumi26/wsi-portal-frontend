@@ -194,18 +194,39 @@ export default function NotificationsPage() {
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <div className="panel p-5">
+        <button
+          type="button"
+          onClick={() => setFilter('All')}
+          aria-pressed={filter === 'All'}
+          className={`panel p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-500/70 ${
+            filter === 'All' ? 'border-sky-400/80 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''
+          }`}
+        >
           <p className="text-sm text-slate-400">Total notifications</p>
           <p className="mt-3 text-3xl font-semibold text-white">{notifications.length}</p>
-        </div>
-        <div className="panel p-5">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter('Unread')}
+          aria-pressed={filter === 'Unread'}
+          className={`panel p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-500/70 ${
+            filter === 'Unread' ? 'border-sky-400/80 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''
+          }`}
+        >
           <p className="text-sm text-slate-400">Unread</p>
           <p className="mt-3 text-3xl font-semibold text-white">{unreadCount}</p>
-        </div>
-        <div className="panel p-5">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter('Read')}
+          aria-pressed={filter === 'Read'}
+          className={`panel p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-slate-500/70 ${
+            filter === 'Read' ? 'border-sky-400/80 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]' : ''
+          }`}
+        >
           <p className="text-sm text-slate-400">Read</p>
           <p className="mt-3 text-3xl font-semibold text-white">{notifications.length - unreadCount}</p>
-        </div>
+        </button>
       </div>
 
       <div className="mb-6 panel p-4">
