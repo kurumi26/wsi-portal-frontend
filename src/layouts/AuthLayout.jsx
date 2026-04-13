@@ -22,7 +22,7 @@ export default function AuthLayout() {
           <section className="min-h-0 p-6 lg:p-8 bg-transparent">
             <div className="flex h-full flex-col justify-center gap-4">
               <div>
-                <h1 className="text-4xl font-bold text-white md:text-5xl">Moderns hosting, billing, and customer operations</h1>
+                <h1 className="text-4xl font-bold text-white md:text-5xl">Moderns Hosting, Billing, and Customer Operations</h1>
                 <p className="mt-2 max-w-xl text-base text-slate-300">Manage services, invoices, and provisioning from one simple portal.</p>
               </div>
 
