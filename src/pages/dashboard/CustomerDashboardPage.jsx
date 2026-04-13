@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
-import { AlertOctagon, BellRing, FolderKanban, LayoutGrid, List, Plus, ReceiptText, ShieldCheck, TriangleAlert, CreditCard, CheckCircle2, FileText, Headphones, ChevronDown } from 'lucide-react';
+import { CircleAlert, BellRing, FolderKanban, LayoutGrid, List, Plus, ReceiptText, ShieldCheck, CreditCard, CheckCircle2, FileText, Headphones, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
@@ -25,6 +25,8 @@ export default function CustomerDashboardPage() {
   const [isReportingSupport, setIsReportingSupport] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [isRequestingCancellation, setIsRequestingCancellation] = useState(false);
+  const [dashboardModal, setDashboardModal] = useState(null);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [approvedBannerVisible, setApprovedBannerVisible] = useState(false);
@@ -38,6 +40,18 @@ export default function CustomerDashboardPage() {
   const statusRef = useRef(null);
   const statusMenuRef = useRef(null);
   const [statusMenuStyle, setStatusMenuStyle] = useState(null);
+
+  useEffect(() => {
+    if (!myServices.some((service) => service.renewsOn)) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(() => {
+      setCountdownNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [myServices]);
 
   const filteredServices = useMemo(() => {
     if (statusFilter === 'All') {
@@ -74,11 +88,11 @@ export default function CustomerDashboardPage() {
   );
   const unpaidRepresentative = unpaidFiltered.find((s) => unpaidNamesFinal.includes(s.name));
 
-  const now = Date.now();
+  const now = countdownNow;
   const NEAR_EXPIRE_DAYS = 7;
   const formatTimeRemaining = (value) => {
     if (!value) return '';
-    const ms = new Date(value).getTime() - Date.now();
+    const ms = new Date(value).getTime() - countdownNow;
     if (ms <= 0) return 'expired';
     const days = Math.floor(ms / (24 * 60 * 60 * 1000));
     if (days >= 1) return `${days} day${days > 1 ? 's' : ''} left`;
@@ -88,14 +102,129 @@ export default function CustomerDashboardPage() {
     if (minutes >= 1) return `${minutes} minute${minutes > 1 ? 's' : ''} left`;
     return 'less than a minute left';
   };
-  const nearExpiredServices = myServices
-    .filter((service) => {
-      if (!service.renewsOn) return false;
-      const t = new Date(service.renewsOn).getTime() - now;
-      return t > 0 && t <= NEAR_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
-    })
-    .filter((s) => s.status !== 'Expired');
+  const formatCountdownTimer = (value) => {
+    if (!value) return '';
+
+    const ms = new Date(value).getTime() - countdownNow;
+
+    if (ms <= 0) {
+      return '00d 00h 00m 00s';
+    }
+
+    const totalSeconds = Math.floor(ms / 1000);
+    const days = Math.floor(totalSeconds / (24 * 60 * 60));
+    const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60));
+    const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+    const seconds = totalSeconds % 60;
+
+    return [days, hours, minutes, seconds]
+      .map((part, index) => `${String(part).padStart(2, '0')}${['d', 'h', 'm', 's'][index]}`)
+      .join(' ');
+  };
+  const nearExpiredServices = useMemo(
+    () => myServices
+      .filter((service) => {
+        if (!service.renewsOn) return false;
+        const t = new Date(service.renewsOn).getTime() - now;
+        return t > 0 && t <= NEAR_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
+      })
+      .filter((service) => service.status !== 'Expired')
+      .sort((left, right) => new Date(left.renewsOn).getTime() - new Date(right.renewsOn).getTime()),
+    [myServices, now],
+  );
   const latestOperationalNotification = notifications.find((item) => ['warning', 'info', 'danger'].includes(item.type));
+  const latestOperationalIsCritical = Boolean(
+    latestOperationalNotification
+    && (
+      latestOperationalNotification.type === 'danger'
+      || /renewal upcoming|expiring soon/i.test(latestOperationalNotification.title ?? '')
+      || /will renew in|is expiring in/i.test(latestOperationalNotification.message ?? '')
+    )
+  );
+  const latestOperationalIsExpiring = Boolean(
+    latestOperationalNotification
+    && (
+      /renewal upcoming|expiring soon/i.test(latestOperationalNotification.title ?? '')
+      || /will renew in|is expiring in|expires in/i.test(latestOperationalNotification.message ?? '')
+    )
+  );
+  const getNotificationVisual = (item, forceCritical = false) => {
+    const isCritical = forceCritical || item?.type === 'danger';
+    const isWarning = !isCritical && item?.type === 'warning';
+    const isSuccess = !isCritical && item?.type === 'success';
+
+    if (isCritical) {
+      return {
+        Icon: CircleAlert,
+        iconClassName: 'bg-red-500 text-white shadow-sm shadow-red-900/15',
+        strokeWidth: 2.25,
+        stroke: '#ffffff',
+      };
+    }
+
+    if (isWarning) {
+      return {
+        Icon: CreditCard,
+        iconClassName: 'border border-amber-200/80 bg-amber-100 text-amber-600 shadow-sm shadow-amber-900/5',
+        strokeWidth: 2,
+        stroke: '#d97706',
+      };
+    }
+
+    if (isSuccess) {
+      return {
+        Icon: CheckCircle2,
+        iconClassName: 'border border-emerald-200/80 bg-emerald-100 text-emerald-600 shadow-sm shadow-emerald-900/5',
+        strokeWidth: 2,
+        stroke: '#059669',
+      };
+    }
+
+    return {
+      Icon: BellRing,
+      iconClassName: 'border border-sky-200/80 bg-sky-100 text-sky-600 shadow-sm shadow-sky-900/5',
+      strokeWidth: 2,
+      stroke: '#2563eb',
+    };
+  };
+  const latestExpiringService = useMemo(() => {
+    if (!latestOperationalNotification || !latestOperationalIsExpiring) {
+      return null;
+    }
+
+    const notificationServiceId = latestOperationalNotification?.data?.serviceId
+      ?? latestOperationalNotification?.serviceId
+      ?? latestOperationalNotification?.service_id;
+
+    if (notificationServiceId != null) {
+      const matchedById = myServices.find((service) => (
+        String(service.id) === String(notificationServiceId)
+        || String(service.service_id) === String(notificationServiceId)
+      ));
+
+      if (matchedById) {
+        return matchedById;
+      }
+    }
+
+    const normalizedTitle = String(latestOperationalNotification.title ?? '').toLowerCase();
+
+    return nearExpiredServices.find((service) => normalizedTitle.includes(String(service.name ?? '').toLowerCase()))
+      ?? nearExpiredServices[0]
+      ?? null;
+  }, [latestOperationalNotification, latestOperationalIsExpiring, myServices, nearExpiredServices]);
+  const latestOperationalVisual = latestOperationalNotification
+    ? getNotificationVisual(latestOperationalNotification, latestOperationalIsCritical)
+    : null;
+  const latestOperationalCountdownTarget = latestExpiringService?.renewsOn
+    ?? latestOperationalNotification?.data?.renewsOn
+    ?? latestOperationalNotification?.renewsOn
+    ?? latestOperationalNotification?.expiresAt
+    ?? latestOperationalNotification?.expires_at
+    ?? (latestOperationalIsExpiring ? latestOperationalNotification?.createdAt : null);
+  const latestOperationalCountdown = latestOperationalCountdownTarget
+    ? formatCountdownTimer(latestOperationalCountdownTarget)
+    : '';
   const bannerSvc = unpaidRepresentative ?? nearExpiredServices[0];
   const bannerHasPending = Boolean(
     bannerSvc && approvalPendingOrders.some((o) => (o.serviceId && String(o.serviceId) === String(bannerSvc.id)) || (o.serviceName && o.serviceName === bannerSvc.name)),
@@ -120,6 +249,80 @@ export default function CustomerDashboardPage() {
   const hasCancellationReason = cancellationReason.trim().length > 0;
   const totalPages = Math.max(1, Math.ceil(filteredServices.length / SERVICES_PER_PAGE));
   const paginatedServices = filteredServices.slice((currentPage - 1) * SERVICES_PER_PAGE, currentPage * SERVICES_PER_PAGE);
+
+  const getRecordTimestamp = (record) => {
+    const value = record?.createdAt ?? record?.date ?? record?.updatedAt ?? 0;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? 0 : time;
+  };
+
+  const alertPreviewItems = useMemo(
+    () => [...notifications].sort((left, right) => getRecordTimestamp(right) - getRecordTimestamp(left)).slice(0, 6),
+    [notifications],
+  );
+
+  const pendingApprovalPreviewOrders = useMemo(
+    () => [...approvalPendingOrders].sort((left, right) => getRecordTimestamp(right) - getRecordTimestamp(left)).slice(0, 6),
+    [approvalPendingOrders],
+  );
+
+  const approvedPreviewOrders = useMemo(
+    () => [...orders]
+      .filter((order) => order.statusKey === 'paid' || /approved|paid/i.test(String(order.status)))
+      .sort((left, right) => getRecordTimestamp(right) - getRecordTimestamp(left))
+      .slice(0, 6),
+    [orders],
+  );
+
+  const allPreviewOrders = useMemo(
+    () => [...orders].sort((left, right) => getRecordTimestamp(right) - getRecordTimestamp(left)).slice(0, 6),
+    [orders],
+  );
+
+  const openAlertsModal = () => setDashboardModal({ type: 'alerts' });
+  const openOrdersModal = (scope = 'all') => setDashboardModal({ type: 'orders', scope });
+  const closeDashboardModal = () => setDashboardModal(null);
+
+  const orderModalConfig = useMemo(() => {
+    if (dashboardModal?.type !== 'orders') {
+      return null;
+    }
+
+    if (dashboardModal.scope === 'pending') {
+      return {
+        title: 'Orders awaiting approval',
+        subtitle: 'Payments received and waiting for admin review.',
+        items: pendingApprovalPreviewOrders,
+      };
+    }
+
+    if (dashboardModal.scope === 'approved') {
+      return {
+        title: 'Recently approved orders',
+        subtitle: 'Orders that are already approved or marked paid.',
+        items: approvedPreviewOrders,
+      };
+    }
+
+    return {
+      title: 'Recent orders',
+      subtitle: 'Your latest order activity in the portal.',
+      items: allPreviewOrders,
+    };
+  }, [allPreviewOrders, approvedPreviewOrders, dashboardModal, pendingApprovalPreviewOrders]);
+
+  useEffect(() => {
+    if (!dashboardModal || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [dashboardModal]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -315,7 +518,7 @@ export default function CustomerDashboardPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <button type="button" onClick={() => navigate('/dashboard/orders')} className="btn-secondary px-4 py-2">View Orders</button>
+                  <button type="button" onClick={() => openOrdersModal('approved')} className="btn-secondary px-4 py-2">View Orders</button>
                   <button type="button" onClick={() => setDismissedBannerKey(currentBannerKey)} aria-label="Dismiss banner" className="ml-2 rounded px-3 py-2 text-slate-300 hover:text-white">×</button>
                 </div>
               </div>
@@ -324,23 +527,23 @@ export default function CustomerDashboardPage() {
             <div className="rounded-3xl border border-red-400/35 bg-red-400/10 px-4 py-4 shadow-sm shadow-red-900/10 alert-danger">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white">
-                    <AlertOctagon size={18} />
+                  <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500 text-white shadow-sm shadow-red-900/15">
+                    <CircleAlert size={18} strokeWidth={2.25} stroke="#ffffff" />
                   </div>
                   <div>
                     <p className="font-semibold text-red-300">Critical Action Required</p>
                     <p className="text-sm text-red-200">
                       {unpaidNamesFinal.length ? `${unpaidNamesFinal.length} service${unpaidNamesFinal.length > 1 ? 's are' : ' is'} currently unpaid.` : ''}
                       {unpaidNamesFinal.length && nearExpiredServices.length ? ' ' : ''}
-                      {nearExpiredServices.length ? `${nearExpiredServices.length} ${nearExpiredServices.length > 1 ? 'services are' : 'service is'} nearing renewal.` : ''}
-                      {' '}Please settle outstanding dues or renew near-expiring services to avoid service disruption.
+                      {nearExpiredServices.length ? `${nearExpiredServices.length} ${nearExpiredServices.length > 1 ? 'services are' : 'service is'} expiring soon.` : ''}
+                      {' '}Please settle outstanding dues or renew services that are expiring soon to avoid service disruption.
                     </p>
                     <div className="mt-1 text-sm text-red-100/90">
                       {unpaidNamesFinal.length ? (
                         <p className="truncate">Unpaid: {unpaidNamesFinal.slice(0,3).join(', ')}{unpaidNamesFinal.length > 3 ? ` +${unpaidNamesFinal.length - 3} more` : ''}</p>
                       ) : null}
                       {nearExpiredServices.length ? (
-                        <p className="truncate">Near expiry: {nearExpiredServices.map((s) => `${s.name} (${formatTimeRemaining(s.renewsOn)})`).slice(0,3).join(', ')}{nearExpiredServices.length > 3 ? ` +${nearExpiredServices.length - 3} more` : ''}</p>
+                        <p className="truncate">Expiring soon: {nearExpiredServices.map((s) => `${s.name} (${formatTimeRemaining(s.renewsOn)})`).slice(0,3).join(', ')}{nearExpiredServices.length > 3 ? ` +${nearExpiredServices.length - 3} more` : ''}</p>
                       ) : null}
                       {approvalPendingServicesFiltered.length ? (
                         <p className="truncate">Payment received (awaiting admin approval): {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}</p>
@@ -352,7 +555,7 @@ export default function CustomerDashboardPage() {
                     <div className="flex items-center gap-3">
                       <button type="button" onClick={() => setDismissedBannerKey(currentBannerKey)} aria-label="Dismiss banner" className="rounded px-3 py-2 text-slate-300 hover:text-white">×</button>
                       {bannerHasPending ? (
-                        <button type="button" onClick={() => navigate('/dashboard/orders')} className="btn-secondary px-4 py-2">
+                        <button type="button" onClick={() => openOrdersModal('pending')} className="btn-secondary px-4 py-2">
                           Payment pending approval
                         </button>
                       ) : (
@@ -424,26 +627,40 @@ export default function CustomerDashboardPage() {
                   </div>
                 </div>
                 <div>
-                  <button onClick={() => navigate('/dashboard/orders')} className="btn-secondary px-5 py-2">View Orders</button>
+                  <button type="button" onClick={() => openOrdersModal('approved')} className="btn-secondary px-5 py-2">View Orders</button>
                 </div>
               </div>
             </div>
           ) : null}
           {latestOperationalNotification ? (
-            <div className="rounded-3xl border border-amber-300/40 bg-amber-300/20 px-4 py-4 shadow-sm shadow-amber-900/10 alert-warning">
+            <div className={`rounded-3xl px-4 py-4 shadow-sm ${latestOperationalIsCritical ? 'border border-red-400/35 bg-red-400/10 shadow-red-900/10 alert-danger' : 'border border-amber-300/40 bg-amber-300/20 shadow-amber-900/10 alert-warning'}`}>
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-400 text-slate-950">
-                    {latestOperationalNotification.type === 'danger' ? <TriangleAlert size={18} /> : <BellRing size={18} />}
+                  <div className={`mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl ${latestOperationalVisual?.iconClassName ?? ''}`}>
+                    {latestOperationalVisual ? <latestOperationalVisual.Icon size={18} strokeWidth={latestOperationalVisual.strokeWidth} stroke={latestOperationalVisual.stroke} /> : null}
                   </div>
                   <div>
-                    <p className="font-semibold text-amber-100">{latestOperationalNotification.title}</p>
-                    <p className="text-sm text-amber-50/90">{latestOperationalNotification.message}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className={`font-semibold ${latestOperationalIsCritical ? 'text-red-200' : 'text-amber-100'}`}>{latestOperationalNotification.title}</p>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className={`text-sm ${latestOperationalIsCritical ? 'text-red-100/90' : 'text-amber-50/90'}`}>
+                        {latestOperationalNotification.message}
+                        {latestOperationalCountdown ? (
+                          <span className={`ml-2 font-medium ${latestOperationalIsCritical ? 'text-red-200' : 'text-amber-100'}`}>
+                            Time left:{' '}
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 shadow-sm ${latestOperationalIsCritical ? 'border-red-200/70 bg-white/85 text-red-700' : 'border-amber-200/70 bg-white/85 text-amber-700'}`}>
+                              {latestOperationalCountdown}
+                            </span>
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <Link to="/dashboard/notifications" className="btn-secondary whitespace-nowrap px-5 py-2">
+                <button type="button" onClick={openAlertsModal} className="btn-secondary whitespace-nowrap px-5 py-2">
                   View Alerts
-                </Link>
+                </button>
               </div>
             </div>
           ) : null}
@@ -452,15 +669,15 @@ export default function CustomerDashboardPage() {
             <div className="rounded-3xl border border-amber-300/40 bg-amber-300/10 px-4 py-4 shadow-sm shadow-amber-900/10">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-400 text-white">
-                    <BellRing size={18} />
+                  <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-400 text-slate-950">
+                    <CreditCard size={18} />
                   </div>
                   <div>
                     <p className="font-semibold text-amber-700">Payment pending admin approval</p>
                     <p className="text-sm text-amber-800">We received payment for {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}. Admin review is pending; provisioning will begin after approval.</p>
                   </div>
                 </div>
-                <Link to="/dashboard/orders" className="btn-secondary whitespace-nowrap px-5 py-2">View Orders</Link>
+                <button type="button" onClick={() => openOrdersModal('pending')} className="btn-secondary whitespace-nowrap px-5 py-2">View Orders</button>
               </div>
             </div>
           ) : null}
@@ -764,6 +981,123 @@ export default function CustomerDashboardPage() {
           compare packages, and reach checkout faster while deeper support modules are prepared for phase 2.
         </p>
       </div>
+
+      {dashboardModal?.type === 'alerts' && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Recent portal alerts"
+              onClick={closeDashboardModal}
+            >
+              <div className="panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden p-6" onClick={(event) => event.stopPropagation()}>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Alerts Preview</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-white">Recent portal alerts</h2>
+                      <p className="mt-2 text-sm text-slate-400">Review the latest notifications without leaving the dashboard.</p>
+                    </div>
+                    <button type="button" onClick={closeDashboardModal} className="btn-secondary px-4">Close</button>
+                  </div>
+
+                  <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-2">
+                    <div className="space-y-3">
+                      {alertPreviewItems.length ? alertPreviewItems.map((item) => {
+                        const visual = getNotificationVisual(item);
+
+                        return (
+                          <div key={item.id} className="panel-muted rounded-3xl p-4">
+                            <div className="flex gap-4">
+                              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${visual.iconClassName}`}>
+                                <visual.Icon size={18} strokeWidth={visual.strokeWidth} stroke={visual.stroke} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <p className="text-base font-semibold text-white">{item.title}</p>
+                                  {!item.isRead ? (
+                                    <span
+                                      className="inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                                      style={{
+                                        backgroundColor: 'rgba(62, 100, 255, 0.12)',
+                                        borderColor: 'rgba(62, 100, 255, 0.22)',
+                                        color: 'var(--accent)',
+                                      }}
+                                    >
+                                      New
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-2 text-sm text-slate-400">{item.message}</p>
+                                <p className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">{formatDateTime(item.createdAt)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }) : (
+                        <div className="panel-muted rounded-3xl p-6 text-sm text-slate-400">
+                          No alerts are available right now.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {dashboardModal?.type === 'orders' && orderModalConfig && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-label={orderModalConfig.title}
+              onClick={closeDashboardModal}
+            >
+              <div className="panel flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden p-6" onClick={(event) => event.stopPropagation()}>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Orders Preview</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-white">{orderModalConfig.title}</h2>
+                      <p className="mt-2 text-sm text-slate-400">{orderModalConfig.subtitle}</p>
+                    </div>
+                    <button type="button" onClick={closeDashboardModal} className="btn-secondary px-4">Close</button>
+                  </div>
+
+                  <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-2">
+                    <div className="space-y-3">
+                      {orderModalConfig.items.length ? orderModalConfig.items.map((order) => (
+                        <div key={order.id} className="panel-muted rounded-3xl p-4">
+                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Order {order.orderNumber ?? order.id}</p>
+                              <p className="mt-2 text-lg font-semibold text-white">{order.serviceName}</p>
+                              <p className="mt-2 text-sm text-slate-400">{order.paymentMethod} • {formatDateTime(order.date ?? order.createdAt)}</p>
+                            </div>
+                            <div className="flex flex-col items-start gap-3 md:items-end">
+                              <StatusBadge status={order.status} />
+                              <p className="text-lg font-semibold text-sky-300">{formatCurrency(order.amount)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="panel-muted rounded-3xl p-6 text-sm text-slate-400">
+                          No orders match this view yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button type="button" onClick={() => { closeDashboardModal(); navigate('/dashboard/orders'); }} className="btn-secondary px-4">Open Page</button>
+                  </div>
+                </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {selectedSchedule ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

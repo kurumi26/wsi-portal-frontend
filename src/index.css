@@ -758,13 +758,23 @@ body.theme-light table tbody tr {
 /* Light-mode alert overrides for better contrast */
 body.theme-light .alert-danger {
   background-color: rgba(254, 226, 226, 0.85) !important;
-  border-color: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.22) !important;
 }
 body.theme-light .alert-danger .text-red-300 {
-  color: #b91c1c !important;
+  color: #991b1b !important;
 }
-body.theme-light .alert-danger .text-red-200 {
-  color: #ef4444 !important;
+body.theme-light .alert-danger .text-red-200,
+body.theme-light .alert-danger .text-red-100,
+body.theme-light .alert-danger .text-red-100\/90 {
+  color: #7f1d1d !important;
+}
+body.theme-light .alert-danger svg,
+body.theme-light .alert-danger .icon {
+  color: #991b1b !important;
+  fill: #991b1b !important;
+}
+body.theme-light .alert-danger .bg-red-500 {
+  background-color: #ef4444 !important;
 }
 
 body.theme-light .alert-warning {

@@ -220,11 +220,11 @@ export function PortalProvider({ children }) {
                 if (t > 0 && t <= NEAR_EXPIRE_MS) {
                   synth.push({
                     id: `synth-expire-${svc.id}`,
-                    title: `${svc.name} renewal upcoming`,
-                    message: `${svc.name} will renew in ${timeRemaining(svc.renewsOn)}.`,
+                      title: `${svc.name} expiring soon`,
+                      message: `${svc.name} is expiring in ${timeRemaining(svc.renewsOn)}.`,
                     createdAt: svc.renewsOn || new Date().toISOString(),
                     isRead: false,
-                    type: 'warning',
+                    type: 'danger',
                     data: { serviceId: svc.id },
                     isLocal: true,
                   });
