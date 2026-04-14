@@ -1,4 +1,6 @@
-import { CheckCircle2, Plus } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CheckCircle2, ChevronDown, Plus } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
 
 const getLabel = (opt) => {
@@ -12,8 +14,117 @@ const getValue = (opt) => {
 };
 
 export default function ServiceCard({ service, configuration, addon, onConfigure, onAdd }) {
+  const [isAddonMenuOpen, setIsAddonMenuOpen] = useState(false);
+  const [addonMenuPosition, setAddonMenuPosition] = useState(null);
+  const addonMenuRef = useRef(null);
+  const addonTriggerRef = useRef(null);
   const selectedConfiguration = getValue(configuration);
-  const selectedAddon = getValue(addon);
+  const selectedAddons = Array.isArray(addon)
+    ? addon.map((item) => getValue(item)).filter(Boolean)
+    : addon
+      ? [getValue(addon)]
+      : [];
+
+  const selectedAddonSummary = useMemo(() => {
+    if (!selectedAddons.length) {
+      return 'Select one or more add-ons';
+    }
+
+    if (selectedAddons.length === 1) {
+      return selectedAddons[0];
+    }
+
+    return `${selectedAddons.length} add-ons selected`;
+  }, [selectedAddons]);
+
+  const addonOptions = service.addons || [];
+
+  const updateAddonMenuPosition = () => {
+    if (!addonTriggerRef.current || typeof window === 'undefined') {
+      return;
+    }
+
+    const rect = addonTriggerRef.current.getBoundingClientRect();
+    const viewportPadding = 12;
+    const menuWidth = Math.min(Math.max(rect.width, 280), window.innerWidth - viewportPadding * 2);
+    const left = Math.min(
+      Math.max(viewportPadding, rect.left),
+      window.innerWidth - menuWidth - viewportPadding,
+    );
+    const estimatedMenuHeight = Math.min(72 + addonOptions.length * 56, 320);
+    const shouldOpenUpward = rect.bottom + estimatedMenuHeight > window.innerHeight - viewportPadding && rect.top > estimatedMenuHeight;
+    const top = shouldOpenUpward
+      ? Math.max(viewportPadding, rect.top - estimatedMenuHeight - 8)
+      : Math.min(rect.bottom + 8, window.innerHeight - estimatedMenuHeight - viewportPadding);
+
+    setAddonMenuPosition({
+      position: 'fixed',
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${menuWidth}px`,
+      zIndex: 999,
+    });
+  };
+
+  useEffect(() => {
+    if (!isAddonMenuOpen) {
+      setAddonMenuPosition(null);
+      return undefined;
+    }
+
+    updateAddonMenuPosition();
+
+    const handlePointerDown = (event) => {
+      if (
+        addonMenuRef.current && addonMenuRef.current.contains(event.target)
+      ) {
+        return;
+      }
+
+      if (
+        addonTriggerRef.current && addonTriggerRef.current.contains(event.target)
+      ) {
+        return;
+      }
+
+      setIsAddonMenuOpen(false);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsAddonMenuOpen(false);
+      }
+    };
+
+    const handleViewportChange = () => {
+      updateAddonMenuPosition();
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [addonOptions.length, isAddonMenuOpen]);
+
+  const toggleAddonSelection = (optionValue) => {
+    const nextAddons = selectedAddons.includes(optionValue)
+      ? selectedAddons.filter((item) => item !== optionValue)
+      : [...selectedAddons, optionValue];
+
+    onConfigure(service.id, 'addon', nextAddons);
+  };
+
+  const clearAddonSelection = () => {
+    onConfigure(service.id, 'addon', []);
+  };
+
   return (
     <article className="panel flex h-full flex-col justify-between p-5">
       <div className="flex items-start justify-between gap-4">
@@ -53,15 +164,83 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
             </select>
           </label>
           <label className="text-xs uppercase tracking-[0.18em] text-slate-500">
-            Add-on
-              <select value={selectedAddon} onChange={(event) => onConfigure(service.id, 'addon', event.target.value)} className="input mt-2">
-                <option value="">None</option>
-                {(service.addons || []).map((option) => (
-                  <option key={getValue(option)} value={getValue(option)}>
-                    {getLabel(option)}
-                  </option>
-                ))}
-              </select>
+            Add-ons
+            {addonOptions.length ? (
+              <div className="mt-2">
+                <button
+                  ref={addonTriggerRef}
+                  type="button"
+                  onClick={() => setIsAddonMenuOpen((current) => !current)}
+                  className="input flex min-h-12 items-center justify-between gap-3 text-left"
+                  aria-haspopup="listbox"
+                  aria-expanded={isAddonMenuOpen}
+                >
+                  <span className={`block truncate text-sm normal-case tracking-normal ${selectedAddons.length ? 'text-slate-100' : 'text-slate-400'}`}>
+                    {selectedAddonSummary}
+                  </span>
+                  <ChevronDown size={16} className={`shrink-0 text-slate-400 transition ${isAddonMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isAddonMenuOpen && addonMenuPosition && typeof document !== 'undefined'
+                  ? createPortal(
+                      <div
+                        ref={addonMenuRef}
+                        style={addonMenuPosition}
+                        className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-slate-950/40"
+                      >
+                        <div className="flex items-center justify-between border-b border-white/8 px-3 py-2 text-[11px] normal-case tracking-normal text-slate-400">
+                          <span>Select one or more add-ons</span>
+                          {selectedAddons.length ? <span>{selectedAddons.length} selected</span> : null}
+                        </div>
+                        <div className="max-h-72 space-y-2 overflow-y-auto p-2">
+                          <label
+                            className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 transition ${selectedAddons.length === 0 ? 'border-sky-300/30 bg-sky-400/10' : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedAddons.length === 0}
+                              onChange={clearAddonSelection}
+                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900"
+                            />
+                            <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                              <span className="pr-2 text-sm normal-case tracking-normal text-slate-200">None</span>
+                            </div>
+                          </label>
+                          {addonOptions.map((option) => {
+                            const optionValue = getValue(option);
+                            const optionLabel = getLabel(option);
+                            const optionPrice = typeof option === 'object' && typeof option.price === 'number' ? option.price : null;
+                            const isChecked = selectedAddons.includes(optionValue);
+
+                            return (
+                              <label
+                                key={optionValue}
+                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 transition ${isChecked ? 'border-sky-300/30 bg-sky-400/10' : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleAddonSelection(optionValue)}
+                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900"
+                                />
+                                <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                                  <span className="pr-2 text-sm normal-case tracking-normal text-slate-200">{optionLabel}</span>
+                                  {optionPrice ? <span className="shrink-0 text-xs font-medium normal-case tracking-normal text-sky-200">{formatCurrency(optionPrice)}</span> : null}
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>,
+                      document.body,
+                    )
+                  : null}
+              </div>
+            ) : (
+              <div className="input mt-2 flex min-h-12 items-center text-sm normal-case tracking-normal text-slate-400">
+                No add-ons available
+              </div>
+            )}
           </label>
         </div>
       </div>

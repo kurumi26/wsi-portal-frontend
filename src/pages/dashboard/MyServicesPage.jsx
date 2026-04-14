@@ -8,6 +8,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import usePageTitle from '../../hooks/usePageTitle';
 import { formatDate } from '../../utils/format';
+import { getRenewalCountdownMeta, hasRenewalCountdown } from '../../utils/services';
 
 export default function MyServicesPage() {
   usePageTitle('My Services');
@@ -136,8 +137,12 @@ export default function MyServicesPage() {
       key: 'renewsOn',
       label: 'Renews On',
       sortable: true,
-      sortValue: (r) => new Date(r.renewsOn).getTime(),
-      render: (value) => formatDate(value),
+      sortValue: (r) => (hasRenewalCountdown(r) ? new Date(r.renewsOn).getTime() : null),
+      render: (value, row) => {
+        const renewalMeta = getRenewalCountdownMeta(row);
+
+        return renewalMeta.isInteractive ? formatDate(value) : renewalMeta.value;
+      },
     },
     {
       key: 'status',
@@ -196,8 +201,13 @@ export default function MyServicesPage() {
                           <p className="mt-1 text-white">{service.plan}</p>
                         </div>
                         <div>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Renews On</p>
-                          <p className="mt-1 text-white">{formatDate(service.renewsOn)}</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{getRenewalCountdownMeta(service).label}</p>
+                          <p className="mt-1 text-white">
+                            {getRenewalCountdownMeta(service).isInteractive ? formatDate(service.renewsOn) : getRenewalCountdownMeta(service).value}
+                          </p>
+                          {!getRenewalCountdownMeta(service).isInteractive ? (
+                            <p className="mt-1 text-xs text-slate-400">{getRenewalCountdownMeta(service).helper}</p>
+                          ) : null}
                         </div>
                         <div>
                           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Status</p>

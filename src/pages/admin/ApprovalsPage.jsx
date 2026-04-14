@@ -2,11 +2,550 @@ import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ShieldCheck, Eye, MessageSquare, LayoutGrid, List, CheckCircle2, XCircle, CircleOff, Percent, CreditCard, PencilLine } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
+import Pagination from '../../components/common/Pagination';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import { getCancellationReasonValue, getCustomerCommentValue, getDesiredDomainValue, isDomainOrder } from '../../utils/orders';
+import { getAdminServiceExpirationMeta } from '../../utils/services';
 import StatusBadge from '../../components/common/StatusBadge';
+
+const PURCHASE_LINE_ITEM_KEYS = ['orderItems', 'order_items', 'orderItem', 'order_item', 'lineItems', 'line_items', 'lineItem', 'line_item', 'cart', 'cartItems', 'cart_items', 'items', 'item'];
+const PURCHASE_ADDON_KEYS = ['selectedAddons', 'selected_addons', 'addons', 'add_ons', 'addon'];
+const SERVICE_SELECTED_ADDON_KEYS = ['selectedAddons', 'selected_addons', 'selectedAddon', 'selected_addon', 'chosenAddons', 'chosen_addons', 'purchasedAddons', 'purchased_addons', 'customerAddons', 'customer_addons', 'add_ons', 'addon'];
+
+const normalizeMatchText = (value) => String(value ?? '')
+  .trim()
+  .toLowerCase()
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ');
+
+const getPurchaseRecordTime = (record) => {
+  const rawValue = record?.date ?? record?.createdAt ?? record?.created_at ?? record?.updatedAt ?? record?.updated_at ?? 0;
+  const time = new Date(rawValue).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const buildAddonCatalogMap = (service) => {
+  const catalog = new Map();
+
+  (Array.isArray(service?.addons) ? service.addons : []).forEach((option) => {
+    if (option === null || option === undefined) {
+      return;
+    }
+
+    const label = typeof option === 'object'
+      ? String(option.label ?? option.name ?? '').trim()
+      : String(option).trim();
+
+    if (!label) {
+      return;
+    }
+
+    catalog.set(normalizeMatchText(label), {
+      label,
+      price: typeof option === 'object' && typeof option.price === 'number' ? Number(option.price) : null,
+    });
+  });
+
+  return catalog;
+};
+
+const buildAddonCatalogEntries = (service) => Array.from(buildAddonCatalogMap(service).values())
+  .filter((entry) => typeof entry?.price === 'number' && entry.price > 0);
+
+const normalizeAddonValue = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeAddonValue(entry));
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return [];
+    }
+
+    if (
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      || (trimmed.startsWith('{') && trimmed.endsWith('}'))
+    ) {
+      try {
+        return normalizeAddonValue(JSON.parse(trimmed));
+      } catch {
+        // Fall back to comma-separated parsing below.
+      }
+    }
+
+    return trimmed
+      .split(',')
+      .map((entry) => entry.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '').trim())
+      .filter(Boolean);
+  }
+
+  return [value];
+};
+
+const getAddonEntryLabel = (entry) => {
+  if (entry === null || entry === undefined) {
+    return '';
+  }
+
+  if (typeof entry !== 'object') {
+    return String(entry).trim();
+  }
+
+  const nestedAddon = entry.serviceAddon ?? entry.service_addon ?? entry.addonDetail ?? entry.addon_detail ?? null;
+  const label = entry.label
+    ?? entry.name
+    ?? entry.value
+    ?? entry.addon
+    ?? entry.addon_name
+    ?? entry.title
+    ?? nestedAddon?.label
+    ?? nestedAddon?.name
+    ?? nestedAddon?.title
+    ?? '';
+
+  return String(label).trim();
+};
+
+const getAddonEntryPrice = (entry, catalogMatch) => {
+  if (entry && typeof entry === 'object') {
+    const nestedAddon = entry.serviceAddon ?? entry.service_addon ?? entry.addonDetail ?? entry.addon_detail ?? null;
+    const rawPrice = entry.price
+      ?? entry.extra_price
+      ?? entry.extraPrice
+      ?? entry.amount
+      ?? nestedAddon?.price
+      ?? nestedAddon?.extra_price
+      ?? nestedAddon?.extraPrice;
+
+    if (rawPrice !== null && rawPrice !== undefined && rawPrice !== '' && !Number.isNaN(Number(rawPrice))) {
+      return Number(rawPrice);
+    }
+  }
+
+  return catalogMatch?.price ?? null;
+};
+
+const extractAddonEntriesFromRecord = (record, addonCatalog, addonKeys = PURCHASE_ADDON_KEYS) => {
+  if (!record || typeof record !== 'object') {
+    return [];
+  }
+
+  const seen = new Set();
+  const entries = [];
+
+  const pushEntry = (rawValue) => {
+    normalizeAddonValue(rawValue).forEach((entry) => {
+      if (entry === null || entry === undefined) {
+        return;
+      }
+
+      const label = getAddonEntryLabel(entry);
+
+      if (!label) {
+        return;
+      }
+
+      const key = normalizeMatchText(label);
+      if (seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+
+      const catalogMatch = addonCatalog.get(key);
+      entries.push({
+        label: catalogMatch?.label ?? label,
+        price: getAddonEntryPrice(entry, catalogMatch),
+      });
+    });
+  };
+
+  addonKeys.forEach((key) => pushEntry(record[key]));
+
+  return entries;
+};
+
+const mergeAddonEntries = (...entryLists) => {
+  const seen = new Set();
+
+  return entryLists
+    .flatMap((entries) => (Array.isArray(entries) ? entries : []))
+    .filter((entry) => {
+      const key = normalizeMatchText(entry?.label);
+
+      if (!key || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+};
+
+const getNumericValue = (...values) => {
+  const found = values.find((value) => value !== null && value !== undefined && value !== '' && !Number.isNaN(Number(value)));
+  return found === undefined ? null : Number(found);
+};
+
+const inferAddonEntriesFromTotal = (service, totalPaid, basePlanPrice = null) => {
+  if (totalPaid === null || totalPaid === undefined || Number.isNaN(Number(totalPaid))) {
+    return [];
+  }
+
+  const catalogEntries = buildAddonCatalogEntries(service);
+  if (!catalogEntries.length) {
+    return [];
+  }
+
+  const resolvedBasePlanPrice = getNumericValue(
+    basePlanPrice,
+    service?.basePrice,
+    service?.base_price,
+    service?.servicePrice,
+    service?.service_price,
+  );
+
+  if (resolvedBasePlanPrice === null) {
+    return [];
+  }
+
+  const addonBudget = Math.round((Number(totalPaid) - resolvedBasePlanPrice) * 100);
+  if (addonBudget <= 0) {
+    return [];
+  }
+
+  const pricedEntries = catalogEntries
+    .map((entry) => ({ ...entry, cents: Math.round(Number(entry.price) * 100) }))
+    .filter((entry) => entry.cents > 0)
+    .sort((left, right) => right.cents - left.cents);
+
+  let bestMatch = null;
+
+  const search = (startIndex, remainingBudget, chosenEntries) => {
+    if (remainingBudget === 0) {
+      bestMatch = [...chosenEntries];
+      return true;
+    }
+
+    for (let index = startIndex; index < pricedEntries.length; index += 1) {
+      const entry = pricedEntries[index];
+      if (entry.cents > remainingBudget) {
+        continue;
+      }
+
+      chosenEntries.push(entry);
+      if (search(index + 1, remainingBudget - entry.cents, chosenEntries)) {
+        return true;
+      }
+      chosenEntries.pop();
+    }
+
+    return false;
+  };
+
+  search(0, addonBudget, []);
+
+  return (bestMatch ?? []).map(({ label, price }) => ({ label, price }));
+};
+
+const collectPurchaseLineItems = (record) => {
+  if (!record || typeof record !== 'object') {
+    return [];
+  }
+
+  const queue = [record];
+  const seen = new Set();
+  const lineItems = [];
+
+  while (queue.length) {
+    const current = queue.shift();
+
+    if (!current || typeof current !== 'object' || seen.has(current)) {
+      continue;
+    }
+
+    seen.add(current);
+
+    PURCHASE_LINE_ITEM_KEYS.forEach((key) => {
+      const value = current[key];
+
+      if (Array.isArray(value)) {
+        value.forEach((entry) => {
+          if (entry && typeof entry === 'object') {
+            lineItems.push(entry);
+            queue.push(entry);
+          }
+        });
+        return;
+      }
+
+      if (value && typeof value === 'object') {
+        lineItems.push(value);
+        queue.push(value);
+      }
+    });
+  }
+
+  return lineItems;
+};
+
+const serviceMatchesPurchaseRecord = (service, record) => {
+  if (!record || typeof record !== 'object') {
+    return false;
+  }
+
+  const serviceOrderItemIds = [service?.orderItemId, service?.order_item_id]
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value));
+
+  const recordOrderItemIds = [record?.id, record?.orderItemId, record?.order_item_id, record?.itemId, record?.item_id]
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value));
+
+  if (serviceOrderItemIds.length && recordOrderItemIds.some((value) => serviceOrderItemIds.includes(value))) {
+    return true;
+  }
+
+  const serviceIds = [service?.id, service?.serviceId, service?.service_id]
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value));
+
+  const recordIds = ['serviceId', 'service_id', 'customerServiceId', 'customer_service_id']
+    .map((key) => record[key])
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value));
+
+  if (serviceIds.length && recordIds.some((value) => serviceIds.includes(value))) {
+    return true;
+  }
+
+  const serviceName = normalizeMatchText(service?.name ?? service?.serviceName);
+  const recordNames = [record?.serviceName, record?.service_name, record?.name, record?.service, record?.title]
+    .map((value) => normalizeMatchText(value))
+    .filter(Boolean);
+
+  if (Boolean(serviceName) && recordNames.some((value) => value === serviceName || value.includes(serviceName) || serviceName.includes(value))) {
+    return true;
+  }
+
+  const servicePlan = normalizeMatchText(service?.plan ?? service?.configuration);
+  const recordPlans = [record?.plan, record?.configuration, record?.config, record?.option]
+    .map((value) => normalizeMatchText(value))
+    .filter(Boolean);
+
+  return Boolean(servicePlan) && recordPlans.some((value) => value === servicePlan || value.includes(servicePlan) || servicePlan.includes(value));
+};
+
+const clientMatchesPurchase = (service, purchase) => {
+  const serviceClient = normalizeMatchText(service?.client);
+  const serviceEmail = normalizeMatchText(service?.clientEmail);
+  const purchaseClient = normalizeMatchText(purchase?.client ?? purchase?.customer ?? purchase?.clientName);
+  const purchaseEmail = normalizeMatchText(purchase?.clientEmail ?? purchase?.customerEmail ?? purchase?.email);
+
+  if (serviceEmail && purchaseEmail && serviceEmail === purchaseEmail) {
+    return true;
+  }
+
+  if (serviceClient && purchaseClient && serviceClient === purchaseClient) {
+    return true;
+  }
+
+  return !serviceClient && !serviceEmail;
+};
+
+const buildServicePurchaseDetails = (service, purchases) => {
+  const addonCatalog = buildAddonCatalogMap(service);
+  const serviceAddonEntries = mergeAddonEntries(
+    extractAddonEntriesFromRecord(service, addonCatalog, SERVICE_SELECTED_ADDON_KEYS),
+    ...collectPurchaseLineItems(service).map((lineItem) => extractAddonEntriesFromRecord(lineItem, addonCatalog)),
+  );
+
+  const matches = purchases
+    .map((purchase) => {
+      if (!clientMatchesPurchase(service, purchase)) {
+        return null;
+      }
+
+      const lineItems = collectPurchaseLineItems(purchase);
+      const lineItem = lineItems.find((entry) => serviceMatchesPurchaseRecord(service, entry)) ?? null;
+
+      if (!lineItem && !serviceMatchesPurchaseRecord(service, purchase)) {
+        return null;
+      }
+
+      const totalPaidCandidate = lineItem?.price ?? lineItem?.amount ?? purchase?.amount ?? purchase?.price ?? service?.totalPaid ?? service?.total_paid ?? service?.amount ?? service?.price ?? service?.basePrice ?? null;
+      const totalPaid = totalPaidCandidate !== null && totalPaidCandidate !== undefined && !Number.isNaN(Number(totalPaidCandidate))
+        ? Number(totalPaidCandidate)
+        : null;
+      const inferredAddonEntries = inferAddonEntriesFromTotal(
+        service,
+        totalPaid,
+        getNumericValue(
+          lineItem?.basePrice,
+          lineItem?.base_price,
+          lineItem?.servicePrice,
+          lineItem?.service_price,
+          service?.basePrice,
+          service?.base_price,
+        ),
+      );
+      const addonEntries = mergeAddonEntries(
+        extractAddonEntriesFromRecord(lineItem, addonCatalog),
+        extractAddonEntriesFromRecord(purchase, addonCatalog),
+        serviceAddonEntries,
+        inferredAddonEntries,
+      );
+      const addonTotal = addonEntries.reduce((sum, entry) => sum + (typeof entry.price === 'number' ? entry.price : 0), 0);
+      const basePlanPrice = totalPaid !== null && addonTotal > 0 && totalPaid >= addonTotal
+        ? totalPaid - addonTotal
+        : null;
+
+      return {
+        purchase,
+        lineItem,
+        addonEntries,
+        addonTotal,
+        basePlanPrice,
+        totalPaid,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => getPurchaseRecordTime(right.lineItem ?? right.purchase) - getPurchaseRecordTime(left.lineItem ?? left.purchase));
+
+  const fallbackTotalPaid = typeof service?.totalPaid === 'number'
+    ? Number(service.totalPaid)
+    : typeof service?.total_paid === 'number'
+      ? Number(service.total_paid)
+      : typeof service?.amount === 'number'
+        ? Number(service.amount)
+        : typeof service?.price === 'number'
+          ? Number(service.price)
+          : (typeof service?.basePrice === 'number' ? Number(service.basePrice) : null);
+  const fallbackAddonEntries = mergeAddonEntries(
+    serviceAddonEntries,
+    inferAddonEntriesFromTotal(service, fallbackTotalPaid, getNumericValue(service?.basePrice, service?.base_price)),
+  );
+  const fallbackAddonTotal = fallbackAddonEntries.reduce((sum, entry) => sum + (typeof entry.price === 'number' ? entry.price : 0), 0);
+  const fallbackBasePlanPrice = fallbackTotalPaid !== null && fallbackAddonTotal > 0 && fallbackTotalPaid >= fallbackAddonTotal
+    ? fallbackTotalPaid - fallbackAddonTotal
+    : null;
+
+  return matches[0] ?? {
+    purchase: null,
+    lineItem: null,
+    addonEntries: fallbackAddonEntries,
+    addonTotal: fallbackAddonTotal,
+    basePlanPrice: fallbackBasePlanPrice,
+    totalPaid: fallbackTotalPaid,
+  };
+};
+
+const getAddonSummaryLabel = (addonEntries) => {
+  if (!addonEntries.length) {
+    return 'No add-ons';
+  }
+
+  if (addonEntries.length === 1) {
+    return addonEntries[0].label;
+  }
+
+  return `${addonEntries[0].label} +${addonEntries.length - 1} more`;
+};
+
+const getAddonSummaryMeta = (addonEntries) => {
+  const entries = Array.isArray(addonEntries)
+    ? addonEntries.filter((entry) => Boolean(entry?.label))
+    : [];
+  const count = entries.length;
+
+  if (!count) {
+    return {
+      count: 0,
+      extraCount: 0,
+      hasAddons: false,
+      primaryLabel: 'No add-ons',
+      secondaryLabel: 'None selected',
+      tooltip: 'No add-ons selected',
+    };
+  }
+
+  return {
+    count,
+    extraCount: Math.max(count - 1, 0),
+    hasAddons: true,
+    primaryLabel: entries[0].label,
+    secondaryLabel: count === 1 ? '1 selected' : `${count} selected`,
+    tooltip: entries.map((entry) => entry.label).join(', '),
+  };
+};
+
+const getServiceSubtitle = (service) => {
+  const serviceNameKey = normalizeMatchText(service?.name);
+  const parts = [service?.category, service?.plan]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .filter((value, index, values) => {
+      const valueKey = normalizeMatchText(value);
+
+      if (!valueKey || valueKey === serviceNameKey) {
+        return false;
+      }
+
+      return values.findIndex((entry) => normalizeMatchText(entry) === valueKey) === index;
+    });
+
+  return parts.join(' · ');
+};
+
+const AddonSummaryButton = ({ addonEntries, onClick }) => {
+  const summaryMeta = getAddonSummaryMeta(addonEntries);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group inline-flex min-h-[44px] w-[164px] max-w-full items-center gap-2 rounded-2xl border px-2 py-1.5 text-left transition ${summaryMeta.hasAddons ? 'border-sky-300/20 bg-sky-400/10 hover:bg-sky-400/15' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+      title={summaryMeta.tooltip}
+      aria-label={`View add-on breakdown for ${summaryMeta.tooltip}`}
+    >
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border text-[11px] font-semibold ${summaryMeta.hasAddons ? 'border-sky-300/20 bg-sky-300/10 text-sky-200' : 'border-white/10 bg-white/5 text-slate-400'}`}>
+        {summaryMeta.count}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-[13px] font-semibold leading-5 ${summaryMeta.hasAddons ? 'text-white' : 'text-slate-200'}`}>
+          {summaryMeta.primaryLabel}
+        </span>
+        <span className="mt-0.5 block text-[9px] uppercase tracking-[0.18em] text-slate-500">
+          {summaryMeta.secondaryLabel}
+        </span>
+      </span>
+      {summaryMeta.extraCount > 0 ? (
+        <span className="shrink-0 rounded-full bg-sky-300/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-200">
+          +{summaryMeta.extraCount}
+        </span>
+      ) : null}
+    </button>
+  );
+};
+
+const ExpirationMetaCell = ({ expirationMeta }) => (
+  <div className="min-w-[150px]">
+    <p className={`text-sm font-medium ${expirationMeta.isExpired ? 'text-rose-300' : 'text-white'}`}>
+      {expirationMeta.value}
+    </p>
+    <p className={`mt-1 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>
+      {expirationMeta.helper}
+    </p>
+  </div>
+);
 
 export default function ApprovalsPage() {
   const { adminPurchases, approveAdminOrder, clients, adminServices, approveServiceCancellation, rejectServiceCancellation, updateServiceStatus, requestServiceCancellation } = usePortal();
@@ -31,6 +570,7 @@ export default function ApprovalsPage() {
   const [discountForm, setDiscountForm] = useState({ type: 'percentage', value: '', expiresOn: '' });
   const [showPricingLogsModal, setShowPricingLogsModal] = useState(false);
   const [pricingLogsService, setPricingLogsService] = useState(null);
+  const [selectedServiceBreakdown, setSelectedServiceBreakdown] = useState(null);
   const [selectedCancellationService, setSelectedCancellationService] = useState(null);
   const [cancellationReason, setCancellationReason] = useState('');
   const [isQueueingCancellation, setIsQueueingCancellation] = useState(false);
@@ -45,7 +585,7 @@ export default function ApprovalsPage() {
   const [servicesTableSort, setServicesTableSort] = useState({ key: 'service', direction: 'asc' });
   const [pendingTableSort, setPendingTableSort] = useState({ key: 'service', direction: 'asc' });
   const [servicesPage, setServicesPage] = useState(1);
-  const SERVICES_PER_PAGE = 6;
+  const SERVICES_PER_PAGE = 10;
 
 
   const eligibleClients = useMemo(
@@ -200,9 +740,23 @@ export default function ApprovalsPage() {
 
   const servicesTotalPages = Math.max(1, Math.ceil(sortedServicesForPanel.length / SERVICES_PER_PAGE));
 
+  const paginatedServicesForPanel = useMemo(() => {
+    const startIndex = (servicesPage - 1) * SERVICES_PER_PAGE;
+
+    return sortedServicesForPanel.slice(startIndex, startIndex + SERVICES_PER_PAGE);
+  }, [sortedServicesForPanel, servicesPage]);
+
   useEffect(() => {
     setServicesPage(1);
   }, [servicesSearchQuery, servicesStatusFilter, servicesViewMode, sortedServicesForPanel.length]);
+
+  const servicePurchaseDetailsById = useMemo(() => {
+    return new Map(
+      adminServices.map((service) => [String(service.id), buildServicePurchaseDetails(service, adminPurchases)]),
+    );
+  }, [adminPurchases, adminServices]);
+
+  const getServicePurchaseDetails = (service) => servicePurchaseDetailsById.get(String(service.id)) ?? buildServicePurchaseDetails(service, []);
 
   const filteredCombinedPending = useMemo(
     () => combinedPending.filter((row) => (typeFilter === 'all' ? true : row.type === typeFilter)),
@@ -309,6 +863,14 @@ export default function ApprovalsPage() {
   const closePricingLogs = () => {
     setShowPricingLogsModal(false);
     setPricingLogsService(null);
+  };
+
+  const openServiceBreakdownModal = (service) => {
+    setSelectedServiceBreakdown(service);
+  };
+
+  const closeServiceBreakdownModal = () => {
+    setSelectedServiceBreakdown(null);
   };
 
   const openCancellationModal = (service) => {
@@ -530,7 +1092,7 @@ export default function ApprovalsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
-                    {sortedServicesForPanel.length ? sortedServicesForPanel.map((service) => {
+                    {sortedServicesForPanel.length ? paginatedServicesForPanel.map((service) => {
                       const hasPendingCancellation = service.cancellationRequest?.statusKey === 'pending';
                       const canQueueCancellation = !hasPendingCancellation && service.status !== 'Expired';
 
@@ -538,7 +1100,7 @@ export default function ApprovalsPage() {
                         <tr key={service.id} className="table-row-hoverable">
                           <td className="px-5 py-4 align-top">
                             <p className="font-semibold text-white">{service.name}</p>
-                            <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
+                            {getServiceSubtitle(service) ? <p className="mt-1 text-sm text-slate-400">{getServiceSubtitle(service)}</p> : null}
                           </td>
                           <td className="px-5 py-4 align-top">
                             <p className="font-medium text-white">{service.client || 'No client assigned'}</p>
@@ -620,49 +1182,68 @@ export default function ApprovalsPage() {
               servicesViewMode === 'list' ? (
 
                 <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full divide-y divide-white/10 text-left">
+                  <table className="min-w-[1180px] divide-y divide-white/10 text-left">
                     <thead className="bg-white/5 text-sm text-slate-400">
                       <tr>
-                        <th className="px-5 py-4 font-semibold text-white">Service</th>
-                        <th className="px-5 py-4 font-semibold text-white">Client</th>
-                        <th className="px-5 py-4 font-semibold text-white">Base Price</th>
-                        <th className="px-5 py-4 font-semibold text-white">Add-ons</th>
-                        <th className="px-5 py-4 font-semibold text-white">Status</th>
-                        <th className="px-5 py-4 font-semibold text-white">Update Status</th>
-                        <th className="px-5 py-4 font-semibold text-white">Cancellation</th>
-                        <th className="px-5 py-4 font-semibold text-white">Actions</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Service</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Client</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Total Paid</th>
+                        <th className="w-[172px] min-w-[172px] px-4 py-4 font-semibold text-white whitespace-nowrap">Selected Add-ons</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Status</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Plan Expiry</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Update Status</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Cancellation</th>
+                        <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
-                      {sortedServicesForPanel.map((service) => (
+                      {paginatedServicesForPanel.map((service) => {
+                        const expirationMeta = getAdminServiceExpirationMeta(service);
+                        const purchaseDetails = getServicePurchaseDetails(service);
+
+                        return (
                         <tr key={`panel-${service.id}`} className="table-row-hoverable">
                           <td className="px-5 py-4 align-top">
                             <p className="font-semibold text-white">{service.name}</p>
-                            <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
+                            {getServiceSubtitle(service) ? <p className="mt-1 text-sm text-slate-400">{getServiceSubtitle(service)}</p> : null}
                           </td>
                           <td className="px-5 py-4 align-top">
                             <p className="font-medium text-white">{service.client || 'No client assigned'}</p>
                             {service.clientEmail ? <p className="mt-1 text-sm text-slate-400">{service.clientEmail}</p> : null}
                           </td>
-                          <td className="px-5 py-4 align-top">{typeof service.basePrice === 'number' ? <p className="font-semibold text-sky-300">{formatCurrency(service.basePrice)}</p> : <span className="text-sm text-slate-500">—</span>}</td>
-                          <td className="px-5 py-4 align-top">{service.addons?.length ? <span className="text-sm text-slate-300">{service.addons.length} add-ons</span> : <span className="text-sm text-slate-500">No add-ons</span>}</td>
-                          <td className="px-5 py-4 align-top"><StatusBadge status={service.status} /></td>
-                          <td className="px-5 py-4 align-top"><select className="input w-40" value={service.status} onChange={(e) => updateServiceStatus(service.id, e.target.value)}>{statuses.map((st) => <option key={st} value={st}>{st}</option>)}</select></td>
-                          <td className="px-5 py-4 align-top">{service.cancellationRequest ? <span className="text-sm text-orange-200">{service.cancellationRequest.status}</span> : <span className="text-sm text-slate-500">No request</span>}</td>
                           <td className="px-5 py-4 align-top">
-                            <div className="flex justify-end gap-2">
+                            {purchaseDetails.totalPaid !== null ? (
+                              <button type="button" onClick={() => openServiceBreakdownModal(service)} className="text-left transition hover:text-sky-200">
+                                <p className="font-semibold text-sky-300 whitespace-nowrap">{formatCurrency(purchaseDetails.totalPaid)}</p>
+                              </button>
+                            ) : <span className="text-sm text-slate-500">—</span>}
+                          </td>
+                          <td className="w-[172px] min-w-[172px] px-4 py-4 align-top">
+                            <AddonSummaryButton addonEntries={purchaseDetails.addonEntries} onClick={() => openServiceBreakdownModal(service)} />
+                          </td>
+                          <td className="px-5 py-4 align-top"><StatusBadge status={service.status} /></td>
+                          <td className="px-5 py-4 align-top">
+                            <ExpirationMetaCell expirationMeta={expirationMeta} />
+                          </td>
+                          <td className="px-5 py-4 align-top"><select className="input w-48 whitespace-nowrap" value={service.status} onChange={(e) => updateServiceStatus(service.id, e.target.value)}>{statuses.map((st) => <option key={st} value={st}>{st}</option>)}</select></td>
+                          <td className="px-5 py-4 align-top">{service.cancellationRequest ? <span className="text-sm text-orange-200 whitespace-nowrap">{service.cancellationRequest.status}</span> : <span className="text-sm text-slate-500 whitespace-nowrap">No request</span>}</td>
+                          <td className="px-5 py-4 align-top">
+                            <div className="flex justify-end gap-2 whitespace-nowrap">
                               <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100" title="View"><Eye size={16} /></button>
                               <button type="button" onClick={() => openCancellationModal(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 text-orange-100" title="Queue cancellation"><CircleOff size={16} /></button>
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                 </div>
               ) : (
                 <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {sortedServicesForPanel.map((service) => (
+                  {paginatedServicesForPanel.map((service) => {
+                    const purchaseDetails = getServicePurchaseDetails(service);
+
+                    return (
                     <div key={`card-${service.id}`} className="panel p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div>
@@ -673,8 +1254,8 @@ export default function ApprovalsPage() {
                       </div>
 
                       <div className="mt-4">
-                        <p className="text-sm text-slate-400">{service.addons?.length ? `${service.addons.length} add-ons` : 'No add-ons'}</p>
-                        <p className="mt-2 text-xs text-slate-500">{typeof service.basePrice === 'number' ? formatCurrency(service.basePrice) : '—'}</p>
+                        <button type="button" onClick={() => openServiceBreakdownModal(service)} className="text-sm text-slate-400 transition hover:text-slate-200">{getAddonSummaryLabel(purchaseDetails.addonEntries)}</button>
+                        <button type="button" onClick={() => openServiceBreakdownModal(service)} className="mt-2 block text-xs text-sky-300 transition hover:text-sky-200">{purchaseDetails.totalPaid !== null ? formatCurrency(purchaseDetails.totalPaid) : '—'}</button>
                       </div>
 
                       <div className="mt-4 flex justify-end gap-2">
@@ -682,7 +1263,7 @@ export default function ApprovalsPage() {
                         <button type="button" onClick={() => openCancellationModal(service)} className="btn-secondary border-orange-400/20 bg-orange-400/10 px-3 text-orange-100"><CircleOff size={16} /></button>
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )
             ) : (
@@ -692,7 +1273,7 @@ export default function ApprovalsPage() {
         ) : (
           viewMode === 'list' ? (
             <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-white/10 text-left">
+            <table className="min-w-[1320px] divide-y divide-white/10 text-left">
                 <thead className="bg-white/5 text-sm text-slate-400">
                   <tr>
                     <th className="px-5 py-4 font-semibold text-white">
@@ -896,60 +1477,60 @@ export default function ApprovalsPage() {
                   </th>
                   <th className="px-5 py-4 font-semibold text-white">
                     <button type="button" onClick={() => handleServicesTableSort('price')} className="inline-flex items-center gap-1 hover:text-sky-200">
-                      <span>Base Price</span>
+                      <span>Total Paid</span>
                       {renderServicesSortIndicator('price')}
                     </button>
                   </th>
-                  <th className="px-5 py-4 font-semibold text-white">Add-ons</th>
+                  <th className="w-[172px] min-w-[172px] px-4 py-4 font-semibold text-white whitespace-nowrap">Selected Add-ons</th>
                   <th className="px-5 py-4 font-semibold text-white">
                     <button type="button" onClick={() => handleServicesTableSort('status')} className="inline-flex items-center gap-1 hover:text-sky-200">
                       <span>Status</span>
                       {renderServicesSortIndicator('status')}
                     </button>
                   </th>
-                  <th className="px-5 py-4 font-semibold text-white">Update Status</th>
-                  <th className="px-5 py-4 font-semibold text-white">Cancellation</th>
-                  <th className="px-5 py-4 font-semibold text-white">Actions</th>
+                  <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Plan Expiry</th>
+                  <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Update Status</th>
+                  <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Cancellation</th>
+                  <th className="px-5 py-4 font-semibold text-white whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
-                {sortedServicesForPanel.length ? sortedServicesForPanel.map((service) => {
+                {sortedServicesForPanel.length ? paginatedServicesForPanel.map((service) => {
                   const hasPendingCancellation = service.cancellationRequest?.statusKey === 'pending';
                   const canQueueCancellation = !hasPendingCancellation && service.status !== 'Expired';
+                  const expirationMeta = getAdminServiceExpirationMeta(service);
+                  const purchaseDetails = getServicePurchaseDetails(service);
                   return (
                     <tr key={`svc-${service.id}`} className="table-row-hoverable">
                       <td className="px-5 py-4 align-top">
                         <p className="font-semibold text-white">{service.name}</p>
-                        <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
+                        {getServiceSubtitle(service) ? <p className="mt-1 text-sm text-slate-400">{getServiceSubtitle(service)}</p> : null}
                       </td>
                       <td className="px-5 py-4 align-top">
                         <p className="font-medium text-white">{service.client || 'John Doe'}</p>
                         {service.clientEmail ? <p className="mt-1 text-sm text-slate-400">{service.clientEmail}</p> : null}
                       </td>
                       <td className="px-5 py-4 align-top">
-                        {typeof service.basePrice === 'number' ? (
-                          <div>
-                            <p className="font-semibold text-sky-300">{formatCurrency(service.basePrice)}</p>
+                        {purchaseDetails.totalPaid !== null ? (
+                          <button type="button" onClick={() => openServiceBreakdownModal(service)} className="text-left transition hover:text-sky-200">
+                            <p className="font-semibold text-sky-300 whitespace-nowrap">{formatCurrency(purchaseDetails.totalPaid)}</p>
                             <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">{service.billing ?? '—'}</p>
-                          </div>
+                          </button>
                         ) : (
                           <span className="text-sm text-slate-500">—</span>
                         )}
                       </td>
-                      <td className="px-5 py-4 align-top">
-                        {service.addons?.length ? (
-                          <div className="inline-flex items-center gap-2">
-                            <button className="inline-flex items-center rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{service.addons.length} add-ons</button>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-slate-500">No add-ons</span>
-                        )}
+                      <td className="w-[172px] min-w-[172px] px-4 py-4 align-top">
+                        <AddonSummaryButton addonEntries={purchaseDetails.addonEntries} onClick={() => openServiceBreakdownModal(service)} />
                       </td>
                       <td className="px-5 py-4 align-top">
                         <StatusBadge status={service.status} />
                       </td>
                       <td className="px-5 py-4 align-top">
-                        <select className="input w-40" value={service.status} onChange={(event) => updateServiceStatus(service.id, event.target.value)}>
+                        <ExpirationMetaCell expirationMeta={expirationMeta} />
+                      </td>
+                      <td className="px-5 py-4 align-top">
+                        <select className="input w-48 whitespace-nowrap" value={service.status} onChange={(event) => updateServiceStatus(service.id, event.target.value)}>
                           {statuses.map((status) => (
                             <option key={status} value={status}>{status}</option>
                           ))}
@@ -958,14 +1539,14 @@ export default function ApprovalsPage() {
                       <td className="px-5 py-4 align-top">
                         {service.cancellationRequest ? (
                           <div>
-                            <span className="text-sm text-orange-200">{service.cancellationRequest.status}</span>
+                            <span className="text-sm text-orange-200 whitespace-nowrap">{service.cancellationRequest.status}</span>
                           </div>
                         ) : (
-                          <span className="text-sm text-slate-500">No request</span>
+                          <span className="text-sm text-slate-500 whitespace-nowrap">No request</span>
                         )}
                       </td>
                       <td className="px-5 py-4 align-top">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 whitespace-nowrap">
                           <button type="button" onClick={() => openDiscountModal(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-emerald-600/10 text-emerald-100 transition hover:bg-emerald-600/20" title="Apply discount" aria-label={`Apply discount to ${service.name}`}><Percent size={16} /></button>
                           <button type="button" onClick={() => openPricingLogs(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="Pricing logs" aria-label={`Pricing logs for ${service.name}`}><CheckCircle2 size={16} /></button>
                           <button type="button" onClick={() => handleViewClientFromService(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="View client profile" aria-label={`View client profile for ${service.name}`}><Eye size={16} /></button>
@@ -980,7 +1561,7 @@ export default function ApprovalsPage() {
                   );
                 }) : (
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-slate-400">No services available.</td>
+                    <td colSpan={9} className="px-5 py-12 text-center text-slate-400">No services available.</td>
                   </tr>
                 )}
               </tbody>
@@ -988,21 +1569,32 @@ export default function ApprovalsPage() {
           </div>
         ) : (
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {sortedServicesForPanel.length ? sortedServicesForPanel.map((service) => {
+            {sortedServicesForPanel.length ? paginatedServicesForPanel.map((service) => {
               const hasPendingCancellation = service.cancellationRequest?.statusKey === 'pending';
               const canQueueCancellation = !hasPendingCancellation && service.status !== 'Expired';
+              const expirationMeta = getAdminServiceExpirationMeta(service);
+              const purchaseDetails = getServicePurchaseDetails(service);
               return (
                 <div key={`svc-card-${service.id}`} className="panel p-5 flex flex-col justify-between">
                   <div>
                     <p className="text-lg font-medium text-white">{service.name}</p>
-                    <p className="mt-1 text-sm text-slate-400">{service.category} · {service.plan}</p>
+                    {getServiceSubtitle(service) ? <p className="mt-1 text-sm text-slate-400">{getServiceSubtitle(service)}</p> : null}
                     <p className="mt-2 text-xs text-slate-500">{service.client || 'John Doe'}</p>
                     {service.clientEmail && <p className="text-xs text-slate-500">{service.clientEmail}</p>}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 items-center">
                     <StatusBadge status={service.status} />
-                    <span className="text-xs text-slate-400">{typeof service.basePrice === 'number' ? formatCurrency(service.basePrice) : '—'}</span>
-                    {service.addons?.length ? <span className="text-xs text-slate-400">{service.addons.length} add-ons</span> : <span className="text-xs text-slate-500">No add-ons</span>}
+                    <button type="button" onClick={() => openServiceBreakdownModal(service)} className="text-xs text-sky-300 transition hover:text-sky-200">
+                      {purchaseDetails.totalPaid !== null ? formatCurrency(purchaseDetails.totalPaid) : '—'}
+                    </button>
+                    <button type="button" onClick={() => openServiceBreakdownModal(service)} className="text-xs text-slate-400 transition hover:text-slate-200">
+                      {getAddonSummaryLabel(purchaseDetails.addonEntries)}
+                    </button>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{expirationMeta.label}</p>
+                    <p className="mt-2 text-sm font-medium text-white">{expirationMeta.value}</p>
+                    <p className={`mt-1 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>{expirationMeta.helper}</p>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2 justify-end">
                     <button type="button" onClick={() => openDiscountModal(service)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-emerald-600/10 text-emerald-100 transition hover:bg-emerald-600/20" title="Apply discount" aria-label={`Apply discount to ${service.name}`}><Percent size={16} /></button>
@@ -1021,6 +1613,7 @@ export default function ApprovalsPage() {
             )}
           </div>
         )}
+        <Pagination currentPage={servicesPage} totalPages={servicesTotalPages} onPageChange={setServicesPage} />
       </div>
 
       {showDiscountModal && discountTargetService ? (
@@ -1106,6 +1699,85 @@ export default function ApprovalsPage() {
           </div>
         </div>
       ) : null}
+
+      {selectedServiceBreakdown ? (() => {
+        const breakdownDetails = getServicePurchaseDetails(selectedServiceBreakdown);
+        const expirationMeta = getAdminServiceExpirationMeta(selectedServiceBreakdown);
+        const purchaseRecord = breakdownDetails.lineItem ?? breakdownDetails.purchase;
+
+        return (
+          <div className="fixed inset-0 z-[10002] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" onClick={closeServiceBreakdownModal}>
+            <div className="panel max-h-[88vh] w-full max-w-3xl overflow-hidden p-6" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Client Service Details</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">{selectedServiceBreakdown.name}</h2>
+                  <p className="mt-2 text-sm text-slate-400">{selectedServiceBreakdown.client || selectedServiceBreakdown.clientEmail || 'No client assigned'} • {selectedServiceBreakdown.category} • {selectedServiceBreakdown.plan}</p>
+                  {purchaseRecord ? <p className="mt-1 text-xs text-slate-500">Recorded {formatDateTime(purchaseRecord.date ?? purchaseRecord.createdAt ?? purchaseRecord.updatedAt)}</p> : null}
+                </div>
+                <button type="button" onClick={closeServiceBreakdownModal} className="btn-secondary px-4">Close</button>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <div className="panel-muted rounded-3xl p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer Paid Total</p>
+                  <p className="mt-2 text-xl font-semibold text-sky-300">{breakdownDetails.totalPaid !== null ? formatCurrency(breakdownDetails.totalPaid) : '—'}</p>
+                  <p className="mt-2 text-xs text-slate-500">{selectedServiceBreakdown.billing ?? 'Billing cycle not set'}</p>
+                </div>
+                <div className="panel-muted rounded-3xl p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Plan Expiry Countdown</p>
+                  <p className={`mt-2 text-xl font-semibold ${expirationMeta.isExpired ? 'text-rose-300' : 'text-white'}`}>{expirationMeta.value}</p>
+                  <p className={`mt-2 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>{expirationMeta.helper}</p>
+                </div>
+                <div className="panel-muted rounded-3xl p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected Add-ons</p>
+                  <p className="mt-2 text-xl font-semibold text-white">{breakdownDetails.addonEntries.length}</p>
+                  <p className="mt-2 text-xs text-slate-500">{getAddonSummaryLabel(breakdownDetails.addonEntries)}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-[0.95fr_1.05fr]">
+                <div className="panel-muted rounded-3xl p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pricing Summary</p>
+                  <div className="mt-4 space-y-3 text-sm text-slate-300">
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Base plan</span>
+                      <span className="font-medium text-white">{breakdownDetails.basePlanPrice !== null ? formatCurrency(breakdownDetails.basePlanPrice) : '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Add-ons total</span>
+                      <span className="font-medium text-white">{breakdownDetails.addonEntries.length ? formatCurrency(breakdownDetails.addonTotal) : formatCurrency(0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-3">
+                      <span className="font-semibold text-white">Customer paid</span>
+                      <span className="font-semibold text-sky-300">{breakdownDetails.totalPaid !== null ? formatCurrency(breakdownDetails.totalPaid) : '—'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="panel-muted rounded-3xl p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected Add-ons</p>
+                  <div className="mt-4 space-y-3">
+                    {breakdownDetails.addonEntries.length ? breakdownDetails.addonEntries.map((addonEntry) => (
+                      <div key={`${selectedServiceBreakdown.id}-${addonEntry.label}`} className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-medium text-white">{addonEntry.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">Included in the customer order</p>
+                        </div>
+                        <p className="text-sm font-semibold text-sky-300">{typeof addonEntry.price === 'number' ? formatCurrency(addonEntry.price) : '—'}</p>
+                      </div>
+                    )) : (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">
+                        No selected add-ons were recorded for this service.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {selectedCancellationService ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -1212,20 +1884,36 @@ export default function ApprovalsPage() {
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      {relatedServices.length ? relatedServices.map((service) => (
-                        <div key={service.id} className="panel-muted rounded-3xl p-4">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                              <p className="font-medium text-white">{service.name}</p>
-                              <p className="mt-1 text-sm text-slate-400">{service.category} • {service.plan}</p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                              <StatusBadge status={service.status} />
-                              <span className="text-xs text-slate-500">Renews {formatDate(service.renewsOn)}</span>
+                      {relatedServices.length ? relatedServices.map((service) => {
+                        const expirationMeta = getAdminServiceExpirationMeta(service);
+                        const purchaseDetails = getServicePurchaseDetails(service);
+
+                        return (
+                          <div key={service.id} className="panel-muted rounded-3xl p-4">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <p className="font-medium text-white">{service.name}</p>
+                                <p className="mt-1 text-sm text-slate-400">{service.category} • {service.plan}</p>
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                                  <button type="button" onClick={() => openServiceBreakdownModal(service)} className="text-sky-300 transition hover:text-sky-200">
+                                    Total paid: {purchaseDetails.totalPaid !== null ? formatCurrency(purchaseDetails.totalPaid) : '—'}
+                                  </button>
+                                  <button type="button" onClick={() => openServiceBreakdownModal(service)} className="transition hover:text-slate-200">
+                                    Add-ons: {getAddonSummaryLabel(purchaseDetails.addonEntries)}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3 md:justify-end">
+                                <StatusBadge status={service.status} />
+                                <div className="text-left md:text-right">
+                                  <p className="text-xs text-slate-500">{expirationMeta.value}</p>
+                                  <p className={`mt-1 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>{expirationMeta.helper}</p>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )) : (
+                        );
+                      }) : (
                         <div className="panel-muted rounded-3xl p-4 text-sm text-slate-400">No services are currently linked to this client.</div>
                       )}
                     </div>

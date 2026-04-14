@@ -1,18 +1,47 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import ServiceCard from '../../components/common/ServiceCard';
 import { usePortal } from '../../context/PortalContext';
+
+const getDefaultSelection = (service) => ({
+  configuration: service.configurations[0] ?? '',
+  addon: [],
+});
 
 export default function ServicesPage() {
   const navigate = useNavigate();
   const { services, addToCart } = usePortal();
   const [selections, setSelections] = useState(() =>
     Object.fromEntries(
-      services.map((service) => [service.id, { configuration: service.configurations[0] ?? '', addon: '' }]),
+      services.map((service) => [service.id, getDefaultSelection(service)]),
     ),
   );
   const [category, setCategory] = useState('All');
+
+  useEffect(() => {
+    setSelections((current) => {
+      const next = { ...current };
+
+      services.forEach((service) => {
+        if (!next[service.id]) {
+          next[service.id] = getDefaultSelection(service);
+          return;
+        }
+
+        next[service.id] = {
+          configuration: next[service.id].configuration ?? service.configurations[0] ?? '',
+          addon: Array.isArray(next[service.id].addon)
+            ? next[service.id].addon
+            : next[service.id].addon
+              ? [next[service.id].addon]
+              : [],
+        };
+      });
+
+      return next;
+    });
+  }, [services]);
 
   const categories = useMemo(() => ['All', ...new Set(services.map((service) => service.category))], [services]);
   const filteredServices = useMemo(
@@ -24,14 +53,14 @@ export default function ServicesPage() {
     setSelections((current) => ({
       ...current,
       [serviceId]: {
-        ...current[serviceId],
+        ...(current[serviceId] ?? { configuration: '', addon: [] }),
         [field]: value,
       },
     }));
   };
 
   const handleAdd = (service) => {
-    const selection = selections[service.id];
+    const selection = selections[service.id] ?? getDefaultSelection(service);
     addToCart(service, selection.configuration, selection.addon);
     navigate('/checkout');
   };
@@ -64,7 +93,7 @@ export default function ServicesPage() {
             key={service.id}
             service={service}
             configuration={selections[service.id]?.configuration ?? (service.configurations[0] ?? '')}
-            addon={selections[service.id]?.addon ?? ''}
+            addon={selections[service.id]?.addon ?? []}
             onConfigure={handleConfigure}
             onAdd={handleAdd}
           />

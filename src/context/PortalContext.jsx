@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
+import { hasRenewalCountdown } from '../utils/services';
 
 const PortalContext = createContext(null);
 
@@ -215,7 +216,7 @@ export function PortalProvider({ children }) {
 
           (normalizeServiceCancellationRecords(serviceData) || []).forEach((svc) => {
             try {
-              if (svc.renewsOn) {
+              if (hasRenewalCountdown(svc)) {
                 const t = new Date(svc.renewsOn).getTime() - now;
                 if (t > 0 && t <= NEAR_EXPIRE_MS) {
                   synth.push({
@@ -421,7 +422,13 @@ export function PortalProvider({ children }) {
       return total;
     };
 
-    const addonTotal = computeAddonTotal(addon);
+    const normalizedAddon = Array.isArray(addon)
+      ? addon.filter((item) => item !== null && item !== undefined && String(item).trim() !== '')
+      : addon
+        ? [addon]
+        : [];
+
+    const addonTotal = computeAddonTotal(normalizedAddon);
     const configTotal = computeConfigPrice(configuration);
     const basePrice = typeof service.price === 'number' ? Number(service.price) : Number(service.price || 0);
     const linePrice = Number(basePrice) + Number(addonTotal || 0) + Number(configTotal || 0);
@@ -434,7 +441,7 @@ export function PortalProvider({ children }) {
       price: linePrice,
       billing: service.billing,
       configuration,
-      addon,
+      addon: normalizedAddon,
       desiredDomain: '',
     };
 
@@ -466,18 +473,29 @@ export function PortalProvider({ children }) {
     const sanitizedCart = cart.map((item) => {
       const normalize = (v) => {
         if (v === null || v === undefined) return null;
+        if (Array.isArray(v)) {
+          return v.map((entry) => normalize(entry)).filter(Boolean);
+        }
         if (typeof v === 'object') return v.label ?? v.name ?? String(v);
         return String(v);
       };
 
       const customerNote = requiresDesiredDomain(item) ? getDesiredDomainValue(item) : '';
+      const normalizedAddons = normalize(item.addon);
+      const addonList = Array.isArray(normalizedAddons)
+        ? normalizedAddons
+        : normalizedAddons
+          ? [normalizedAddons]
+          : [];
 
       return {
         serviceId: Number(item.serviceId),
         serviceName: String(item.serviceName),
         category: String(item.category),
         configuration: normalize(item.configuration),
-        addon: normalize(item.addon),
+        addon: addonList.join(', '),
+        addons: addonList,
+        add_ons: addonList,
         price: Number(item.price),
         ...(customerNote ? {
           customerNote,

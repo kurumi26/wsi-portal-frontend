@@ -8,6 +8,7 @@ import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDateTime } from '../../utils/format';
+import { getRenewalCountdownMeta, hasRenewalCountdown } from '../../utils/services';
 
 const SERVICES_PER_PAGE = 6;
 
@@ -42,7 +43,7 @@ export default function CustomerDashboardPage() {
   const [statusMenuStyle, setStatusMenuStyle] = useState(null);
 
   useEffect(() => {
-    if (!myServices.some((service) => service.renewsOn)) {
+    if (!myServices.some((service) => hasRenewalCountdown(service))) {
       return undefined;
     }
 
@@ -124,7 +125,7 @@ export default function CustomerDashboardPage() {
   const nearExpiredServices = useMemo(
     () => myServices
       .filter((service) => {
-        if (!service.renewsOn) return false;
+        if (!hasRenewalCountdown(service)) return false;
         const t = new Date(service.renewsOn).getTime() - now;
         return t > 0 && t <= NEAR_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
       })
@@ -767,20 +768,38 @@ export default function CustomerDashboardPage() {
                 </div>
                 <div className={`flex ${layoutMode === 'grid' ? 'items-end justify-between' : 'items-center gap-4'}`}>
                   <div className={`text-sm text-slate-400 ${layoutMode === 'grid' ? '' : 'text-right'}`}>
-                    <p>Renews</p>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSchedule({
-                        title: service.name,
-                        subtitle: `${service.category} • ${service.plan}`,
-                        label: 'Renewal Schedule',
-                        value: service.renewsOn,
-                      })}
-                      className="mt-1 text-left text-white underline decoration-sky-400/40 underline-offset-4 transition hover:text-sky-200"
-                    >
-                      {formatDateTime(service.renewsOn)}
-                    </button>
-                    <div className="text-xs text-slate-400 mt-1">{formatTimeRemaining(service.renewsOn)}</div>
+                    {(() => {
+                      const renewalMeta = getRenewalCountdownMeta(service);
+
+                      if (renewalMeta.isInteractive) {
+                        return (
+                          <>
+                            <p>{renewalMeta.label}</p>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSchedule({
+                                title: service.name,
+                                subtitle: `${service.category} • ${service.plan}`,
+                                label: 'Renewal Schedule',
+                                value: renewalMeta.value,
+                              })}
+                              className="mt-1 text-left text-white underline decoration-sky-400/40 underline-offset-4 transition hover:text-sky-200"
+                            >
+                              {formatDateTime(renewalMeta.value)}
+                            </button>
+                            <div className="mt-1 text-xs text-slate-400">{formatTimeRemaining(renewalMeta.value)}</div>
+                          </>
+                        );
+                      }
+
+                      return (
+                        <>
+                          <p>{renewalMeta.label}</p>
+                          <p className="mt-1 text-white">{renewalMeta.value}</p>
+                          <div className="mt-1 text-xs text-slate-400">{renewalMeta.helper}</div>
+                        </>
+                      );
+                    })()}
                   </div>
                   <StatusBadge status={service.status} />
                 </div>
