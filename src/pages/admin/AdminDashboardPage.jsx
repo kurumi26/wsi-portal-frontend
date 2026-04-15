@@ -1,16 +1,28 @@
 import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutGrid, List } from 'lucide-react';
+import { CircleAlert, LayoutGrid, List, ReceiptText } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDateTime } from '../../utils/format';
+import { extractAddonEntries, getAddonBillingCycleLabel, getAddonExpirationMeta, matchCatalogService } from '../../utils/addons';
+import { formatRenewalCountdownTimer, getServiceDisplayStatus } from '../../utils/services';
+
+const PENDING_ORDER_STATUSES = new Set(['pending', 'pending review', 'pending approval']);
+
+const normalizeDashboardText = (value) => String(value ?? '')
+  .trim()
+  .toLowerCase()
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ');
 
 export default function AdminDashboardPage() {
-  const { stats, clients, adminServices, adminPurchases } = usePortal();
+  const { stats, clients, adminServices, adminPurchases, services } = usePortal();
   const [selectedTimeline, setSelectedTimeline] = useState(null);
   const [selectedStatCard, setSelectedStatCard] = useState(null);
+  const [attentionNow, setAttentionNow] = useState(() => Date.now());
   const [provPage, setProvPage] = useState(1);
   const [clientsView, setClientsView] = useState('grid');
   const [provView, setProvView] = useState('grid');
@@ -28,6 +40,18 @@ export default function AdminDashboardPage() {
   const provisioningList = adminServices.filter((service) => service.status === 'Undergoing Provisioning');
   const provPerPage = 2;
   const provTotalPages = Math.max(1, Math.ceil(provisioningList.length / provPerPage));
+
+  useEffect(() => {
+    if (!adminServices.some((service) => service?.renewsOn)) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(() => {
+      setAttentionNow(Date.now());
+    }, 60 * 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [adminServices]);
 
   useEffect(() => {
     if (provPage > provTotalPages) setProvPage(provTotalPages);
@@ -65,6 +89,66 @@ export default function AdminDashboardPage() {
     };
   }, [selectedStatCard]);
 
+  const serviceAddonEntriesById = useMemo(() => {
+    return new Map(
+      adminServices.map((service) => {
+        const catalogService = matchCatalogService(service, services);
+
+        return [
+          String(service.id),
+          extractAddonEntries(service, {
+            catalogService,
+            fallbackToAddonsKey: true,
+          }),
+        ];
+      }),
+    );
+  }, [adminServices, services]);
+
+  const getServiceAddonEntries = (service) => serviceAddonEntriesById.get(String(service?.id)) ?? [];
+
+  const getServiceAddonSummary = (service) => {
+    const addonEntries = getServiceAddonEntries(service);
+
+    if (!addonEntries.length) {
+      return 'No add-ons';
+    }
+
+    const preview = addonEntries
+      .slice(0, 2)
+      .map((addonEntry) => `${addonEntry.label} (${getAddonBillingCycleLabel(addonEntry.billingCycle, 'Recurring')})`)
+      .join(', ');
+
+    return addonEntries.length > 2 ? `${preview} +${addonEntries.length - 2} more` : preview;
+  };
+
+  const getServiceAddonExpirySummary = (service) => {
+    const addonEntries = getServiceAddonEntries(service);
+
+    if (!addonEntries.length) {
+      return 'No add-ons';
+    }
+
+    const primaryMeta = getAddonExpirationMeta(addonEntries[0], service, attentionNow);
+
+    return addonEntries.length > 1
+      ? `${primaryMeta.value} • ${addonEntries.length - 1} more add-on${addonEntries.length - 1 === 1 ? '' : 's'} attached`
+      : `${primaryMeta.value} • ${primaryMeta.helper}`;
+  };
+
+  const buildServiceDashboardRow = (service, renewalLabel, fallbackValue) => ({
+    id: service.id,
+    title: service.name,
+    subtitle: service.client || service.customer || service.category,
+    badge: service.status,
+    fields: [
+      { label: 'Plan', value: service.plan || 'Not assigned' },
+      { label: renewalLabel, value: service.renewsOn ? formatDateTime(service.renewsOn) : fallbackValue },
+      { label: 'Add-ons', value: getServiceAddonSummary(service) },
+      { label: 'Add-on Expiry', value: getServiceAddonExpirySummary(service) },
+    ],
+  });
+
   const rateCards = useMemo(() => {
     const totalManagedServices = adminServices.length;
     const approvedClients = approvedClientsList.length;
@@ -90,16 +174,7 @@ export default function AdminDashboardPage() {
         'from-emerald-400 to-sky-400',
         'Activation Rate Details',
         'Services currently active out of the full managed service portfolio.',
-        activeServicesList.map((service) => ({
-          id: service.id,
-          title: service.name,
-          subtitle: service.client || service.customer || service.category,
-          badge: service.status,
-          fields: [
-            { label: 'Plan', value: service.plan || 'Not assigned' },
-            { label: 'Renews On', value: service.renewsOn ? formatDateTime(service.renewsOn) : 'Not scheduled' },
-          ],
-        })),
+        activeServicesList.map((service) => buildServiceDashboardRow(service, 'Renews On', 'Not scheduled')),
       ),
       buildRate(
         'Approval Rate',
@@ -128,19 +203,55 @@ export default function AdminDashboardPage() {
         'from-orange-400 to-amber-300',
         'Provisioning Rate Details',
         'Services still in provisioning compared to the total managed service count.',
-        provisioningList.map((service) => ({
-          id: service.id,
-          title: service.name,
-          subtitle: service.client || service.customer || service.category,
-          badge: service.status,
-          fields: [
-            { label: 'Plan', value: service.plan || 'Not assigned' },
-            { label: 'Target Date', value: service.renewsOn ? formatDateTime(service.renewsOn) : 'Pending schedule' },
-          ],
-        })),
+        provisioningList.map((service) => buildServiceDashboardRow(service, 'Target Date', 'Pending schedule')),
       ),
     ];
-  }, [activeServicesList, adminServices.length, approvedClientsList, clients.length, provisioningList, stats.activeServices, stats.provisioning]);
+  }, [activeServicesList, adminServices.length, approvedClientsList, clients.length, provisioningList, stats.activeServices, stats.provisioning, serviceAddonEntriesById, attentionNow]);
+
+  const expiringSoonServices = useMemo(
+    () => adminServices
+      .filter((service) => getServiceDisplayStatus(service, attentionNow) === 'Expiring Soon')
+      .sort((left, right) => new Date(left.renewsOn).getTime() - new Date(right.renewsOn).getTime()),
+    [adminServices, attentionNow],
+  );
+
+  const pendingPurchases = useMemo(
+    () => adminPurchases.filter((purchase) => PENDING_ORDER_STATUSES.has(normalizeDashboardText(purchase?.status))),
+    [adminPurchases],
+  );
+
+  const dashboardReminders = useMemo(() => {
+    const nextExpiringService = expiringSoonServices[0] ?? null;
+    const nextPendingPurchase = pendingPurchases[0] ?? null;
+    const nextExpiringAddonEntries = nextExpiringService ? getServiceAddonEntries(nextExpiringService) : [];
+    const expiringSoonCountdown = nextExpiringService
+      ? formatRenewalCountdownTimer(nextExpiringService.renewsOn, attentionNow)
+      : null;
+
+    return {
+      expiringSoonCount: expiringSoonServices.length,
+      expiringSoonCountdown,
+      expiringSoonSummary: nextExpiringService
+        ? `${nextExpiringService.client || nextExpiringService.clientEmail || 'Customer'} has ${nextExpiringService.name} nearing renewal.`
+        : 'No services due in the next 7 days.',
+      expiringSoonHelper: nextExpiringService
+        ? `${expiringSoonServices.length} service${expiringSoonServices.length === 1 ? '' : 's'} nearing renewal.`
+        : 'Client renewals are currently in a safe window.',
+      expiringSoonAddonHelper: nextExpiringAddonEntries.length
+        ? nextExpiringAddonEntries
+          .slice(0, 2)
+          .map((addonEntry) => `${addonEntry.label} (${getAddonBillingCycleLabel(addonEntry.billingCycle, 'Recurring')} • ${getAddonExpirationMeta(addonEntry, nextExpiringService, attentionNow).value})`)
+          .join(', ')
+        : '',
+      pendingPurchaseCount: pendingPurchases.length,
+      pendingPurchaseSummary: nextPendingPurchase
+        ? `${nextPendingPurchase.client || nextPendingPurchase.customer || 'Customer'} • ${nextPendingPurchase.serviceName || nextPendingPurchase.title || 'Order awaiting review'}`
+        : 'No customer orders waiting for review.',
+      pendingPurchaseHelper: pendingPurchases.length
+        ? `${pendingPurchases.length} customer order${pendingPurchases.length === 1 ? '' : 's'} need admin action.`
+        : 'The purchases queue is clear right now.',
+    };
+  }, [attentionNow, expiringSoonServices, pendingPurchases, serviceAddonEntriesById]);
 
   const adminStatCards = useMemo(
     () => [
@@ -169,16 +280,7 @@ export default function AdminDashboardPage() {
         accent: 'emerald',
         modalTitle: 'Active Service Portfolio',
         modalDescription: 'Subscriptions currently running under administrator oversight.',
-        rows: activeServicesList.map((service) => ({
-          id: service.id,
-          title: service.name,
-          subtitle: service.client || service.customer || service.category,
-          badge: service.status,
-          fields: [
-            { label: 'Plan', value: service.plan || 'Not assigned' },
-            { label: 'Renews On', value: service.renewsOn ? formatDateTime(service.renewsOn) : 'Not scheduled' },
-          ],
-        })),
+        rows: activeServicesList.map((service) => buildServiceDashboardRow(service, 'Renews On', 'Not scheduled')),
       },
       {
         label: 'Provisioning Queue',
@@ -187,16 +289,7 @@ export default function AdminDashboardPage() {
         accent: 'amber',
         modalTitle: 'Provisioning Queue',
         modalDescription: 'Services that still need review, setup, or final activation.',
-        rows: provisioningList.map((service) => ({
-          id: service.id,
-          title: service.name,
-          subtitle: service.client || service.customer || service.category,
-          badge: service.status,
-          fields: [
-            { label: 'Plan', value: service.plan || 'Not assigned' },
-            { label: 'Target Date', value: service.renewsOn ? formatDateTime(service.renewsOn) : 'Pending schedule' },
-          ],
-        })),
+        rows: provisioningList.map((service) => buildServiceDashboardRow(service, 'Target Date', 'Pending schedule')),
       },
       {
         label: 'Revenue Logged',
@@ -217,7 +310,7 @@ export default function AdminDashboardPage() {
         })),
       },
     ],
-    [activeServicesList, adminPurchases, clients, provisioningList, stats.activeServices, stats.provisioning, stats.totalClients, stats.totalRevenue],
+    [activeServicesList, adminPurchases, clients, provisioningList, stats.activeServices, stats.provisioning, stats.totalClients, stats.totalRevenue, serviceAddonEntriesById, attentionNow],
   );
 
   const statCardModal = selectedStatCard
@@ -350,6 +443,59 @@ export default function AdminDashboardPage() {
             </div>
           </button>
         ))}
+      </div>
+
+      <div className="mt-3 space-y-4">
+        {dashboardReminders.expiringSoonCount ? (
+          <div className="rounded-3xl border border-red-400/35 bg-red-400/10 px-4 py-4 shadow-sm shadow-red-900/10 alert-danger">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-300/35 bg-red-500 text-white shadow-sm shadow-red-900/15">
+                  <CircleAlert className="alert-icon-svg" size={18} strokeWidth={2.25} />
+                </div>
+                <div>
+                  <p className="font-semibold text-red-300">Client service expiring soon</p>
+                  <p className="text-sm text-red-200">
+                    {dashboardReminders.expiringSoonSummary}
+                    {dashboardReminders.expiringSoonCountdown ? (
+                      <span className="ml-2 font-medium text-red-200">
+                        Time left:{' '}
+                        <span className="inline-flex items-center rounded-full border border-red-200/70 bg-white/85 px-2 py-0.5 text-red-700 shadow-sm">
+                          {dashboardReminders.expiringSoonCountdown}
+                        </span>
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-1 text-sm text-red-100/90">{dashboardReminders.expiringSoonHelper}</p>
+                  {dashboardReminders.expiringSoonAddonHelper ? <p className="mt-1 text-sm text-red-100/90">Add-ons renewing: {dashboardReminders.expiringSoonAddonHelper}</p> : null}
+                </div>
+              </div>
+              <Link to="/admin/client-services" className="btn-secondary whitespace-nowrap px-5 py-2">
+                Open Client Services
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
+        {dashboardReminders.pendingPurchaseCount ? (
+          <div className="rounded-3xl border border-amber-300/40 bg-amber-300/10 px-4 py-4 shadow-sm shadow-amber-900/10 alert-warning">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-200/80 bg-amber-100 text-amber-600 shadow-sm shadow-amber-900/5">
+                  <ReceiptText className="alert-icon-svg" size={18} strokeWidth={2} />
+                </div>
+                <div>
+                  <p className="font-semibold text-amber-700">Pending customer orders</p>
+                  <p className="text-sm text-amber-800">{dashboardReminders.pendingPurchaseSummary}</p>
+                  <p className="mt-1 text-sm text-amber-700/90">{dashboardReminders.pendingPurchaseHelper}</p>
+                </div>
+              </div>
+              <Link to="/admin/purchases" className="btn-secondary whitespace-nowrap px-5 py-2">
+                Open Purchases
+              </Link>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-3 grid gap-6 xl:grid-cols-[1fr_1fr]">

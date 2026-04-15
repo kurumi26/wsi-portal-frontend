@@ -29,6 +29,80 @@ import { getDesiredDomainValue } from '../../utils/orders';
 
 const serviceCategories = ['Shared Hosting', 'Domains', 'Dedicated server'];
 const SERVICES_PER_PAGE = 10;
+const BILLING_CYCLE_OPTIONS = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'one_time', label: 'One-time' },
+];
+const BILLING_CYCLE_LABELS = BILLING_CYCLE_OPTIONS.reduce((accumulator, option) => {
+  accumulator[option.value] = option.label;
+  return accumulator;
+}, {});
+
+const normalizeBillingCycle = (value, fallback = '') => {
+  const normalizedFallback = typeof fallback === 'string' ? fallback.trim() : '';
+
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return normalizedFallback;
+  }
+
+  const normalized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+  if (normalized === 'monthly' || normalized === 'month' || normalized === 'per_month') {
+    return 'monthly';
+  }
+
+  if (normalized === 'yearly' || normalized === 'year' || normalized === 'annual' || normalized === 'annually' || normalized === 'per_year') {
+    return 'yearly';
+  }
+
+  if (normalized === 'one_time' || normalized === 'onetime' || normalized === 'oneoff' || normalized === 'one_off' || normalized === 'once') {
+    return 'one_time';
+  }
+
+  return normalizedFallback;
+};
+
+const getBillingCycleLabel = (value, fallback = '—') => {
+  const normalized = normalizeBillingCycle(value);
+  return BILLING_CYCLE_LABELS[normalized] ?? fallback;
+};
+
+const getAddonBillingCycle = (addon, fallback = '') => {
+  if (!addon || typeof addon !== 'object') {
+    return normalizeBillingCycle('', fallback);
+  }
+
+  return normalizeBillingCycle(
+    addon.billingCycle
+      ?? addon.billing_cycle
+      ?? addon.duration
+      ?? addon.interval
+      ?? addon.cycle
+      ?? addon.period
+      ?? addon.term
+      ?? addon.billing?.cycle
+      ?? (typeof addon.billing === 'string' ? addon.billing : ''),
+    fallback,
+  );
+};
+
+const createAddonDraft = (overrides = {}) => ({
+  id: overrides.id ?? `addon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  label: overrides.label ?? '',
+  price: overrides.price ?? '',
+  billingCycle: normalizeBillingCycle(overrides.billingCycle, 'monthly') || 'monthly',
+});
+
+const isAddonDraftEmpty = (addonDraft) => {
+  const label = typeof addonDraft?.label === 'string' ? addonDraft.label.trim() : '';
+  const price = addonDraft?.price === null || addonDraft?.price === undefined ? '' : String(addonDraft.price).trim();
+
+  return !label && !price;
+};
 
 export default function ManageServicesPage() {
   const {
@@ -90,7 +164,7 @@ export default function ManageServicesPage() {
     category: 'Domains',
     price: '',
     billingCycle: 'monthly',
-    addonLines: '',
+    addonEntries: [createAddonDraft()],
   });
 
   const eligibleClients = useMemo(
@@ -346,6 +420,16 @@ export default function ManageServicesPage() {
     () => sortedDisplayedServices.slice((currentPage - 1) * SERVICES_PER_PAGE, currentPage * SERVICES_PER_PAGE),
     [currentPage, sortedDisplayedServices],
   );
+  const hasManageServicesModalOpen = Boolean(
+    showAddModal
+    || billingModalClient
+    || (showDiscountModal && discountTargetService)
+    || (showPricingLogsModal && pricingLogsService)
+    || addonsPreviewService
+    || selectedCancellationService
+    || (showClientProfile && selectedServiceSubscribers)
+    || (showOrderModal && selectedOrderForReview),
+  );
 
   useEffect(() => {
     setCurrentPage(1);
@@ -356,6 +440,21 @@ export default function ManageServicesPage() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    const modalClassName = 'manage-services-modal-open';
+
+    if (!hasManageServicesModalOpen) {
+      document.body.classList.remove(modalClassName);
+      return undefined;
+    }
+
+    document.body.classList.add(modalClassName);
+
+    return () => {
+      document.body.classList.remove(modalClassName);
+    };
+  }, [hasManageServicesModalOpen]);
 
   const pendingOrders = useMemo(
     () => adminPurchases.filter((purchase) => purchase.status === 'Pending Review' && (!selectedClient || purchase.client === selectedClient.name)),
@@ -374,38 +473,9 @@ export default function ManageServicesPage() {
       category: 'Domains',
       price: '',
       billingCycle: 'monthly',
-      addonLines: '',
+      addonEntries: [createAddonDraft()],
     });
     setError('');
-  };
-
-  const serializeAddonLines = (service) => {
-    const addons = Array.isArray(service?.addons)
-      ? service.addons
-      : Array.isArray(service?.addOns)
-        ? service.addOns
-        : [];
-
-    return addons
-      .map((addon) => {
-        if (typeof addon === 'string') {
-          return addon;
-        }
-
-        if (!addon || typeof addon !== 'object') {
-          return '';
-        }
-
-        const label = addon.label ?? addon.name ?? '';
-        if (!label) {
-          return '';
-        }
-
-        const parsedPrice = typeof addon.price === 'number' ? addon.price : Number(addon.price);
-        return Number.isFinite(parsedPrice) ? `${label}|${parsedPrice}` : label;
-      })
-      .filter(Boolean)
-      .join('\n');
   };
 
   const closeAddModal = () => {
@@ -418,14 +488,27 @@ export default function ManageServicesPage() {
     setMessage('');
     setError('');
     if (service) {
+      const serviceBillingCycle = normalizeBillingCycle(
+        service.billingCycle ?? service.billing?.cycle ?? service.billing,
+        'monthly',
+      ) || 'monthly';
+      const addonEntries = getServiceAddons(service).length
+        ? getServiceAddons(service).map((addon, index) => createAddonDraft({
+            id: `addon-${service.id ?? 'service'}-${index}`,
+            label: addon.label,
+            price: typeof addon.price === 'number' ? String(addon.price) : '',
+            billingCycle: addon.billingCycle ?? serviceBillingCycle,
+          }))
+        : [createAddonDraft({ billingCycle: serviceBillingCycle })];
+
       setEditingService(service);
       setForm({
         name: service.name ?? '',
         description: service.description ?? '',
         category: service.category ?? 'Domains',
         price: String(service.basePrice ?? service.price ?? ''),
-        billingCycle: service.billingCycle ?? service.billing?.cycle ?? 'monthly',
-        addonLines: serializeAddonLines(service),
+        billingCycle: serviceBillingCycle,
+        addonEntries,
       });
     } else {
       setEditingService(null);
@@ -439,20 +522,39 @@ export default function ManageServicesPage() {
     setError('');
     setMessage('');
     setIsCreating(true);
-    const addonPayload = form.addonLines
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [label, price] = line.split('|').map((part) => part.trim());
-
-        return {
-          label,
-          price: price ? Number(price) : 0,
-        };
-      });
 
     try {
+      const normalizedDefaultCycle = normalizeBillingCycle(form.billingCycle, 'monthly') || 'monthly';
+      const addonPayload = form.addonEntries
+        .map((addonEntry, index) => {
+          if (isAddonDraftEmpty(addonEntry)) {
+            return null;
+          }
+
+          const label = String(addonEntry.label ?? '').trim();
+          const rawPrice = String(addonEntry.price ?? '').trim();
+
+          if (!label) {
+            throw new Error(`Add-on row ${index + 1} is missing a name.`);
+          }
+
+          if (!rawPrice) {
+            throw new Error(`Add-on row ${index + 1} is missing an amount.`);
+          }
+
+          const parsedPrice = Number(rawPrice);
+          if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+            throw new Error(`Add-on row ${index + 1} has an invalid amount. Use a numeric value like 780 or 3000.`);
+          }
+
+          return {
+            label,
+            price: parsedPrice,
+            billingCycle: normalizeBillingCycle(addonEntry.billingCycle, normalizedDefaultCycle) || normalizedDefaultCycle,
+          };
+        })
+        .filter(Boolean);
+
       const payload = {
         name: form.name,
         description: form.description,
@@ -658,6 +760,35 @@ export default function ManageServicesPage() {
     setAddonsPreviewService(null);
   };
 
+  const handleAddAddonRow = () => {
+    setForm((current) => ({
+      ...current,
+      addonEntries: [...current.addonEntries, createAddonDraft({ billingCycle: current.billingCycle })],
+    }));
+  };
+
+  const handleAddonFieldChange = (addonId, field, value) => {
+    setForm((current) => ({
+      ...current,
+      addonEntries: current.addonEntries.map((addonEntry) => (
+        addonEntry.id === addonId
+          ? { ...addonEntry, [field]: value }
+          : addonEntry
+      )),
+    }));
+  };
+
+  const handleRemoveAddonRow = (addonId) => {
+    setForm((current) => {
+      const nextEntries = current.addonEntries.filter((addonEntry) => addonEntry.id !== addonId);
+
+      return {
+        ...current,
+        addonEntries: nextEntries.length ? nextEntries : [createAddonDraft({ billingCycle: current.billingCycle })],
+      };
+    });
+  };
+
   const handleToggleServiceStatus = async (service) => {
     const currentStatus = (service.status ?? '').toLowerCase();
     const nextStatus = currentStatus === 'active' ? 'Expired' : 'Active';
@@ -676,6 +807,10 @@ export default function ManageServicesPage() {
   };
 
   const getServiceAddons = (service) => {
+    const serviceBillingCycle = normalizeBillingCycle(
+      service?.billingCycle ?? service?.billing?.cycle ?? service?.billing,
+      '',
+    );
     const rawAddons = Array.isArray(service?.addons)
       ? service.addons
       : Array.isArray(service?.addOns)
@@ -685,7 +820,18 @@ export default function ManageServicesPage() {
     return rawAddons
       .map((addon) => {
         if (typeof addon === 'string') {
-          return { label: addon, price: null };
+          const [rawLabel, rawPrice = '', rawBillingCycle = ''] = addon.split('|').map((part) => part.trim());
+          const parsedPrice = rawPrice === '' ? Number.NaN : Number(rawPrice);
+          const billingCycle = normalizeBillingCycle(rawBillingCycle, serviceBillingCycle);
+          const label = rawLabel || addon.trim();
+
+          return label
+            ? {
+                label,
+                price: Number.isFinite(parsedPrice) ? parsedPrice : null,
+                billingCycle: billingCycle || null,
+              }
+            : null;
         }
 
         if (!addon || typeof addon !== 'object') {
@@ -702,6 +848,7 @@ export default function ManageServicesPage() {
         return {
           label,
           price: Number.isFinite(parsedPrice) ? parsedPrice : null,
+          billingCycle: getAddonBillingCycle(addon, serviceBillingCycle) || null,
         };
       })
       .filter(Boolean);
@@ -710,8 +857,8 @@ export default function ManageServicesPage() {
   return (
     <div>
       {showAddModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <form onSubmit={handleAddService} className="panel w-full max-w-2xl p-6">
+        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-sm">
+          <form onSubmit={handleAddService} className="panel my-4 w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Service Management</p>
@@ -752,12 +899,24 @@ export default function ManageServicesPage() {
 
               <label className="block text-sm text-slate-300">
                 Billing Cycle
-                <select className="input mt-2" value={form.billingCycle} onChange={(event) => setForm((current) => ({ ...current, billingCycle: event.target.value }))} required>
-                  {[
-                    { value: 'monthly', label: 'Monthly' },
-                    { value: 'yearly', label: 'Yearly' },
-                    { value: 'one_time', label: 'One-time' },
-                  ].map((option) => (
+                <select
+                  className="input mt-2"
+                  value={form.billingCycle}
+                  onChange={(event) => {
+                    const nextBillingCycle = event.target.value;
+                    setForm((current) => ({
+                      ...current,
+                      billingCycle: nextBillingCycle,
+                      addonEntries: current.addonEntries.map((addonEntry) => (
+                        isAddonDraftEmpty(addonEntry)
+                          ? { ...addonEntry, billingCycle: nextBillingCycle }
+                          : addonEntry
+                      )),
+                    }));
+                  }}
+                  required
+                >
+                  {BILLING_CYCLE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -765,16 +924,72 @@ export default function ManageServicesPage() {
                 </select>
               </label>
 
-              <label className="block text-sm text-slate-300 md:col-span-2">
-                Add-ons (optional)
-                <textarea
-                  className="input mt-2 min-h-28 resize-y"
-                  value={form.addonLines}
-                  onChange={(event) => setForm((current) => ({ ...current, addonLines: event.target.value }))}
-                  placeholder={"One add-on per line\nExample: WhoIs|780\nExample: Static IP|3000"}
-                />
-                <p className="mt-2 text-xs text-slate-500">Use one line per add-on in the format Name|Price.</p>
-              </label>
+              <div className="block text-sm text-slate-300 md:col-span-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p>Add-ons (optional)</p>
+                    <p className="mt-1 text-xs text-slate-500">Add each add-on with its amount and billing cycle. Empty rows are ignored.</p>
+                  </div>
+                  <button type="button" onClick={handleAddAddonRow} className="btn-secondary gap-2 px-3 py-2 text-xs">
+                    <Plus size={14} /> Add Add-on
+                  </button>
+                </div>
+
+                <div className="mt-3 space-y-3">
+                  {form.addonEntries.map((addonEntry, index) => (
+                    <div key={addonEntry.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Add-on {index + 1}</p>
+                        {form.addonEntries.length > 1 || !isAddonDraftEmpty(addonEntry) ? (
+                          <button type="button" onClick={() => handleRemoveAddonRow(addonEntry.id)} className="text-xs font-medium text-slate-400 transition hover:text-white">
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_0.9fr]">
+                        <label className="block text-xs uppercase tracking-[0.16em] text-slate-500">
+                          Add-on Name
+                          <input
+                            className="input mt-2"
+                            value={addonEntry.label}
+                            onChange={(event) => handleAddonFieldChange(addonEntry.id, 'label', event.target.value)}
+                            placeholder="e.g. Whois Privacy"
+                          />
+                        </label>
+
+                        <label className="block text-xs uppercase tracking-[0.16em] text-slate-500">
+                          Amount
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="input mt-2"
+                            value={addonEntry.price}
+                            onChange={(event) => handleAddonFieldChange(addonEntry.id, 'price', event.target.value)}
+                            placeholder="0.00"
+                          />
+                        </label>
+
+                        <label className="block text-xs uppercase tracking-[0.16em] text-slate-500">
+                          Billing Cycle
+                          <select
+                            className="input mt-2"
+                            value={addonEntry.billingCycle}
+                            onChange={(event) => handleAddonFieldChange(addonEntry.id, 'billingCycle', event.target.value)}
+                          >
+                            {BILLING_CYCLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -934,6 +1149,7 @@ export default function ManageServicesPage() {
                     <tr>
                       <th className="px-4 py-2">Add-on</th>
                       <th className="px-4 py-2">Price</th>
+                      <th className="px-4 py-2">Billing Cycle</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -941,6 +1157,7 @@ export default function ManageServicesPage() {
                       <tr key={`addons-preview-${index}`} className="border-t border-white/6">
                         <td className="px-4 py-3 text-slate-300">{addon.label}</td>
                         <td className="px-4 py-3">{typeof addon.price === 'number' ? formatCurrency(addon.price) : '—'}</td>
+                        <td className="px-4 py-3">{getBillingCycleLabel(addon.billingCycle)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1226,7 +1443,7 @@ export default function ManageServicesPage() {
                         {addons.length ? (
                           <div className="flex flex-wrap gap-2">
                             {visibleAddons.map((addon, i) => (
-                              <span key={`addon-${service.id}-${i}`} className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
+                              <span key={`addon-${service.id}-${i}`} title={`${addon.label}${typeof addon.price === 'number' ? ` • ${formatCurrency(addon.price)}` : ''}${addon.billingCycle ? ` • ${getBillingCycleLabel(addon.billingCycle)}` : ''}`} className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
                                 {addon.label.length > 28 ? `${addon.label.slice(0, 28)}...` : addon.label}
                               </span>
                             ))}
@@ -1346,7 +1563,7 @@ export default function ManageServicesPage() {
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Add-ons</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {addons.length ? visibleAddons.map((addon, index) => (
-                      <span key={`addon-card-${service.id}-${index}`} className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-medium text-sky-700">
+                      <span key={`addon-card-${service.id}-${index}`} title={`${addon.label}${typeof addon.price === 'number' ? ` • ${formatCurrency(addon.price)}` : ''}${addon.billingCycle ? ` • ${getBillingCycleLabel(addon.billingCycle)}` : ''}`} className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-medium text-sky-700">
                         {addon.label.length > 24 ? `${addon.label.slice(0, 24)}...` : addon.label}
                       </span>
                     )) : (

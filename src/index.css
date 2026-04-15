@@ -269,6 +269,17 @@ body.service-summary-modal-open .panel {
   opacity: 0.92;
 }
 
+body.manage-services-modal-open {
+  overflow: hidden;
+}
+
+body.manage-services-modal-open header,
+body.manage-services-modal-open aside {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* Make the main content fill the viewport when header/sidebar hidden */
 body.audit-modal-open .mx-auto {
   max-width: 100% !important;
@@ -773,6 +784,11 @@ body.theme-light .alert-danger .icon {
   color: #991b1b !important;
   fill: #991b1b !important;
 }
+body.theme-light .alert-danger .alert-icon-svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  fill: none !important;
+}
 body.theme-light .alert-danger .bg-red-500 {
   background-color: #ef4444 !important;
 }
@@ -799,6 +815,11 @@ body.theme-light .alert-warning svg,
 body.theme-light .alert-warning .icon {
   color: #7c2d12 !important;
   fill: #7c2d12 !important;
+}
+body.theme-light .alert-warning .alert-icon-svg {
+  color: #b45309 !important;
+  stroke: #b45309 !important;
+  fill: none !important;
 }
 
 /* Make CTA button inside alerts stand out */

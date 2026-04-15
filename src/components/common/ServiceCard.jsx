@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, ChevronDown, Plus } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
+import { getAddonBillingCycle, getAddonBillingCycleLabel } from '../../utils/addons';
 
 const getLabel = (opt) => {
   if (opt === null || opt === undefined) return '';
@@ -24,6 +25,7 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
     : addon
       ? [getValue(addon)]
       : [];
+  const addonOptions = service.addons || [];
 
   const selectedAddonSummary = useMemo(() => {
     if (!selectedAddons.length) {
@@ -31,13 +33,14 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
     }
 
     if (selectedAddons.length === 1) {
-      return selectedAddons[0];
+      const selectedOption = addonOptions.find((option) => getValue(option) === selectedAddons[0]);
+      const billingCycleLabel = getAddonBillingCycleLabel(getAddonBillingCycle(selectedOption, service?.billingCycle ?? service?.billing?.cycle ?? service?.billing), '');
+
+      return billingCycleLabel ? `${selectedAddons[0]} • ${billingCycleLabel}` : selectedAddons[0];
     }
 
     return `${selectedAddons.length} add-ons selected`;
-  }, [selectedAddons]);
-
-  const addonOptions = service.addons || [];
+  }, [addonOptions, selectedAddons, service?.billing, service?.billingCycle]);
 
   const updateAddonMenuPosition = () => {
     if (!addonTriggerRef.current || typeof window === 'undefined') {
@@ -210,6 +213,7 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
                             const optionValue = getValue(option);
                             const optionLabel = getLabel(option);
                             const optionPrice = typeof option === 'object' && typeof option.price === 'number' ? option.price : null;
+                            const optionBillingCycle = getAddonBillingCycleLabel(getAddonBillingCycle(option, service?.billingCycle ?? service?.billing?.cycle ?? service?.billing), '');
                             const isChecked = selectedAddons.includes(optionValue);
 
                             return (
@@ -224,8 +228,14 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
                                   className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900"
                                 />
                                 <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-                                  <span className="pr-2 text-sm normal-case tracking-normal text-slate-200">{optionLabel}</span>
-                                  {optionPrice ? <span className="shrink-0 text-xs font-medium normal-case tracking-normal text-sky-200">{formatCurrency(optionPrice)}</span> : null}
+                                  <div className="min-w-0 flex-1 pr-2">
+                                    <span className="block text-sm normal-case tracking-normal text-slate-200">{optionLabel}</span>
+                                    {optionBillingCycle ? <span className="mt-1 block text-[11px] normal-case tracking-normal text-slate-400">{optionBillingCycle}</span> : null}
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    {optionPrice ? <span className="block text-xs font-medium normal-case tracking-normal text-sky-200">{formatCurrency(optionPrice)}</span> : null}
+                                    {optionBillingCycle ? <span className="mt-1 block text-[11px] normal-case tracking-normal text-slate-400">/{optionBillingCycle.toLowerCase()}</span> : null}
+                                  </div>
                                 </div>
                               </label>
                             );

@@ -8,7 +8,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import usePageTitle from '../../hooks/usePageTitle';
 import { formatDate } from '../../utils/format';
-import { getRenewalCountdownMeta, hasRenewalCountdown } from '../../utils/services';
+import { getRenewalCountdownMeta, getServiceDisplayStatus, hasRenewalCountdown } from '../../utils/services';
 
 export default function MyServicesPage() {
   usePageTitle('My Services');
@@ -148,7 +148,7 @@ export default function MyServicesPage() {
       key: 'status',
       label: 'Status',
       sortable: true,
-      render: (value) => <StatusBadge status={value} />,
+      render: (_, row) => <StatusBadge status={getServiceDisplayStatus(row)} />,
     },
   ];
 
@@ -193,7 +193,7 @@ export default function MyServicesPage() {
                           <h3 className="text-lg font-semibold text-white">{service.name}</h3>
                           <p className="mt-1 text-sm text-slate-300">{service.category}</p>
                         </div>
-                        <StatusBadge status={service.status} />
+                        <StatusBadge status={getServiceDisplayStatus(service)} />
                       </div>
                       <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-3">
                         <div>
@@ -211,7 +211,7 @@ export default function MyServicesPage() {
                         </div>
                         <div>
                           <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Status</p>
-                          <p className="mt-1 text-white">{service.status}</p>
+                          <p className="mt-1 text-white">{getServiceDisplayStatus(service)}</p>
                         </div>
                       </div>
                     </div>

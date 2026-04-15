@@ -3,11 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import ServiceCard from '../../components/common/ServiceCard';
 import { usePortal } from '../../context/PortalContext';
+import { getAddonLabel } from '../../utils/addons';
 
 const getDefaultSelection = (service) => ({
   configuration: service.configurations[0] ?? '',
   addon: [],
 });
+
+const resolveSelectedAddons = (service, selectedAddons) => {
+  const addonValues = Array.isArray(selectedAddons)
+    ? selectedAddons
+    : selectedAddons
+      ? [selectedAddons]
+      : [];
+
+  return addonValues.map((addonValue) => {
+    const matchedAddon = Array.isArray(service?.addons)
+      ? service.addons.find((option) => getAddonLabel(option) === getAddonLabel(addonValue))
+      : null;
+
+    return matchedAddon ?? addonValue;
+  });
+};
 
 export default function ServicesPage() {
   const navigate = useNavigate();
@@ -61,7 +78,7 @@ export default function ServicesPage() {
 
   const handleAdd = (service) => {
     const selection = selections[service.id] ?? getDefaultSelection(service);
-    addToCart(service, selection.configuration, selection.addon);
+    addToCart(service, selection.configuration, resolveSelectedAddons(service, selection.addon));
     navigate('/checkout');
   };
 

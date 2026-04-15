@@ -8,7 +8,8 @@ import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDateTime } from '../../utils/format';
-import { getRenewalCountdownMeta, hasRenewalCountdown } from '../../utils/services';
+import { extractAddonEntries, getAddonBillingCycleLabel, getAddonExpirationMeta, matchCatalogService } from '../../utils/addons';
+import { getRenewalCountdownMeta, getServiceDisplayStatus, hasRenewalCountdown } from '../../utils/services';
 
 const SERVICES_PER_PAGE = 6;
 
@@ -35,7 +36,7 @@ export default function CustomerDashboardPage() {
   const [dismissedBannerKey, setDismissedBannerKey] = useState(null);
   const BANNER_DISMISS_KEY = 'wsi-dashboard-dismissed-banner';
 
-  const filters = ['All', 'Active', 'Undergoing Provisioning', 'Unpaid', 'Expired'];
+  const filters = ['All', 'Expiring Soon', 'Active', 'Undergoing Provisioning', 'Unpaid', 'Expired'];
 
   const [statusOpen, setStatusOpen] = useState(false);
   const statusRef = useRef(null);
@@ -55,12 +56,47 @@ export default function CustomerDashboardPage() {
   }, [myServices]);
 
   const filteredServices = useMemo(() => {
-    if (statusFilter === 'All') {
-      return myServices;
-    }
+    const serviceStatusPriority = {
+      'Expiring Soon': 0,
+      Active: 1,
+      'Undergoing Provisioning': 2,
+      Unpaid: 3,
+      Expired: 4,
+    };
 
-    return myServices.filter((service) => service.status === statusFilter);
-  }, [myServices, statusFilter]);
+    const visibleServices = myServices.filter((service) => {
+      if (statusFilter === 'All') {
+        return true;
+      }
+
+      return getServiceDisplayStatus(service, countdownNow) === statusFilter;
+    });
+
+    return [...visibleServices].sort((left, right) => {
+      const leftStatus = getServiceDisplayStatus(left, countdownNow);
+      const rightStatus = getServiceDisplayStatus(right, countdownNow);
+      const priorityDelta = (serviceStatusPriority[leftStatus] ?? Number.MAX_SAFE_INTEGER)
+        - (serviceStatusPriority[rightStatus] ?? Number.MAX_SAFE_INTEGER);
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      if (leftStatus === 'Expiring Soon' && rightStatus === 'Expiring Soon') {
+        return new Date(left.renewsOn).getTime() - new Date(right.renewsOn).getTime();
+      }
+
+      if (hasRenewalCountdown(left) && hasRenewalCountdown(right)) {
+        const renewalDelta = new Date(left.renewsOn).getTime() - new Date(right.renewsOn).getTime();
+
+        if (renewalDelta !== 0) {
+          return renewalDelta;
+        }
+      }
+
+      return String(left.name ?? '').localeCompare(String(right.name ?? ''));
+    });
+  }, [myServices, statusFilter, countdownNow]);
   const approvalPendingOrders = orders.filter((o) => /pending/i.test(String(o.status)));
   const approvalPendingServices = approvalPendingOrders.map((o) => o.serviceName).filter(Boolean);
   const prevApprovalRef = useRef(approvalPendingOrders);
@@ -129,10 +165,26 @@ export default function CustomerDashboardPage() {
         const t = new Date(service.renewsOn).getTime() - now;
         return t > 0 && t <= NEAR_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
       })
-      .filter((service) => service.status !== 'Expired')
+      .filter((service) => getServiceDisplayStatus(service, now) !== 'Expired')
       .sort((left, right) => new Date(left.renewsOn).getTime() - new Date(right.renewsOn).getTime()),
     [myServices, now],
   );
+  const serviceAddonEntriesById = useMemo(() => {
+    return new Map(
+      myServices.map((service) => {
+        const catalogService = matchCatalogService(service, services);
+
+        return [
+          String(service.id),
+          extractAddonEntries(service, {
+            catalogService,
+            fallbackToAddonsKey: true,
+          }),
+        ];
+      }),
+    );
+  }, [myServices, services]);
+  const getServiceAddonEntries = (service) => serviceAddonEntriesById.get(String(service?.id)) ?? [];
   const latestOperationalNotification = notifications.find((item) => ['warning', 'info', 'danger'].includes(item.type));
   const latestOperationalIsCritical = Boolean(
     latestOperationalNotification
@@ -754,7 +806,13 @@ export default function CustomerDashboardPage() {
           </div>
 
           <div className={layoutMode === 'grid' ? 'mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3' : 'mt-6 space-y-4'}>
-            {paginatedServices.map((service) => (
+            {paginatedServices.map((service) => {
+              const serviceDisplayStatus = getServiceDisplayStatus(service, countdownNow);
+              const isDisplayActive = serviceDisplayStatus === 'Active' || serviceDisplayStatus === 'Expiring Soon';
+              const addonEntries = getServiceAddonEntries(service);
+              const visibleAddonEntries = addonEntries.slice(0, 2);
+
+              return (
               <div
                 key={service.id}
                 className={`panel-muted p-4 group relative overflow-hidden ${
@@ -765,6 +823,30 @@ export default function CustomerDashboardPage() {
                 <div>
                   <p className="text-lg font-medium text-white">{service.name}</p>
                   <p className="mt-1 text-sm text-slate-400">{service.category} · Plan: {service.plan}</p>
+                  {addonEntries.length ? (
+                    layoutMode === 'grid' ? (
+                      <div className="mt-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected Add-ons</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {visibleAddonEntries.map((addonEntry) => (
+                            <span key={`${service.id}-${addonEntry.label}`} className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-200">
+                              {addonEntry.label} • {getAddonBillingCycleLabel(addonEntry.billingCycle, 'Recurring')}
+                            </span>
+                          ))}
+                          {addonEntries.length > visibleAddonEntries.length ? (
+                            <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-400">
+                              +{addonEntries.length - visibleAddonEntries.length} more
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">
+                        Add-ons: {visibleAddonEntries.map((addonEntry) => `${addonEntry.label} (${getAddonBillingCycleLabel(addonEntry.billingCycle, 'Recurring')})`).join(', ')}
+                        {addonEntries.length > visibleAddonEntries.length ? ` +${addonEntries.length - visibleAddonEntries.length} more` : ''}
+                      </p>
+                    )
+                  ) : null}
                 </div>
                 <div className={`flex ${layoutMode === 'grid' ? 'items-end justify-between' : 'items-center gap-4'}`}>
                   <div className={`text-sm text-slate-400 ${layoutMode === 'grid' ? '' : 'text-right'}`}>
@@ -801,7 +883,7 @@ export default function CustomerDashboardPage() {
                       );
                     })()}
                   </div>
-                  <StatusBadge status={service.status} />
+                  <StatusBadge status={serviceDisplayStatus} />
                 </div>
 
                 {/* Hover overlay: status-specific CTA / icons for customers */}
@@ -853,7 +935,7 @@ export default function CustomerDashboardPage() {
                       >
                         Pay Now
                       </button>
-                    ) : service.status === 'Active' ? (
+                    ) : isDisplayActive ? (
                       <div className="flex flex-col items-center">
                         <div className="flex items-center gap-3 mb-3">
                           {/* <button
@@ -914,7 +996,7 @@ export default function CustomerDashboardPage() {
                           <FileText size={16} />
                         </button>
                       </div>
-                    ) : service.status === 'Expired' ? (
+                    ) : serviceDisplayStatus === 'Expired' ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -962,7 +1044,7 @@ export default function CustomerDashboardPage() {
                   </div>
                 </div>
               </div>
-            ))}
+            );})}
 
             {!filteredServices.length ? (
               <div className="panel-muted p-8 text-center text-sm text-slate-400">
@@ -1262,7 +1344,7 @@ export default function CustomerDashboardPage() {
 
       {selectedAgreementService ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="panel w-full max-w-lg p-6 relative">
+          <div className="panel max-h-[85vh] w-full max-w-2xl overflow-y-auto p-6 relative">
             <button type="button" onClick={() => setSelectedAgreementService(null)} className="absolute right-4 top-4 btn-secondary px-4">Close</button>
 
             <div className="flex flex-col items-center">
@@ -1299,6 +1381,34 @@ export default function CustomerDashboardPage() {
                     </button>
                   </div>
                 </div>
+
+                {getServiceAddonEntries(selectedAgreementService).length ? (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+                    <p className="text-sm font-semibold text-white">Selected Add-ons</p>
+                    <p className="mt-2 text-sm text-slate-400">Billing cycle and renewal details for the add-ons attached to this service.</p>
+                    <div className="mt-4 space-y-3">
+                      {getServiceAddonEntries(selectedAgreementService).map((addonEntry) => {
+                        const addonExpirationMeta = getAddonExpirationMeta(addonEntry, selectedAgreementService, countdownNow);
+
+                        return (
+                          <div key={`${selectedAgreementService.id}-${addonEntry.label}`} className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-white">{addonEntry.label}</p>
+                                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{getAddonBillingCycleLabel(addonEntry.billingCycle, 'Recurring')}</p>
+                              </div>
+                              <div className="text-left md:text-right">
+                                {typeof addonEntry.price === 'number' ? <p className="text-sm font-semibold text-sky-300">{formatCurrency(addonEntry.price)}</p> : null}
+                                <p className={`mt-1 text-sm ${addonExpirationMeta.isExpired ? 'text-rose-300' : 'text-white'}`}>{addonExpirationMeta.value}</p>
+                                <p className={`mt-1 text-xs ${addonExpirationMeta.isExpired ? 'text-rose-300' : 'text-slate-400'}`}>{addonExpirationMeta.helper}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

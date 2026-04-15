@@ -5,6 +5,7 @@ import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency } from '../../utils/format';
+import { getAddonBillingCycle, getAddonBillingCycleLabel } from '../../utils/addons';
 import { desiredDomainRequiredMessage, getDesiredDomainValue, requiresDesiredDomain } from '../../utils/orders';
 
 const paymentMethods = ['Credit Card', 'PayPal', 'Bank Transfer'];
@@ -75,6 +76,29 @@ export default function CheckoutPage() {
     return 0;
   };
 
+  const getAddonBilling = (addon, item) => {
+    if (!addon) {
+      return '';
+    }
+
+    if (typeof addon === 'object') {
+      return getAddonBillingCycleLabel(getAddonBillingCycle(addon, item?.billing?.cycle ?? item?.billing), '');
+    }
+
+    const svc = services && services.find((service) => String(service.id) === String(item.serviceId));
+    if (svc && Array.isArray(svc.addons)) {
+      const found = svc.addons.find((opt) => {
+        if (opt === null || opt === undefined) return false;
+        if (typeof opt === 'object') return (opt.label ?? opt.name) === addon;
+        return String(opt) === addon;
+      });
+
+      return getAddonBillingCycleLabel(getAddonBillingCycle(found, svc?.billingCycle ?? svc?.billing?.cycle ?? svc?.billing), '');
+    }
+
+    return '';
+  };
+
   const getConfigPrice = (config, item) => {
     if (!config) return 0;
 
@@ -130,16 +154,18 @@ export default function CheckoutPage() {
                           <div className="mt-2 flex flex-wrap gap-2">
                             {item.addon.map((a, i) => {
                               const price = getAddonPrice(a, item);
+                              const billingCycle = getAddonBilling(a, item);
                               return (
                                 <span key={`addon-${item.lineId}-${i}`} className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-200">
                                   <span>{renderOption(a)}</span>
                                   {price ? <span className="ml-2 text-xs text-white">{formatCurrency(price)}</span> : null}
+                                  {billingCycle ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-400">/{billingCycle}</span> : null}
                                 </span>
                               );
                             })}
                           </div>
                         ) : item.addon ? (
-                          <p className="mt-2 text-sm text-slate-400">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs text-white">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}</p>
+                          <p className="mt-2 text-sm text-slate-400">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs text-white">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}{getAddonBilling(item.addon, item) ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-400">/{getAddonBilling(item.addon, item)}</span> : null}</p>
                         ) : null}
 
                         {showDesiredDomainField ? (
