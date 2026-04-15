@@ -90,8 +90,24 @@ const getAddonBillingCycle = (addon, fallback = '') => {
   );
 };
 
+const getAddonPersistedId = (addon) => {
+  if (!addon || typeof addon !== 'object') {
+    return null;
+  }
+
+  return addon.id
+    ?? addon.addonId
+    ?? addon.addon_id
+    ?? addon.serviceAddonId
+    ?? addon.service_addon_id
+    ?? addon.serviceAddon?.id
+    ?? addon.service_addon?.id
+    ?? null;
+};
+
 const createAddonDraft = (overrides = {}) => ({
   id: overrides.id ?? `addon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  persistedId: overrides.persistedId ?? overrides.addonId ?? overrides.addon_id ?? overrides.serviceAddonId ?? overrides.service_addon_id ?? null,
   label: overrides.label ?? '',
   price: overrides.price ?? '',
   billingCycle: normalizeBillingCycle(overrides.billingCycle, 'monthly') || 'monthly',
@@ -488,13 +504,15 @@ export default function ManageServicesPage() {
     setMessage('');
     setError('');
     if (service) {
+      const existingAddons = getServiceAddons(service);
       const serviceBillingCycle = normalizeBillingCycle(
-        service.billingCycle ?? service.billing?.cycle ?? service.billing,
+        service.billingCycle ?? service.billing_cycle ?? service.billing?.cycle ?? service.billing,
         'monthly',
       ) || 'monthly';
-      const addonEntries = getServiceAddons(service).length
-        ? getServiceAddons(service).map((addon, index) => createAddonDraft({
+      const addonEntries = existingAddons.length
+        ? existingAddons.map((addon, index) => createAddonDraft({
             id: `addon-${service.id ?? 'service'}-${index}`,
+            persistedId: addon.persistedId,
             label: addon.label,
             price: typeof addon.price === 'number' ? String(addon.price) : '',
             billingCycle: addon.billingCycle ?? serviceBillingCycle,
@@ -547,10 +565,24 @@ export default function ManageServicesPage() {
             throw new Error(`Add-on row ${index + 1} has an invalid amount. Use a numeric value like 780 or 3000.`);
           }
 
+          const normalizedAddonCycle = normalizeBillingCycle(addonEntry.billingCycle, normalizedDefaultCycle) || normalizedDefaultCycle;
+          const persistedId = addonEntry.persistedId ?? null;
+
           return {
+            ...(persistedId ? {
+              id: persistedId,
+              addonId: persistedId,
+              addon_id: persistedId,
+              serviceAddonId: persistedId,
+              service_addon_id: persistedId,
+            } : {}),
             label,
+            name: label,
             price: parsedPrice,
-            billingCycle: normalizeBillingCycle(addonEntry.billingCycle, normalizedDefaultCycle) || normalizedDefaultCycle,
+            extraPrice: parsedPrice,
+            extra_price: parsedPrice,
+            billingCycle: normalizedAddonCycle,
+            billing_cycle: normalizedAddonCycle,
           };
         })
         .filter(Boolean);
@@ -560,8 +592,10 @@ export default function ManageServicesPage() {
         description: form.description,
         category: form.category,
         price: Number(form.price),
-        billingCycle: form.billingCycle,
+        billingCycle: normalizedDefaultCycle,
+        billing_cycle: normalizedDefaultCycle,
         addons: addonPayload,
+        add_ons: addonPayload,
       };
       const response = editingService
         ? await updateCatalogService(editingService.id, payload)
@@ -569,11 +603,26 @@ export default function ManageServicesPage() {
 
       // Ensure immediate visibility in the table while backend list sync catches up.
       if (editingService) {
-        setLocalCatalogServices((current) => current.map((service) => (
-          String(service.id) === String(editingService.id)
-            ? { ...service, ...payload, basePrice: payload.price, addons: payload.addons, updatedAt: new Date().toISOString() }
-            : service
-        )));
+        setLocalCatalogServices((current) => {
+          const nextService = {
+            ...editingService,
+            ...payload,
+            basePrice: payload.price,
+            addons: payload.addons,
+            updatedAt: new Date().toISOString(),
+          };
+
+          const existingIndex = current.findIndex((service) => String(service.id) === String(editingService.id));
+          if (existingIndex === -1) {
+            return [nextService, ...current];
+          }
+
+          return current.map((service) => (
+            String(service.id) === String(editingService.id)
+              ? nextService
+              : service
+          ));
+        });
       } else {
         const fallbackId = `local-${Date.now()}`;
         const createdService = {
@@ -808,7 +857,7 @@ export default function ManageServicesPage() {
 
   const getServiceAddons = (service) => {
     const serviceBillingCycle = normalizeBillingCycle(
-      service?.billingCycle ?? service?.billing?.cycle ?? service?.billing,
+      service?.billingCycle ?? service?.billing_cycle ?? service?.billing?.cycle ?? service?.billing,
       '',
     );
     const rawAddons = Array.isArray(service?.addons)
@@ -827,6 +876,7 @@ export default function ManageServicesPage() {
 
           return label
             ? {
+                persistedId: null,
                 label,
                 price: Number.isFinite(parsedPrice) ? parsedPrice : null,
                 billingCycle: billingCycle || null,
@@ -838,14 +888,16 @@ export default function ManageServicesPage() {
           return null;
         }
 
-        const label = addon.label ?? addon.name ?? '';
+        const label = addon.label ?? addon.name ?? addon.title ?? addon.addon ?? '';
         if (!label) {
           return null;
         }
 
-        const parsedPrice = typeof addon.price === 'number' ? addon.price : Number(addon.price);
+        const rawPrice = addon.price ?? addon.extraPrice ?? addon.extra_price;
+        const parsedPrice = typeof rawPrice === 'number' ? rawPrice : Number(rawPrice);
 
         return {
+          persistedId: getAddonPersistedId(addon),
           label,
           price: Number.isFinite(parsedPrice) ? parsedPrice : null,
           billingCycle: getAddonBillingCycle(addon, serviceBillingCycle) || null,
