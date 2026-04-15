@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import ServiceCard from '../../components/common/ServiceCard';
@@ -26,6 +27,16 @@ const resolveSelectedAddons = (service, selectedAddons) => {
   });
 };
 
+const getConfigurationLabel = (option) => {
+  if (option === null || option === undefined) {
+    return '';
+  }
+
+  return typeof option === 'object'
+    ? option.label ?? option.name ?? JSON.stringify(option)
+    : String(option);
+};
+
 export default function ServicesPage() {
   const navigate = useNavigate();
   const { services, addToCart } = usePortal();
@@ -35,6 +46,7 @@ export default function ServicesPage() {
     ),
   );
   const [category, setCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     setSelections((current) => {
@@ -61,10 +73,34 @@ export default function ServicesPage() {
   }, [services]);
 
   const categories = useMemo(() => ['All', ...new Set(services.map((service) => service.category))], [services]);
-  const filteredServices = useMemo(
-    () => (category === 'All' ? services : services.filter((service) => service.category === category)),
-    [category, services],
-  );
+  const filteredServices = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return services.filter((service) => {
+      const matchesCategory = category === 'All' || service.category === category;
+
+      if (!matchesCategory) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const searchableText = [
+        service.name,
+        service.description,
+        service.category,
+        ...(Array.isArray(service?.configurations) ? service.configurations.map((option) => getConfigurationLabel(option)) : []),
+        ...(Array.isArray(service?.addons) ? service.addons.map((option) => getAddonLabel(option)) : []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchableText.includes(normalizedQuery);
+    });
+  }, [category, searchQuery, services]);
 
   const handleConfigure = (serviceId, field, value) => {
     setSelections((current) => ({
@@ -88,8 +124,21 @@ export default function ServicesPage() {
         eyebrow="Service Catalog"
         title="Browse products & services"
         description="Offer domains, hosting, security, and add-on services with configuration options and a direct add-to-order flow."
+        belowDescription={
+          <label className="relative block w-full max-w-md">
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="input pl-11"
+              placeholder="Search services, add-ons, or categories"
+              aria-label="Search products and services"
+            />
+          </label>
+        }
         action={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {categories.map((item) => (
               <button
                 key={item}
@@ -104,18 +153,25 @@ export default function ServicesPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-2 2xl:grid-cols-3">
-        {filteredServices.map((service) => (
-          <ServiceCard
-            key={service.id}
-            service={service}
-            configuration={selections[service.id]?.configuration ?? (service.configurations[0] ?? '')}
-            addon={selections[service.id]?.addon ?? []}
-            onConfigure={handleConfigure}
-            onAdd={handleAdd}
-          />
-        ))}
-      </div>
+      {filteredServices.length ? (
+        <div className="grid gap-6 xl:grid-cols-2 2xl:grid-cols-3">
+          {filteredServices.map((service) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              configuration={selections[service.id]?.configuration ?? (service.configurations[0] ?? '')}
+              addon={selections[service.id]?.addon ?? []}
+              onConfigure={handleConfigure}
+              onAdd={handleAdd}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="panel rounded-3xl px-6 py-10 text-center">
+          <p className="text-sm uppercase tracking-[0.18em] text-slate-500">No matches found</p>
+          <p className="mt-3 text-base text-slate-400">Try a different keyword or switch the category filter.</p>
+        </div>
+      )}
     </div>
   );
 }

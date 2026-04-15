@@ -14,18 +14,60 @@ const getValue = (opt) => {
   return typeof opt === 'object' ? opt.label ?? opt.name ?? JSON.stringify(opt) : String(opt);
 };
 
+const formatBillingCycleLabel = (value) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+  if (!normalized) {
+    return 'Flexible';
+  }
+
+  if (normalized === 'one_time' || normalized === 'onetime') {
+    return 'One-time';
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).replace(/_/g, ' ');
+};
+
+const normalizeDisplayLabel = (value) => String(value ?? '')
+  .trim()
+  .toLowerCase()
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ');
+
+const formatServiceDisplayText = (value) => String(value ?? '')
+  .replace(/([a-z])([A-Z])/g, '$1 $2')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 export default function ServiceCard({ service, configuration, addon, onConfigure, onAdd }) {
   const [isAddonMenuOpen, setIsAddonMenuOpen] = useState(false);
   const [addonMenuPosition, setAddonMenuPosition] = useState(null);
   const addonMenuRef = useRef(null);
   const addonTriggerRef = useRef(null);
+  const configurationOptions = Array.isArray(service?.configurations) ? service.configurations : [];
+  const addonOptions = Array.isArray(service?.addons) ? service.addons : [];
   const selectedConfiguration = getValue(configuration);
   const selectedAddons = Array.isArray(addon)
     ? addon.map((item) => getValue(item)).filter(Boolean)
     : addon
       ? [getValue(addon)]
       : [];
-  const addonOptions = service.addons || [];
+  const displayServiceName = formatServiceDisplayText(service?.name);
+  const displayServiceDescription = formatServiceDisplayText(service?.description);
+  const billingLabel = formatBillingCycleLabel(service?.billingCycle ?? service?.billing);
+  const visibleConfigurationOptions = configurationOptions.slice(0, 3);
+  const shouldShowConfigurationMeta = configurationOptions.length > 1;
+  const shouldShowConfigurationSelector = configurationOptions.length > 1;
+  const shouldShowIncludedOptions = configurationOptions.length > 1 || visibleConfigurationOptions.some((item) => {
+    return normalizeDisplayLabel(getLabel(item)) !== normalizeDisplayLabel(service?.name);
+  });
+  const metaItems = [
+    shouldShowConfigurationMeta ? { label: 'Product Types', value: configurationOptions.length } : null,
+  ].filter(Boolean);
 
   const selectedAddonSummary = useMemo(() => {
     if (!selectedAddons.length) {
@@ -34,7 +76,10 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
 
     if (selectedAddons.length === 1) {
       const selectedOption = addonOptions.find((option) => getValue(option) === selectedAddons[0]);
-      const billingCycleLabel = getAddonBillingCycleLabel(getAddonBillingCycle(selectedOption, service?.billingCycle ?? service?.billing?.cycle ?? service?.billing), '');
+      const billingCycleLabel = getAddonBillingCycleLabel(
+        getAddonBillingCycle(selectedOption, service?.billingCycle ?? service?.billing?.cycle ?? service?.billing),
+        '',
+      );
 
       return billingCycleLabel ? `${selectedAddons[0]} • ${billingCycleLabel}` : selectedAddons[0];
     }
@@ -78,15 +123,11 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
     updateAddonMenuPosition();
 
     const handlePointerDown = (event) => {
-      if (
-        addonMenuRef.current && addonMenuRef.current.contains(event.target)
-      ) {
+      if (addonMenuRef.current && addonMenuRef.current.contains(event.target)) {
         return;
       }
 
-      if (
-        addonTriggerRef.current && addonTriggerRef.current.contains(event.target)
-      ) {
+      if (addonTriggerRef.current && addonTriggerRef.current.contains(event.target)) {
         return;
       }
 
@@ -129,135 +170,179 @@ export default function ServiceCard({ service, configuration, addon, onConfigure
   };
 
   return (
-    <article className="panel flex h-full flex-col justify-between p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <span className="badge bg-sky-400/10 text-sky-300">{service.category}</span>
-          <h3 className="mt-4 text-xl font-semibold text-white">{service.name}</h3>
-          <p className="mt-3 text-sm leading-7 text-slate-400">{service.description}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-2xl font-semibold text-white">{formatCurrency(service.price)}</p>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">/{service.billing}</p>
-        </div>
-      </div>
+    <article className="catalog-card">
+      <div className="catalog-card__inner">
+        <div className="catalog-card__hero">
+          <div className="catalog-card__hero-copy">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="catalog-card__chip">{service.category}</span>
+            </div>
+            <h3 className="catalog-card__title">{displayServiceName}</h3>
+            <p className="catalog-card__description">{displayServiceDescription}</p>
+          </div>
 
-      <div className="mt-5 space-y-3 text-sm text-slate-300">
-        <div>
-          <p className="mb-2 font-medium text-white">Included Options</p>
-            <div className="space-y-2">
-            {service.configurations.slice(0, 3).map((item) => (
-              <div key={getValue(item)} className="flex items-center gap-2">
-                <CheckCircle2 size={16} className="text-sky-300" />
-                <span>{getLabel(item)}</span>
-              </div>
-            ))}
+          <div className="catalog-card__price-box">
+            <span className="catalog-card__price-label">Starts at</span>
+            <p className="catalog-card__price-value">{formatCurrency(service.price)}</p>
+            <p className="catalog-card__price-cycle">/{billingLabel}</p>
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-            <label className="text-xs uppercase tracking-[0.18em] text-slate-500">
-            Product Type
-            <select value={selectedConfiguration} onChange={(event) => onConfigure(service.id, 'configuration', event.target.value)} className="input mt-2">
-              {service.configurations.map((option) => (
-                <option key={getValue(option)} value={getValue(option)}>
-                  {getLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs uppercase tracking-[0.18em] text-slate-500">
-            Add-ons
-            {addonOptions.length ? (
-              <div className="mt-2">
-                <button
-                  ref={addonTriggerRef}
-                  type="button"
-                  onClick={() => setIsAddonMenuOpen((current) => !current)}
-                  className="input flex min-h-12 items-center justify-between gap-3 text-left"
-                  aria-haspopup="listbox"
-                  aria-expanded={isAddonMenuOpen}
-                >
-                  <span className={`block truncate text-sm normal-case tracking-normal ${selectedAddons.length ? 'text-slate-100' : 'text-slate-400'}`}>
-                    {selectedAddonSummary}
+        {metaItems.length ? (
+          <div className="catalog-card__meta-grid">
+            {metaItems.map((item) => (
+              <div key={item.label} className="catalog-card__meta-item">
+                <span className="catalog-card__meta-label">{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {shouldShowIncludedOptions ? (
+          <section className="catalog-card__section">
+            <div className="flex items-center justify-between gap-3">
+              <p className="catalog-card__section-title">Included Options</p>
+              <span className="catalog-card__section-hint">Managed by default</span>
+            </div>
+
+            <div className="mt-3 space-y-2.5">
+              {visibleConfigurationOptions.length ? visibleConfigurationOptions.map((item) => (
+                <div key={getValue(item)} className="catalog-card__check-row">
+                  <span className="catalog-card__check-icon">
+                    <CheckCircle2 size={15} />
                   </span>
-                  <ChevronDown size={16} className={`shrink-0 text-slate-400 transition ${isAddonMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
+                  <span className="catalog-card__check-text">{getLabel(item)}</span>
+                </div>
+              )) : (
+                <p className="catalog-card__empty-state">No included options listed yet.</p>
+              )}
+            </div>
+          </section>
+        ) : null}
 
-                {isAddonMenuOpen && addonMenuPosition && typeof document !== 'undefined'
-                  ? createPortal(
-                      <div
-                        ref={addonMenuRef}
-                        style={addonMenuPosition}
-                        className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl shadow-slate-950/40"
-                      >
-                        <div className="flex items-center justify-between border-b border-white/8 px-3 py-2 text-[11px] normal-case tracking-normal text-slate-400">
-                          <span>Select one or more add-ons</span>
-                          {selectedAddons.length ? <span>{selectedAddons.length} selected</span> : null}
-                        </div>
-                        <div className="max-h-72 space-y-2 overflow-y-auto p-2">
-                          <label
-                            className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 transition ${selectedAddons.length === 0 ? 'border-sky-300/30 bg-sky-400/10' : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]'}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedAddons.length === 0}
-                              onChange={clearAddonSelection}
-                              className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900"
-                            />
-                            <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-                              <span className="pr-2 text-sm normal-case tracking-normal text-slate-200">None</span>
-                            </div>
-                          </label>
-                          {addonOptions.map((option) => {
-                            const optionValue = getValue(option);
-                            const optionLabel = getLabel(option);
-                            const optionPrice = typeof option === 'object' && typeof option.price === 'number' ? option.price : null;
-                            const optionBillingCycle = getAddonBillingCycleLabel(getAddonBillingCycle(option, service?.billingCycle ?? service?.billing?.cycle ?? service?.billing), '');
-                            const isChecked = selectedAddons.includes(optionValue);
+        <section className="catalog-card__section catalog-card__section--config">
+          <div className="flex items-center justify-between gap-3">
+            <p className="catalog-card__section-title">Configure This Service</p>
+            <span className="catalog-card__section-hint">{selectedAddons.length ? `${selectedAddons.length} selected` : 'Optional add-ons'}</span>
+          </div>
 
-                            return (
-                              <label
-                                key={optionValue}
-                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 transition ${isChecked ? 'border-sky-300/30 bg-sky-400/10' : 'border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]'}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => toggleAddonSelection(optionValue)}
-                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900"
-                                />
-                                <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1 pr-2">
-                                    <span className="block text-sm normal-case tracking-normal text-slate-200">{optionLabel}</span>
-                                    {optionBillingCycle ? <span className="mt-1 block text-[11px] normal-case tracking-normal text-slate-400">{optionBillingCycle}</span> : null}
+          <div className={`mt-4 grid gap-3 ${shouldShowConfigurationSelector ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+            {shouldShowConfigurationSelector ? (
+              <label className="catalog-card__field">
+                <span className="catalog-card__field-label">Product Type</span>
+                <select
+                  value={selectedConfiguration}
+                  onChange={(event) => onConfigure(service.id, 'configuration', event.target.value)}
+                  className="catalog-card__control"
+                >
+                  {configurationOptions.map((option) => (
+                    <option key={getValue(option)} value={getValue(option)}>
+                      {getLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <label className="catalog-card__field">
+              <span className="catalog-card__field-label">Add-ons</span>
+              {addonOptions.length ? (
+                <div className="mt-2">
+                  <button
+                    ref={addonTriggerRef}
+                    type="button"
+                    onClick={() => setIsAddonMenuOpen((current) => !current)}
+                    className="catalog-card__control catalog-card__control--button"
+                    aria-haspopup="listbox"
+                    aria-expanded={isAddonMenuOpen}
+                  >
+                    <span className={`block truncate text-left ${selectedAddons.length ? 'catalog-card__control-text' : 'catalog-card__control-placeholder'}`}>
+                      {selectedAddonSummary}
+                    </span>
+                    <ChevronDown size={16} className={`catalog-card__control-chevron ${isAddonMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isAddonMenuOpen && addonMenuPosition && typeof document !== 'undefined'
+                    ? createPortal(
+                        <div
+                          ref={addonMenuRef}
+                          style={addonMenuPosition}
+                          className="catalog-addon-menu"
+                        >
+                          <div className="catalog-addon-menu__header">
+                            <span>Select one or more add-ons</span>
+                            {selectedAddons.length ? <span>{selectedAddons.length} selected</span> : null}
+                          </div>
+
+                          <div className="catalog-addon-menu__body">
+                            <label className={`catalog-addon-option ${selectedAddons.length === 0 ? 'is-active' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={selectedAddons.length === 0}
+                                onChange={clearAddonSelection}
+                                className="catalog-addon-option__checkbox"
+                              />
+                              <div className="catalog-addon-option__content">
+                                <span className="catalog-addon-option__title">None</span>
+                              </div>
+                            </label>
+
+                            {addonOptions.map((option) => {
+                              const optionValue = getValue(option);
+                              const optionLabel = getLabel(option);
+                              const optionPrice = typeof option === 'object' && typeof option.price === 'number' ? option.price : null;
+                              const optionBillingCycle = getAddonBillingCycleLabel(
+                                getAddonBillingCycle(option, service?.billingCycle ?? service?.billing?.cycle ?? service?.billing),
+                                '',
+                              );
+                              const isChecked = selectedAddons.includes(optionValue);
+
+                              return (
+                                <label
+                                  key={optionValue}
+                                  className={`catalog-addon-option ${isChecked ? 'is-active' : ''}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => toggleAddonSelection(optionValue)}
+                                    className="catalog-addon-option__checkbox"
+                                  />
+                                  <div className="catalog-addon-option__content">
+                                    <div className="min-w-0 flex-1 pr-3">
+                                      <span className="catalog-addon-option__title">{optionLabel}</span>
+                                      {optionBillingCycle ? <span className="catalog-addon-option__meta">{optionBillingCycle}</span> : null}
+                                    </div>
+                                    <div className="catalog-addon-option__price-wrap">
+                                      {optionPrice ? <span className="catalog-addon-option__price">{formatCurrency(optionPrice)}</span> : null}
+                                      {optionBillingCycle ? <span className="catalog-addon-option__cycle">/{optionBillingCycle.toLowerCase()}</span> : null}
+                                    </div>
                                   </div>
-                                  <div className="shrink-0 text-right">
-                                    {optionPrice ? <span className="block text-xs font-medium normal-case tracking-normal text-sky-200">{formatCurrency(optionPrice)}</span> : null}
-                                    {optionBillingCycle ? <span className="mt-1 block text-[11px] normal-case tracking-normal text-slate-400">/{optionBillingCycle.toLowerCase()}</span> : null}
-                                  </div>
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>,
-                      document.body,
-                    )
-                  : null}
-              </div>
-            ) : (
-              <div className="input mt-2 flex min-h-12 items-center text-sm normal-case tracking-normal text-slate-400">
-                No add-ons available
-              </div>
-            )}
-          </label>
-        </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>,
+                        document.body,
+                      )
+                    : null}
+                </div>
+              ) : (
+                <div className="catalog-card__control catalog-card__control--empty">
+                  No add-ons available
+                </div>
+              )}
+            </label>
+          </div>
+
+          {selectedAddons.length ? <p className="catalog-card__summary">Selected: {selectedAddonSummary}</p> : null}
+        </section>
+
+        <button type="button" onClick={() => onAdd(service)} className="catalog-card__cta">
+          <Plus size={16} /> Add to Order
+        </button>
       </div>
-
-      <button type="button" onClick={() => onAdd(service)} className="btn-primary mt-6 gap-2 w-full">
-        <Plus size={16} /> Add to Order
-      </button>
     </article>
   );
 }
