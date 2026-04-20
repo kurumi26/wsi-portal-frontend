@@ -185,22 +185,22 @@ export default function CustomerDashboardPage() {
     );
   }, [myServices, services]);
   const getServiceAddonEntries = (service) => serviceAddonEntriesById.get(String(service?.id)) ?? [];
+  const isExpiringNotification = (item) => Boolean(
+    item
+    && (
+      /renewal upcoming|expiring soon/i.test(item.title ?? '')
+      || /will renew in|is expiring in|expires in/i.test(item.message ?? '')
+    )
+  );
   const latestOperationalNotification = notifications.find((item) => ['warning', 'info', 'danger'].includes(item.type));
   const latestOperationalIsCritical = Boolean(
     latestOperationalNotification
     && (
       latestOperationalNotification.type === 'danger'
-      || /renewal upcoming|expiring soon/i.test(latestOperationalNotification.title ?? '')
-      || /will renew in|is expiring in/i.test(latestOperationalNotification.message ?? '')
+      || isExpiringNotification(latestOperationalNotification)
     )
   );
-  const latestOperationalIsExpiring = Boolean(
-    latestOperationalNotification
-    && (
-      /renewal upcoming|expiring soon/i.test(latestOperationalNotification.title ?? '')
-      || /will renew in|is expiring in|expires in/i.test(latestOperationalNotification.message ?? '')
-    )
-  );
+  const latestOperationalIsExpiring = isExpiringNotification(latestOperationalNotification);
   const getNotificationVisual = (item, forceCritical = false) => {
     const isCritical = forceCritical || item?.type === 'danger';
     const isWarning = !isCritical && item?.type === 'warning';
@@ -278,6 +278,34 @@ export default function CustomerDashboardPage() {
   const latestOperationalCountdown = latestOperationalCountdownTarget
     ? formatCountdownTimer(latestOperationalCountdownTarget)
     : '';
+  const expiringOperationalVisual = getNotificationVisual({ type: 'danger' }, true);
+  const expiringAlertSummary = nearExpiredServices
+    .slice(0, 3)
+    .map((service) => `${service.name} (${formatTimeRemaining(service.renewsOn)})`)
+    .join(', ');
+  const topOperationalAlert = nearExpiredServices.length
+    ? {
+        title: nearExpiredServices.length === 1
+          ? `${nearExpiredServices[0].name} expiring soon`
+          : `${nearExpiredServices.length} services expiring soon`,
+        message: nearExpiredServices.length === 1
+          ? `${nearExpiredServices[0].name} is expiring in ${formatTimeRemaining(nearExpiredServices[0].renewsOn)}.`
+          : `Services nearing renewal: ${expiringAlertSummary}${nearExpiredServices.length > 3 ? ` +${nearExpiredServices.length - 3} more` : ''}.`,
+        countdown: formatCountdownTimer(nearExpiredServices[0].renewsOn),
+        countdownLabel: nearExpiredServices.length > 1 ? 'Next expiry:' : 'Time left:',
+        isCritical: true,
+        visual: expiringOperationalVisual,
+      }
+    : latestOperationalNotification
+      ? {
+          title: latestOperationalNotification.title,
+          message: latestOperationalNotification.message,
+          countdown: latestOperationalCountdown,
+          countdownLabel: 'Time left:',
+          isCritical: latestOperationalIsCritical,
+          visual: latestOperationalVisual,
+        }
+      : null;
   const bannerSvc = unpaidRepresentative ?? nearExpiredServices[0];
   const bannerHasPending = Boolean(
     bannerSvc && approvalPendingOrders.some((o) => (o.serviceId && String(o.serviceId) === String(bannerSvc.id)) || (o.serviceName && o.serviceName === bannerSvc.name)),
@@ -309,9 +337,32 @@ export default function CustomerDashboardPage() {
     return Number.isNaN(time) ? 0 : time;
   };
 
+  const expiringAlertPreviewItems = useMemo(
+    () => nearExpiredServices.map((service) => ({
+      id: `current-expiring-${service.id}`,
+      title: `${service.name} expiring soon`,
+      message: `${service.name} is expiring in ${formatTimeRemaining(service.renewsOn)}.`,
+      createdAt: service.renewsOn ?? new Date().toISOString(),
+      isRead: false,
+      type: 'danger',
+      data: { serviceId: service.id, renewsOn: service.renewsOn },
+      isDerived: true,
+    })),
+    [nearExpiredServices, countdownNow],
+  );
+
   const alertPreviewItems = useMemo(
-    () => [...notifications].sort((left, right) => getRecordTimestamp(right) - getRecordTimestamp(left)).slice(0, 6),
-    [notifications],
+    () => {
+      const remainingNotifications = nearExpiredServices.length
+        ? notifications.filter((item) => !isExpiringNotification(item))
+        : notifications;
+
+      const sortedNotifications = [...remainingNotifications]
+        .sort((left, right) => getRecordTimestamp(right) - getRecordTimestamp(left));
+
+      return [...expiringAlertPreviewItems, ...sortedNotifications].slice(0, 6);
+    },
+    [expiringAlertPreviewItems, nearExpiredServices.length, notifications],
   );
 
   const pendingApprovalPreviewOrders = useMemo(
@@ -685,25 +736,25 @@ export default function CustomerDashboardPage() {
               </div>
             </div>
           ) : null}
-          {latestOperationalNotification ? (
-            <div className={`rounded-3xl px-4 py-4 shadow-sm ${latestOperationalIsCritical ? 'border border-red-400/35 bg-red-400/10 shadow-red-900/10 alert-danger' : 'border border-amber-300/40 bg-amber-300/20 shadow-amber-900/10 alert-warning'}`}>
+          {topOperationalAlert ? (
+            <div className={`rounded-3xl px-4 py-4 shadow-sm ${topOperationalAlert.isCritical ? 'border border-red-400/35 bg-red-400/10 shadow-red-900/10 alert-danger' : 'border border-amber-300/40 bg-amber-300/20 shadow-amber-900/10 alert-warning'}`}>
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl ${latestOperationalVisual?.iconClassName ?? ''}`}>
-                    {latestOperationalVisual ? <latestOperationalVisual.Icon size={18} strokeWidth={latestOperationalVisual.strokeWidth} stroke={latestOperationalVisual.stroke} /> : null}
+                  <div className={`mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl ${topOperationalAlert.visual?.iconClassName ?? ''}`}>
+                    {topOperationalAlert.visual ? <topOperationalAlert.visual.Icon size={18} strokeWidth={topOperationalAlert.visual.strokeWidth} stroke={topOperationalAlert.visual.stroke} /> : null}
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className={`font-semibold ${latestOperationalIsCritical ? 'text-red-200' : 'text-amber-100'}`}>{latestOperationalNotification.title}</p>
+                      <p className={`font-semibold ${topOperationalAlert.isCritical ? 'text-red-200' : 'text-amber-100'}`}>{topOperationalAlert.title}</p>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <p className={`text-sm ${latestOperationalIsCritical ? 'text-red-100/90' : 'text-amber-50/90'}`}>
-                        {latestOperationalNotification.message}
-                        {latestOperationalCountdown ? (
-                          <span className={`ml-2 font-medium ${latestOperationalIsCritical ? 'text-red-200' : 'text-amber-100'}`}>
-                            Time left:{' '}
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 shadow-sm ${latestOperationalIsCritical ? 'border-red-200/70 bg-white/85 text-red-700' : 'border-amber-200/70 bg-white/85 text-amber-700'}`}>
-                              {latestOperationalCountdown}
+                      <p className={`text-sm ${topOperationalAlert.isCritical ? 'text-red-100/90' : 'text-amber-50/90'}`}>
+                        {topOperationalAlert.message}
+                        {topOperationalAlert.countdown ? (
+                          <span className={`ml-2 font-medium ${topOperationalAlert.isCritical ? 'text-red-200' : 'text-amber-100'}`}>
+                            {topOperationalAlert.countdownLabel}{' '}
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 shadow-sm ${topOperationalAlert.isCritical ? 'border-red-200/70 bg-white/85 text-red-700' : 'border-amber-200/70 bg-white/85 text-amber-700'}`}>
+                              {topOperationalAlert.countdown}
                             </span>
                           </span>
                         ) : null}

@@ -13,7 +13,7 @@ const customerNav = [
   { label: 'Billing', to: '/dashboard/billing', icon: CreditCard },
   { label: 'Orders', to: '/dashboard/orders', icon: ReceiptText },
   { label: 'Notifications', to: '/dashboard/notifications', icon: Bell },
-//   { label: 'Support', to: '/support', icon: LifeBuoy },
+  { label: 'Help & Communication', to: '/support', icon: LifeBuoy },
   { label: 'Account', to: '/dashboard/account', icon: Settings },
 ];
 

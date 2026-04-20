@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
-import { hasRenewalCountdown } from '../utils/services';
+import { getServiceDisplayStatus } from '../utils/services';
 
 const PortalContext = createContext(null);
 
@@ -193,13 +193,14 @@ export function PortalProvider({ children }) {
         ]);
 
         setOrders(normalizeOrderNoteRecords(orderData));
+        const normalizedServices = normalizeServiceCancellationRecords(serviceData);
+        const customerServices = dedupeServices(normalizedServices);
         // Dedupe services to avoid duplicate entries after renew/pay cycles
-        setMyServices(dedupeServices(normalizeServiceCancellationRecords(serviceData)));
+        setMyServices(customerServices);
         // Generate lightweight client-side alerts based on service lifecycle events
         try {
           const synth = [];
           const now = Date.now();
-          const NEAR_EXPIRE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
           const timeRemaining = (iso) => {
             if (!iso) return '';
@@ -214,22 +215,19 @@ export function PortalProvider({ children }) {
             return 'less than a minute left';
           };
 
-          (normalizeServiceCancellationRecords(serviceData) || []).forEach((svc) => {
+          customerServices.forEach((svc) => {
             try {
-              if (hasRenewalCountdown(svc)) {
-                const t = new Date(svc.renewsOn).getTime() - now;
-                if (t > 0 && t <= NEAR_EXPIRE_MS) {
-                  synth.push({
-                    id: `synth-expire-${svc.id}`,
-                      title: `${svc.name} expiring soon`,
-                      message: `${svc.name} is expiring in ${timeRemaining(svc.renewsOn)}.`,
-                    createdAt: svc.renewsOn || new Date().toISOString(),
-                    isRead: false,
-                    type: 'danger',
-                    data: { serviceId: svc.id },
-                    isLocal: true,
-                  });
-                }
+              if (getServiceDisplayStatus(svc, now) === 'Expiring Soon') {
+                synth.push({
+                  id: `synth-expire-${svc.id}`,
+                  title: `${svc.name} expiring soon`,
+                  message: `${svc.name} is expiring in ${timeRemaining(svc.renewsOn)}.`,
+                  createdAt: svc.renewsOn || new Date().toISOString(),
+                  isRead: false,
+                  type: 'danger',
+                  data: { serviceId: svc.id },
+                  isLocal: true,
+                });
               }
 
               if (svc.status === 'Undergoing Provisioning') {
@@ -694,6 +692,18 @@ export function PortalProvider({ children }) {
     return result;
   };
 
+  const reportServiceIssue = async (serviceId, message = '') => {
+    const normalizedMessage = String(message ?? '').trim();
+
+    if (!normalizedMessage) {
+      throw new Error('Support message is required.');
+    }
+
+    const result = await portalApi.reportServiceIssue(serviceId, normalizedMessage);
+    await refreshPortalData();
+    return result;
+  };
+
   const approveProfileUpdateRequest = async (requestId, note = '') => {
     const result = await portalApi.approveProfileUpdateRequest(requestId, note);
     await refreshPortalData();
@@ -824,6 +834,7 @@ export function PortalProvider({ children }) {
       requestServiceCancellation,
       approveServiceCancellation,
       rejectServiceCancellation,
+      reportServiceIssue,
       updateServiceStatus,
       approveAdminOrder,
       updateClientBilling,

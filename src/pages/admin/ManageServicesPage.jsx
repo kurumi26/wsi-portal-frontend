@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import {
   Building2,
   CheckCircle2,
@@ -1479,7 +1480,13 @@ export default function ManageServicesPage() {
                     <tr key={`all-${service.id}`} className="table-row-hoverable">
                       <td className="px-5 py-4 align-top">
                         <div className="flex items-center gap-2">
-                          <p className="font-semibold text-white">{service.name}</p>
+                          <Link
+                            to={`/admin/services/${service.id}`}
+                            state={{ service }}
+                            className="font-semibold text-sky-300 transition hover:text-sky-200"
+                          >
+                            {service.name}
+                          </Link>
                           {isNewCatalogService(service) ? <StatusBadge status="New" /> : null}
                         </div>
                         <p className="mt-1 text-sm text-slate-400">{service.category}</p>
@@ -1599,7 +1606,13 @@ export default function ManageServicesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-base font-semibold text-white">{service.name}</p>
+                      <Link
+                        to={`/admin/services/${service.id}`}
+                        state={{ service }}
+                        className="text-base font-semibold text-sky-300 transition hover:text-sky-200"
+                      >
+                        {service.name}
+                      </Link>
                       {isNewCatalogService(service) ? <StatusBadge status="New" /> : null}
                     </div>
                     <p className="mt-1 text-sm text-slate-400">{service.category}</p>

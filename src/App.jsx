@@ -12,14 +12,18 @@ import MyServicesPage from './pages/dashboard/MyServicesPage';
 import BillingPage from './pages/dashboard/BillingPage';
 import AccountProfilePage from './pages/dashboard/AccountProfilePage';
 import OrderHistoryPage from './pages/dashboard/OrderHistoryPage';
+import HelpCommunicationPage from './pages/dashboard/HelpCommunicationPage';
 import ServicesPage from './pages/services/ServicesPage';
 import CheckoutPage from './pages/checkout/CheckoutPage';
 import NotificationsPage from './pages/dashboard/NotificationsPage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import ClientsPage from './pages/admin/ClientsPage';
 import ManageServicesPage from './pages/admin/ManageServicesPage';
+import ManageServiceDetailPage from './pages/admin/ManageServiceDetailPage';
+import ManageServiceDealDetailPage from './pages/admin/ManageServiceDealDetailPage';
 import ApprovalsPage from './pages/admin/ApprovalsPage';
 import ClientServicesPage from './pages/admin/ClientServicesPage';
+import HelpdeskPage from './pages/admin/HelpdeskPage';
 import PurchasesPage from './pages/admin/PurchasesPage';
 import AdminNotificationsPage from './pages/admin/AdminNotificationsPage';
 import UsersPage from './pages/admin/UsersPage';
@@ -90,7 +94,7 @@ export default function App() {
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/contracts" element={<PhaseTwoPage moduleName="Contract & Agreement System" />} />
-        <Route path="/support" element={<PhaseTwoPage moduleName="Support & Helpdesk" />} />
+        <Route path="/support" element={<HelpCommunicationPage />} />
       </Route>
 
       <Route
@@ -104,8 +108,11 @@ export default function App() {
         <Route path="/admin/clients" element={<ClientsPage />} />
         <Route path="/admin/users" element={<UsersPage />} />
         <Route path="/admin/services" element={<ManageServicesPage />} />
+        <Route path="/admin/services/:serviceId" element={<ManageServiceDetailPage />} />
+        <Route path="/admin/services/:serviceId/deals/:dealId" element={<ManageServiceDealDetailPage />} />
         <Route path="/admin/approvals" element={<ApprovalsPage />} />
         <Route path="/admin/client-services" element={<ClientServicesPage />} />
+        <Route path="/admin/helpdesk" element={<HelpdeskPage />} />
         <Route path="/admin/purchases" element={<PurchasesPage />} />
         <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
         <Route path="/admin/account" element={<AdminAccountPage />} />
