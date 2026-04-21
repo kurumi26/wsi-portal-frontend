@@ -4,6 +4,8 @@ const classesDark = {
   Enabled: 'bg-emerald-400/15 text-emerald-300',
   Disabled: 'bg-rose-400/15 text-rose-300',
   Active: 'bg-sky-400/15 text-sky-300',
+  Accepted: 'bg-emerald-400/15 text-emerald-300',
+  Verified: 'border border-sky-300/20 bg-sky-400/15 text-sky-200',
   Open: 'bg-orange-400/15 text-orange-300',
   'In Progress': 'border border-sky-300/20 bg-sky-400/15 text-sky-200',
   Resolved: 'bg-emerald-400/15 text-emerald-300',
@@ -17,15 +19,19 @@ const classesDark = {
   Paid: 'bg-sky-400/15 text-sky-300',
   Pending: 'bg-orange-400/15 text-orange-300',
   'Pending Review': 'bg-white/15 text-slate-100',
+  'Pending Verification': 'border border-amber-300/20 bg-amber-400/15 text-amber-100',
   'Pending Approval': 'bg-orange-400/15 text-orange-300',
   Approved: 'bg-emerald-400/15 text-emerald-300',
   Rejected: 'bg-rose-400/15 text-rose-300',
+  'Awaiting Acceptance': 'bg-white/15 text-slate-100',
 };
 
 const classesLight = {
   Enabled: '!bg-emerald-50 !text-emerald-600',
   Disabled: '!bg-rose-200 !text-rose-700',
   Active: '!bg-emerald-50 !text-emerald-600',
+  Accepted: '!bg-emerald-50 !text-emerald-600',
+  Verified: '!border !border-sky-200 !bg-sky-50 !text-sky-700',
   Open: 'bg-orange-50 text-orange-600',
   'In Progress': '!border !border-sky-200 !bg-sky-50 !text-sky-700',
   Resolved: '!bg-emerald-50 !text-emerald-600',
@@ -38,11 +44,13 @@ const classesLight = {
   Paid: '!bg-emerald-50 !text-emerald-600',
   Pending: 'bg-orange-50 text-orange-600',
   'Pending Review': '!bg-slate-200 !text-slate-800',
+  'Pending Verification': '!border !border-amber-200 !bg-amber-50 !text-amber-700',
   New: '!bg-emerald-50 !text-emerald-600',
   Failed: '!bg-rose-200 !text-rose-700',
   'Pending Approval': 'bg-orange-50 text-orange-600',
   Approved: 'bg-emerald-50 text-emerald-600',
   Rejected: 'bg-rose-50 text-rose-600',
+  'Awaiting Acceptance': '!bg-slate-200 !text-slate-800',
 };
 
 const displayLabels = {

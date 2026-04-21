@@ -4,21 +4,22 @@ import { CheckCircle, XCircle, X } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, formatDateTime } from '../../utils/format';
 import { getAddonBillingCycle, getAddonBillingCycleLabel } from '../../utils/addons';
 import { desiredDomainRequiredMessage, getDesiredDomainValue, requiresDesiredDomain } from '../../utils/orders';
 
 const paymentMethods = ['Credit Card', 'PayPal', 'Bank Transfer'];
 
 export default function CheckoutPage() {
-  const { cart, services, paymentState, placeOrder, removeFromCart, retryPayment, updateCartItem } = usePortal();
+  const { cart, services, paymentState, placeOrder, removeFromCart, retryPayment, updateCartItem, checkoutAgreementRecord } = usePortal();
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
-  const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const total = cart.reduce((sum, item) => sum + item.price, 0);
   const missingDesiredDomainItems = cart.filter((item) => requiresDesiredDomain(item) && !getDesiredDomainValue(item));
   const hasMissingDesiredDomains = missingDesiredDomainItems.length > 0;
+  const checkoutAgreementAccepted = checkoutAgreementRecord ? checkoutAgreementRecord.status === 'Accepted' : cart.length === 0;
+  const checkoutAgreementRejected = checkoutAgreementRecord?.status === 'Rejected';
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function CheckoutPage() {
     }
 
     setIsSubmitting(true);
-    await placeOrder({ paymentMethod, agreementAccepted });
+    await placeOrder({ paymentMethod, agreementAccepted: checkoutAgreementAccepted });
     setIsSubmitting(false);
   };
 
@@ -214,10 +215,44 @@ export default function CheckoutPage() {
               <div className="panel-muted p-4">Terms & Conditions: Billing terms, service periods, and cancellation rules apply based on selected products.</div>
               <div className="panel-muted p-4">Privacy Policy: Customer data is handled according to WSI privacy commitments and operational safeguards.</div>
             </div>
-            <label className="mt-5 flex items-start gap-3 text-sm text-slate-300">
-              <input type="checkbox" checked={agreementAccepted} onChange={(event) => setAgreementAccepted(event.target.checked)} className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900" />
-              <span>I agree to the Purchase Agreement, Terms and Conditions, and Privacy Policy.</span>
-            </label>
+
+            {checkoutAgreementRecord ? (
+              <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-white">{checkoutAgreementRecord.title}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Acceptance is recorded for compliance and audit.</p>
+                  </div>
+                  <StatusBadge status={checkoutAgreementRecord.status} />
+                </div>
+
+                <p className="mt-4 text-sm leading-6 text-slate-300">
+                  {checkoutAgreementAccepted
+                    ? `Agreement accepted ${formatDateTime(checkoutAgreementRecord.acceptedAt)}. Payment can proceed.`
+                    : checkoutAgreementRejected
+                      ? 'The agreement pack was rejected. Review it in Contracts and accept it before continuing.'
+                      : 'Review and accept the active agreement pack in Contracts before payment can continue.'}
+                </p>
+
+                {checkoutAgreementRecord.requiresSignedDocument ? (
+                  <p className="mt-2 text-xs leading-6 text-orange-200">Finance may also request a signed copy for this order. You can upload it in Contracts if needed.</p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    to="/contracts"
+                    state={{ returnTo: '/checkout', focusContractId: checkoutAgreementRecord.id }}
+                    className="btn-secondary"
+                  >
+                    {checkoutAgreementAccepted ? 'Review Accepted Agreement' : 'Review in Contracts'}
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                Add items to the cart to generate the agreement pack for checkout.
+              </div>
+            )}
           </div>
         </div>
 
@@ -238,24 +273,28 @@ export default function CheckoutPage() {
             </div>
             <button
               type="button"
-              disabled={isSubmitting || !agreementAccepted || hasMissingDesiredDomains}
-              aria-disabled={isSubmitting || !agreementAccepted || hasMissingDesiredDomains}
+              disabled={isSubmitting || !checkoutAgreementAccepted || hasMissingDesiredDomains || !cart.length}
+              aria-disabled={isSubmitting || !checkoutAgreementAccepted || hasMissingDesiredDomains || !cart.length}
               title={
-                hasMissingDesiredDomains
-                  ? 'Add the desired domain for each domain order to complete payment'
-                  : !agreementAccepted
-                    ? 'Please accept the agreement to complete payment'
-                    : undefined
+                !cart.length
+                  ? 'Your cart is empty'
+                  : hasMissingDesiredDomains
+                    ? 'Add the desired domain for each domain order to complete payment'
+                    : !checkoutAgreementAccepted
+                      ? 'Please review and accept the agreement in Contracts before completing payment'
+                      : undefined
               }
               className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleCheckout}
             >
               {isSubmitting ? 'Processing payment...' : 'Complete payment'}
             </button>
-            {hasMissingDesiredDomains ? (
+            {!cart.length ? (
+              <p className="mt-2 text-sm text-slate-400">Add at least one service to the cart before completing payment.</p>
+            ) : hasMissingDesiredDomains ? (
               <p className="mt-2 text-sm text-slate-400">{desiredDomainRequiredMessage}</p>
-            ) : !agreementAccepted ? (
-              <p className="mt-2 text-sm text-slate-400">Please accept the Purchase Agreement, Terms and Privacy Policy to continue.</p>
+            ) : !checkoutAgreementAccepted ? (
+              <p className="mt-2 text-sm text-slate-400">Please review and accept the Purchase Agreement, Terms, and Privacy Policy in Contracts to continue.</p>
             ) : null}
             {paymentState.status !== 'idle' ? (
               <div>

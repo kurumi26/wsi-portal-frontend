@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, CreditCard, LayoutDashboard, LifeBuoy, LogOut, ReceiptText, Settings, Shield } from 'lucide-react';
+import { Bell, ChevronDown, CreditCard, FileSignature, LayoutDashboard, LifeBuoy, LogOut, ReceiptText, Settings, Shield } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
@@ -12,6 +12,7 @@ const customerNav = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
   { label: 'Billing', to: '/dashboard/billing', icon: CreditCard },
   { label: 'Orders', to: '/dashboard/orders', icon: ReceiptText },
+  { label: 'Contracts', to: '/contracts', icon: FileSignature },
   { label: 'Notifications', to: '/dashboard/notifications', icon: Bell },
   { label: 'Help & Communication', to: '/support', icon: LifeBuoy },
   { label: 'Account', to: '/dashboard/account', icon: Settings },

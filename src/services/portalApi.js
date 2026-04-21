@@ -1,7 +1,156 @@
+import { jsPDF } from 'jspdf';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 const TOKEN_STORAGE_KEY = 'wsi-auth-token';
+const CONTENT_DISPOSITION_FILENAME_STAR_PATTERN = /filename\*=(?:UTF-8'')?([^;]+)/i;
+const CONTENT_DISPOSITION_FILENAME_PATTERN = /filename="?([^";]+)"?/i;
+const PDF_SIGNATURE = '%PDF-';
 
 let authToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+
+function sanitizeFileName(value, fallback = 'download') {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  const safeName = normalized.replace(/[<>:"/\\|?*\u0000-\u001F]+/g, '-').replace(/\s+/g, ' ').trim();
+
+  return safeName || fallback;
+}
+
+function parseDownloadFileName(contentDisposition) {
+  if (!contentDisposition) {
+    return '';
+  }
+
+  const encodedMatch = contentDisposition.match(CONTENT_DISPOSITION_FILENAME_STAR_PATTERN);
+
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      return encodedMatch[1].trim().replace(/^"|"$/g, '');
+    }
+  }
+
+  const plainMatch = contentDisposition.match(CONTENT_DISPOSITION_FILENAME_PATTERN);
+  return plainMatch?.[1]?.trim() ?? '';
+}
+
+function stripFileExtension(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized.replace(/\.[^./\\]+$/i, '');
+}
+
+function ensurePdfFileName(value) {
+  const safeName = sanitizeFileName(value, 'agreement-copy.pdf');
+
+  if (/\.pdf$/i.test(safeName)) {
+    return safeName;
+  }
+
+  const baseName = stripFileExtension(safeName) || 'agreement-copy';
+  return `${baseName}.pdf`;
+}
+
+function isTextualResponse(contentType) {
+  const normalized = String(contentType || '').toLowerCase();
+
+  return normalized.startsWith('text/')
+    || normalized.includes('json')
+    || normalized.includes('xml');
+}
+
+function extractAgreementText(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return '';
+  }
+
+  const candidates = [
+    payload.content,
+    payload.agreement,
+    payload.agreementText,
+    payload.agreement_text,
+    payload.document,
+    payload.documentText,
+    payload.document_text,
+    payload.text,
+    payload.body,
+    payload.contract?.content,
+    payload.contract?.agreement,
+    payload.contract?.agreementText,
+    payload.contract?.agreement_text,
+    payload.contract?.document,
+    payload.contract?.text,
+    payload.data?.content,
+    payload.data?.agreement,
+    payload.data?.agreementText,
+    payload.data?.agreement_text,
+    payload.data?.document,
+    payload.data?.text,
+  ];
+
+  return candidates.find((value) => typeof value === 'string' && value.trim()) ?? '';
+}
+
+function downloadBlob(blob, fileName) {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(objectUrl);
+  }, 0);
+}
+
+function createPdfFromText(text, fileName) {
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+  const margin = 48;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - (margin * 2);
+  const pageBottom = pageHeight - margin;
+  const title = stripFileExtension(fileName) || 'Agreement Copy';
+  const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n');
+  let cursorY = margin;
+
+  const writeWrappedLines = (wrappedLines, lineHeight) => {
+    wrappedLines.forEach((line) => {
+      if (cursorY > pageBottom) {
+        pdf.addPage();
+        cursorY = margin;
+      }
+
+      if (line) {
+        pdf.text(line, margin, cursorY);
+      }
+
+      cursorY += lineHeight;
+    });
+  };
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(16);
+  writeWrappedLines(pdf.splitTextToSize(title, maxWidth), 20);
+  cursorY += 8;
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(11);
+
+  lines.forEach((line) => {
+    const normalizedLine = line.trimEnd();
+    const wrappedLines = normalizedLine ? pdf.splitTextToSize(normalizedLine, maxWidth) : [''];
+    writeWrappedLines(wrappedLines, 16);
+
+    if (!normalizedLine) {
+      cursorY += 6;
+    }
+  });
+
+  return pdf.output('blob');
+}
 
 function getHeaders(customHeaders = {}) {
   const headers = {
@@ -77,6 +226,91 @@ export const portalApi = {
 
   clearAuthToken() {
     this.setAuthToken(null);
+  },
+
+  async downloadFile(fileUrl, fallbackFileName = 'agreement-copy.pdf', options = {}) {
+    const normalizedUrl = typeof fileUrl === 'string' ? fileUrl.trim() : '';
+    const { renderTextAsPdf = true } = options;
+
+    if (!normalizedUrl) {
+      throw new Error('Download URL is unavailable');
+    }
+
+    let response;
+
+    try {
+      response = await fetch(normalizedUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: authToken ? `Bearer ${authToken}` : undefined,
+          Accept: '*/*',
+        },
+      });
+    } catch (err) {
+      throw new Error(err.message || 'Download request failed');
+    }
+
+    if (!response.ok) {
+      const rawText = await response.text();
+      let message = `Download failed with status ${response.status}`;
+
+      if (rawText) {
+        try {
+          const data = JSON.parse(rawText);
+          message = data.message || message;
+        } catch {
+          message = rawText;
+        }
+      }
+
+      throw new Error(message);
+    }
+
+    const contentDisposition = response.headers.get('content-disposition');
+    const requestedFileName = sanitizeFileName(parseDownloadFileName(contentDisposition) || fallbackFileName, 'agreement-copy.pdf');
+    const responseBlob = await response.blob();
+    const contentType = String(response.headers.get('content-type') || responseBlob.type || '').toLowerCase();
+    const signature = await responseBlob.slice(0, 5).text();
+
+    if (contentType.includes('application/pdf') || signature.startsWith(PDF_SIGNATURE)) {
+      const fileName = ensurePdfFileName(requestedFileName);
+      downloadBlob(responseBlob, fileName);
+      return { fileName };
+    }
+
+    if (!renderTextAsPdf || !isTextualResponse(contentType)) {
+      const fileName = sanitizeFileName(parseDownloadFileName(contentDisposition) || fallbackFileName, 'download');
+      downloadBlob(responseBlob, fileName);
+
+      return { fileName };
+    }
+
+    const rawText = await responseBlob.text();
+    let agreementText = rawText;
+
+    if (contentType.includes('application/json')) {
+      try {
+        const payload = JSON.parse(rawText);
+        agreementText = extractAgreementText(payload) || rawText;
+      } catch {
+        agreementText = rawText;
+      }
+    }
+
+    const normalizedText = agreementText.replace(/^\uFEFF/, '').trim();
+
+    if (!normalizedText) {
+      throw new Error('Downloaded agreement is empty.');
+    }
+
+    const fileName = ensurePdfFileName(requestedFileName);
+    const pdfBlob = createPdfFromText(normalizedText, fileName);
+    downloadBlob(pdfBlob, fileName);
+
+    return {
+      fileName,
+      generatedFromText: true,
+    };
   },
 
   async login(payload) {
@@ -192,6 +426,78 @@ export const portalApi = {
     const raw = await response.text();
     const data = raw ? JSON.parse(raw) : {};
     if (!response.ok) throw new Error(data.message || 'Upload failed');
+    return data;
+  },
+
+  async getMyContracts() {
+    return apiRequest('/contracts/me');
+  },
+
+  async getAdminContracts() {
+    return apiRequest('/admin/contracts');
+  },
+
+  async recordContractDecision(contractId, payload) {
+    return apiRequest(`/contracts/${encodeURIComponent(contractId)}/decision`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async verifyAdminContract(contractId, payload) {
+    return apiRequest(`/admin/contracts/${encodeURIComponent(contractId)}/verify`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async uploadSignedContract(contractId, file) {
+    const form = new FormData();
+    form.append('signedDocument', file);
+
+    const response = await fetch(`${API_BASE_URL}/contracts/${encodeURIComponent(contractId)}/signed-document`, {
+      method: 'POST',
+      headers: {
+        Authorization: authToken ? `Bearer ${authToken}` : undefined,
+        Accept: 'application/json',
+      },
+      body: form,
+    });
+
+    if (response.status === 204) return null;
+
+    const raw = await response.text();
+    const data = raw ? JSON.parse(raw) : {};
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Upload failed');
+    }
+
+    return data;
+  },
+
+  async uploadAdminSignedContract(contractId, file) {
+    const form = new FormData();
+    form.append('signedDocument', file);
+
+    const response = await fetch(`${API_BASE_URL}/admin/contracts/${encodeURIComponent(contractId)}/signed-document`, {
+      method: 'POST',
+      headers: {
+        Authorization: authToken ? `Bearer ${authToken}` : undefined,
+        Accept: 'application/json',
+      },
+      body: form,
+    });
+
+    if (response.status === 204) return null;
+
+    const raw = await response.text();
+    const data = raw ? JSON.parse(raw) : {};
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Upload failed');
+    }
+
     return data;
   },
 

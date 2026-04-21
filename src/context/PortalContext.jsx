@@ -1,17 +1,21 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
+import { buildCheckoutAgreementRecord, buildContractRecords, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractOverrides } from '../utils/contracts';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
 import { getServiceDisplayStatus } from '../utils/services';
 
 const PortalContext = createContext(null);
 
 export function PortalProvider({ children }) {
-  const { isAuthenticated, isAdmin, isAuthLoading } = useAuth();
+  const { isAuthenticated, isAdmin, isAuthLoading, user } = useAuth();
   const [services, setServices] = useState([]);
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]);
   const [myServices, setMyServices] = useState([]);
+  const contractOwnerKey = useMemo(() => getContractOwnerKey(user), [user?.email, user?.id, user?.name]);
+  const [remoteContracts, setRemoteContracts] = useState([]);
+  const [contractOverrides, setContractOverrides] = useState(() => readStoredContractOverrides(contractOwnerKey));
 
   // Deduplicate services by name (or id) preferring active/provisioning records over unpaid
   const dedupeServices = (list) => {
@@ -141,6 +145,79 @@ export function PortalProvider({ children }) {
     });
   };
 
+  const shouldUseLocalContractFallback = (error) => {
+    const message = String(error?.message ?? '').toLowerCase();
+
+    return message.includes('404')
+      || message.includes('405')
+      || message.includes('501')
+      || message.includes('not found')
+      || message.includes('network request failed')
+      || message.includes('failed to fetch');
+  };
+
+  const getContractMatchKey = (contract) => String(
+    contract?.id
+    ?? contract?.contractId
+    ?? contract?.contract_id
+    ?? contract?.referenceId
+    ?? contract?.reference_id
+    ?? contract?.externalKey
+    ?? contract?.external_key
+    ?? '',
+  ).trim();
+
+  const upsertRemoteContract = (nextContract) => {
+    if (!nextContract || typeof nextContract !== 'object') {
+      return;
+    }
+
+    setRemoteContracts((current) => {
+      const items = Array.isArray(current) ? [...current] : [];
+      const nextKey = getContractMatchKey(nextContract);
+      const matchIndex = items.findIndex((item) => getContractMatchKey(item) === nextKey);
+
+      if (matchIndex === -1) {
+        return [nextContract, ...items];
+      }
+
+      items[matchIndex] = { ...items[matchIndex], ...nextContract };
+      return items;
+    });
+  };
+
+  const setContractOverride = (contractId, patch) => {
+    setContractOverrides((current) => ({
+      ...current,
+      [contractId]: {
+        ...(current[contractId] ?? {}),
+        ...patch,
+      },
+    }));
+  };
+
+  const broadcastPortalMessage = (message) => {
+    try {
+      if (typeof BroadcastChannel === 'undefined') {
+        return;
+      }
+
+      const channel = new BroadcastChannel('wsi-portal');
+      channel.postMessage(message);
+      channel.close();
+    } catch (error) {
+      // ignore cross-tab broadcast failures
+    }
+  };
+
+  useEffect(() => {
+    setContractOverrides(readStoredContractOverrides(contractOwnerKey));
+  }, [contractOwnerKey]);
+
+  useEffect(() => {
+    writeStoredContractOverrides(contractOwnerKey, contractOverrides);
+  }, [contractOwnerKey, contractOverrides]);
+
   useEffect(() => {
     const loadServices = async () => {
       try {
@@ -163,6 +240,7 @@ export function PortalProvider({ children }) {
       setAdminUsers([]);
       setAdminPurchases([]);
       setAdminServices([]);
+      setRemoteContracts([]);
       return;
     }
 
@@ -170,12 +248,15 @@ export function PortalProvider({ children }) {
 
     try {
       if (isAdmin) {
-        const [clientData, userData, purchaseData, serviceData, notificationData] = await Promise.all([
+        const [clientData, userData, purchaseData, serviceData, notificationData, contractData] = await Promise.all([
           portalApi.getClients(),
           portalApi.getAdminUsers(),
           portalApi.getAdminPurchases(),
           portalApi.getAdminServices(),
           portalApi.getNotifications(),
+          portalApi.getAdminContracts()
+            .then((result) => (Array.isArray(result) ? result : (Array.isArray(result?.contracts) ? result.contracts : [])))
+            .catch(() => []),
         ]);
 
         setClients(clientData);
@@ -185,11 +266,15 @@ export function PortalProvider({ children }) {
         setNotifications(sortNotificationsByTime(notificationData));
         setOrders([]);
         setMyServices([]);
+        setRemoteContracts(Array.isArray(contractData) ? contractData : []);
       } else {
-        const [orderData, serviceData, notificationData] = await Promise.all([
+        const [orderData, serviceData, notificationData, contractData] = await Promise.all([
           portalApi.getOrders(),
           portalApi.getMyServices(),
           portalApi.getNotifications(),
+          portalApi.getMyContracts()
+            .then((result) => (Array.isArray(result) ? result : (Array.isArray(result?.contracts) ? result.contracts : [])))
+            .catch(() => []),
         ]);
 
         setOrders(normalizeOrderNoteRecords(orderData));
@@ -197,6 +282,7 @@ export function PortalProvider({ children }) {
         const customerServices = dedupeServices(normalizedServices);
         // Dedupe services to avoid duplicate entries after renew/pay cycles
         setMyServices(customerServices);
+        setRemoteContracts(Array.isArray(contractData) ? contractData : []);
         // Generate lightweight client-side alerts based on service lifecycle events
         try {
           const synth = [];
@@ -340,6 +426,10 @@ export function PortalProvider({ children }) {
       if (msg.type === 'service-status-updated') {
         refreshPortalData();
       }
+
+      if (msg.type === 'contract-updated') {
+        refreshPortalData();
+      }
     };
     channel.addEventListener('message', handler);
 
@@ -348,6 +438,55 @@ export function PortalProvider({ children }) {
       channel.close();
     };
   }, [isAdmin, isAuthLoading]);
+
+  const contractRecords = useMemo(
+    () => buildContractRecords({
+      orders,
+      myServices,
+      services,
+      remoteContracts,
+      overrides: contractOverrides,
+      user,
+    }),
+    [contractOverrides, myServices, orders, remoteContracts, services, user],
+  );
+
+  const adminContractRecords = useMemo(
+    () => buildContractRecords({
+      orders: adminPurchases,
+      myServices: adminServices,
+      services,
+      remoteContracts,
+      overrides: contractOverrides,
+      user,
+    }),
+    [adminPurchases, adminServices, contractOverrides, remoteContracts, services, user],
+  );
+
+  const checkoutAgreementRecord = useMemo(
+    () => buildCheckoutAgreementRecord({
+      cart,
+      services,
+      overrides: contractOverrides,
+    }),
+    [cart, contractOverrides, services],
+  );
+
+  const contractStats = useMemo(() => {
+    const allContracts = checkoutAgreementRecord ? [checkoutAgreementRecord, ...contractRecords] : contractRecords;
+    const pending = allContracts.filter((contract) => contract.status === 'Pending Review').length;
+    const accepted = allContracts.filter((contract) => contract.status === 'Accepted').length;
+    const rejected = allContracts.filter((contract) => contract.status === 'Rejected').length;
+    const signedDocuments = allContracts.filter((contract) => hasSignedDocument(contract)).length;
+
+    return {
+      total: allContracts.length,
+      pending,
+      accepted,
+      rejected,
+      signedDocuments,
+    };
+  }, [checkoutAgreementRecord, contractRecords]);
 
   const addToCart = (service, configuration, addon) => {
     const computeAddonTotal = (addonInput) => {
@@ -704,6 +843,288 @@ export function PortalProvider({ children }) {
     return result;
   };
 
+  const recordContractDecision = async (contractId, decision) => {
+    const normalizedDecision = String(decision ?? '').trim().toLowerCase();
+
+    if (!contractId) {
+      throw new Error('Contract record is required.');
+    }
+
+    if (!['accept', 'reject'].includes(normalizedDecision)) {
+      throw new Error('Invalid contract decision.');
+    }
+
+    const previousOverride = contractOverrides[contractId];
+    const timestamp = new Date().toISOString();
+    const status = normalizeContractStatus(normalizedDecision === 'accept' ? 'Accepted' : 'Rejected');
+
+    setContractOverride(contractId, {
+      status,
+      acceptedAt: normalizedDecision === 'accept' ? timestamp : null,
+      rejectedAt: normalizedDecision === 'reject' ? timestamp : null,
+      decisionAt: timestamp,
+      decisionBy: user?.name ?? 'Customer',
+      agreementAccepted: normalizedDecision === 'accept',
+      termsAccepted: normalizedDecision === 'accept',
+      privacyAccepted: normalizedDecision === 'accept',
+    });
+
+    try {
+      const result = await portalApi.recordContractDecision(contractId, {
+        decision: normalizedDecision,
+        status,
+        agreementAccepted: normalizedDecision === 'accept',
+        termsAccepted: normalizedDecision === 'accept',
+        privacyAccepted: normalizedDecision === 'accept',
+        decisionAt: timestamp,
+        decisionBy: user?.name ?? null,
+        source: 'customer-portal',
+      });
+
+      if (result?.contract) {
+        upsertRemoteContract(result.contract);
+      } else if (result && typeof result === 'object' && getContractMatchKey(result)) {
+        upsertRemoteContract(result);
+      }
+
+      await refreshPortalData();
+      broadcastPortalMessage({
+        type: 'contract-updated',
+        contractId,
+        action: 'decision-recorded',
+      });
+
+      return {
+        ...(result ?? {}),
+        status,
+        persistedLocally: false,
+      };
+    } catch (error) {
+      if (shouldUseLocalContractFallback(error)) {
+        return {
+          success: true,
+          status,
+          persistedLocally: true,
+          message: 'Agreement decision saved locally until the backend contracts endpoint is available.',
+        };
+      }
+
+      setContractOverrides((current) => {
+        const next = { ...current };
+
+        if (previousOverride) {
+          next[contractId] = previousOverride;
+        } else {
+          delete next[contractId];
+        }
+
+        return next;
+      });
+      throw error;
+    }
+  };
+
+  const uploadSignedContract = async (contractId, file) => {
+    if (!contractId) {
+      throw new Error('Contract record is required.');
+    }
+
+    if (!file) {
+      throw new Error('Signed document file is required.');
+    }
+
+    const previousOverride = contractOverrides[contractId];
+    const timestamp = new Date().toISOString();
+
+    setContractOverride(contractId, {
+      signedDocumentName: file.name,
+      signedDocumentUploadedAt: timestamp,
+    });
+
+    try {
+      const result = await portalApi.uploadSignedContract(contractId, file);
+
+      if (result?.contract) {
+        upsertRemoteContract(result.contract);
+      } else if (result && typeof result === 'object' && getContractMatchKey(result)) {
+        upsertRemoteContract(result);
+      } else {
+        const signedDocument = getContractSignedDocumentMetadata(result);
+        setContractOverride(contractId, {
+          signedDocumentName: signedDocument.name ?? file.name,
+          signedDocumentUploadedAt: signedDocument.uploadedAt ?? timestamp,
+          signedDocumentUrl: signedDocument.url,
+        });
+      }
+
+      await refreshPortalData();
+      broadcastPortalMessage({
+        type: 'contract-updated',
+        contractId,
+        action: 'signed-document-uploaded',
+      });
+
+      return {
+        ...(result ?? {}),
+        persistedLocally: false,
+      };
+    } catch (error) {
+      if (shouldUseLocalContractFallback(error)) {
+        return {
+          success: true,
+          persistedLocally: true,
+          message: 'Signed document metadata saved locally until the backend upload endpoint is available.',
+        };
+      }
+
+      setContractOverrides((current) => {
+        const next = { ...current };
+
+        if (previousOverride) {
+          next[contractId] = previousOverride;
+        } else {
+          delete next[contractId];
+        }
+
+        return next;
+      });
+      throw error;
+    }
+  };
+
+  const verifyContractAcceptance = async (contractId) => {
+    if (!contractId) {
+      throw new Error('Contract record is required.');
+    }
+
+    const previousOverride = contractOverrides[contractId];
+    const timestamp = new Date().toISOString();
+
+    setContractOverride(contractId, {
+      verifiedAt: timestamp,
+      verifiedBy: user?.name ?? 'Admin',
+      verificationStatus: 'Verified',
+      acceptanceVerified: true,
+    });
+
+    try {
+      const result = await portalApi.verifyAdminContract(contractId, {
+        verifiedAt: timestamp,
+        verifiedBy: user?.name ?? null,
+        verificationStatus: 'Verified',
+        acceptanceVerified: true,
+        source: 'admin-portal',
+      });
+
+      if (result?.contract) {
+        upsertRemoteContract(result.contract);
+      } else if (result && typeof result === 'object' && getContractMatchKey(result)) {
+        upsertRemoteContract(result);
+      }
+
+      await refreshPortalData();
+      broadcastPortalMessage({
+        type: 'contract-updated',
+        contractId,
+        action: 'acceptance-verified',
+      });
+
+      return {
+        ...(result ?? {}),
+        persistedLocally: false,
+      };
+    } catch (error) {
+      if (shouldUseLocalContractFallback(error)) {
+        return {
+          success: true,
+          persistedLocally: true,
+          message: 'Contract verification saved locally until the backend admin contracts endpoint is available.',
+        };
+      }
+
+      setContractOverrides((current) => {
+        const next = { ...current };
+
+        if (previousOverride) {
+          next[contractId] = previousOverride;
+        } else {
+          delete next[contractId];
+        }
+
+        return next;
+      });
+      throw error;
+    }
+  };
+
+  const uploadAdminSignedContract = async (contractId, file) => {
+    if (!contractId) {
+      throw new Error('Contract record is required.');
+    }
+
+    if (!file) {
+      throw new Error('Signed agreement file is required.');
+    }
+
+    const previousOverride = contractOverrides[contractId];
+    const timestamp = new Date().toISOString();
+
+    setContractOverride(contractId, {
+      signedDocumentName: file.name,
+      signedDocumentUploadedAt: timestamp,
+    });
+
+    try {
+      const result = await portalApi.uploadAdminSignedContract(contractId, file);
+
+      if (result?.contract) {
+        upsertRemoteContract(result.contract);
+      } else if (result && typeof result === 'object' && getContractMatchKey(result)) {
+        upsertRemoteContract(result);
+      } else {
+        const signedDocument = getContractSignedDocumentMetadata(result);
+        setContractOverride(contractId, {
+          signedDocumentName: signedDocument.name ?? file.name,
+          signedDocumentUploadedAt: signedDocument.uploadedAt ?? timestamp,
+          signedDocumentUrl: signedDocument.url,
+        });
+      }
+
+      await refreshPortalData();
+      broadcastPortalMessage({
+        type: 'contract-updated',
+        contractId,
+        action: 'admin-signed-document-uploaded',
+      });
+
+      return {
+        ...(result ?? {}),
+        persistedLocally: false,
+      };
+    } catch (error) {
+      if (shouldUseLocalContractFallback(error)) {
+        return {
+          success: true,
+          persistedLocally: true,
+          message: 'Signed agreement metadata saved locally until the backend admin upload endpoint is available.',
+        };
+      }
+
+      setContractOverrides((current) => {
+        const next = { ...current };
+
+        if (previousOverride) {
+          next[contractId] = previousOverride;
+        } else {
+          delete next[contractId];
+        }
+
+        return next;
+      });
+      throw error;
+    }
+  };
+
   const approveProfileUpdateRequest = async (requestId, note = '') => {
     const result = await portalApi.approveProfileUpdateRequest(requestId, note);
     await refreshPortalData();
@@ -809,6 +1230,10 @@ export function PortalProvider({ children }) {
       services,
       cart,
       orders,
+      contractRecords,
+      adminContractRecords,
+      checkoutAgreementRecord,
+      contractStats,
       myServices,
       adminServices,
       adminUsers,
@@ -835,6 +1260,10 @@ export function PortalProvider({ children }) {
       approveServiceCancellation,
       rejectServiceCancellation,
       reportServiceIssue,
+      recordContractDecision,
+      uploadSignedContract,
+      verifyContractAcceptance,
+      uploadAdminSignedContract,
       updateServiceStatus,
       approveAdminOrder,
       updateClientBilling,
@@ -850,7 +1279,7 @@ export function PortalProvider({ children }) {
       updateAdminUserStatus,
       refreshPortalData,
     }),
-    [services, cart, orders, myServices, adminServices, adminUsers, notifications, clients, paymentState, stats, adminPurchases, isLoadingPortal],
+    [services, cart, orders, contractRecords, adminContractRecords, checkoutAgreementRecord, contractStats, myServices, adminServices, adminUsers, notifications, clients, paymentState, stats, adminPurchases, isLoadingPortal],
   );
 
   return <PortalContext.Provider value={value}>{children}</PortalContext.Provider>;

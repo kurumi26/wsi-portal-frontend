@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, LayoutDashboard, LayoutGrid, LifeBuoy, List, LogOut, ReceiptText, ClipboardList, Settings, Shield, ShieldAlert, ShieldCheck, UserCircle2, Users } from 'lucide-react';
+import { Bell, ChevronDown, FileSignature, LayoutDashboard, LayoutGrid, LifeBuoy, List, LogOut, ReceiptText, ClipboardList, Settings, Shield, ShieldAlert, ShieldCheck, UserCircle2, Users } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
@@ -16,6 +16,7 @@ const adminNav = [
   { label: 'Approvals', to: '/admin/approvals', icon: ClipboardList },
   { label: 'Client Services', to: '/admin/client-services', icon: ShieldCheck },
   { label: 'Manage Service', to: '/admin/services', icon: ShieldAlert },
+  { label: 'Contracts', to: '/admin/contracts', icon: FileSignature },
   { label: 'Purchases', to: '/admin/purchases', icon: ReceiptText },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
     { label: 'Helpdesk', to: '/admin/helpdesk', icon: LifeBuoy },
