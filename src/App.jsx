@@ -14,6 +14,7 @@ import AccountProfilePage from './pages/dashboard/AccountProfilePage';
 import OrderHistoryPage from './pages/dashboard/OrderHistoryPage';
 import ContractsPage from './pages/dashboard/ContractsPage';
 import HelpCommunicationPage from './pages/dashboard/HelpCommunicationPage';
+import CustomerReportsPage from './pages/dashboard/CustomerReportsPage';
 import ServicesPage from './pages/services/ServicesPage';
 import CheckoutPage from './pages/checkout/CheckoutPage';
 import NotificationsPage from './pages/dashboard/NotificationsPage';
@@ -30,7 +31,7 @@ import PurchasesPage from './pages/admin/PurchasesPage';
 import AdminNotificationsPage from './pages/admin/AdminNotificationsPage';
 import UsersPage from './pages/admin/UsersPage';
 import AdminAccountPage from './pages/admin/AdminAccountPage';
-import PhaseTwoPage from './pages/future/PhaseTwoPage';
+import AdminReportsPage from './pages/admin/AdminReportsPage';
 import NotFoundPage from './pages/future/NotFoundPage';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -90,6 +91,8 @@ export default function App() {
         <Route path="/dashboard" element={<CustomerDashboardPage />} />
         <Route path="/dashboard/services" element={<MyServicesPage />} />
         <Route path="/dashboard/billing" element={<BillingPage />} />
+        <Route path="/dashboard/reports" element={<CustomerReportsPage />} />
+        <Route path="/dashboard/reports/:reportView" element={<CustomerReportsPage />} />
         <Route path="/dashboard/account" element={<AccountProfilePage />} />
         <Route path="/dashboard/orders" element={<OrderHistoryPage />} />
         <Route path="/contracts" element={<ContractsPage />} />
@@ -119,7 +122,8 @@ export default function App() {
         <Route path="/admin/purchases" element={<PurchasesPage />} />
         <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
         <Route path="/admin/account" element={<AdminAccountPage />} />
-        <Route path="/admin/reports" element={<PhaseTwoPage moduleName="Admin Reports Center" />} />
+        <Route path="/admin/reports" element={<AdminReportsPage />} />
+        <Route path="/admin/reports/:reportView" element={<AdminReportsPage />} />
         <Route path="/admin/user-management" element={<Navigate to="/admin/users" replace />} />
       </Route>
 
