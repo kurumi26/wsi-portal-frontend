@@ -596,6 +596,7 @@ export default function AdminContractsPage() {
     {
       key: 'actions',
       label: 'Actions',
+      hideable: false,
       render: (_, row) => renderContractActions(row, 'table'),
     },
   ];
@@ -630,6 +631,79 @@ export default function AdminContractsPage() {
       filter: 'Missing Signed Copy',
     },
   ];
+
+  const contractsHeaderAction = (
+    <div className="flex w-full justify-end">
+      <div className="flex max-w-full flex-col items-stretch gap-3 lg:items-end">
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="relative w-full sm:w-[320px] xl:w-[360px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search client, service, order number, or audit reference"
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center" ref={filterTriggerRef}>
+            <button
+              type="button"
+              onClick={() => setFilterOpen((current) => !current)}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
+              aria-haspopup="menu"
+              aria-expanded={filterOpen}
+              aria-label="Contract filter"
+            >
+              <span className="max-w-[14rem] truncate text-sm text-slate-200">{activeFilter}</span>
+              <ChevronDown size={14} className="text-slate-400" />
+            </button>
+
+            {filterOpen && filterMenuStyle
+              ? createPortal(
+                  <div ref={filterMenuRef} style={filterMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
+                    {filters.map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => {
+                          setActiveFilter(filter);
+                          setFilterOpen(false);
+                          setCurrentPage(1);
+                        }}
+                        className={`w-full px-4 py-2 text-left text-sm text-slate-200 hover:bg-white/5 ${activeFilter === filter ? 'bg-white/5' : ''}`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>,
+                  document.body,
+                )
+              : null}
+          </div>
+
+          {viewMode === 'table' ? <div id="admin-contracts-column-visibility-slot" className="shrink-0" /> : null}
+
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+            {viewModes.map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setViewMode(mode.id)}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === mode.id ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                aria-label={mode.label}
+                title={mode.label}
+              >
+                <mode.icon size={16} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   const reviewModal = selectedContract
     ? createPortal(
@@ -791,18 +865,12 @@ export default function AdminContractsPage() {
       <PageHeader
         eyebrow="Contracts / Agreements"
         title="Verify agreement acceptance and store signed copies"
-        description="Admins can verify customer agreement acceptance, upload signed agreements, download agreement copies, and review compliance-ready audit records from one place."
         belowDescription={feedback ? (
           <div className={`rounded-2xl border px-4 py-3 text-sm ${feedbackToneClasses[feedback.tone] ?? feedbackToneClasses.success}`}>
             {feedback.text}
           </div>
         ) : null}
-        action={
-          <div className="flex flex-wrap gap-3">
-            <Link to="/admin/purchases" className="btn-secondary">Purchases</Link>
-            <Link to="/admin/client-services" className="btn-secondary">Client Services</Link>
-          </div>
-        }
+        action={contractsHeaderAction}
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -819,76 +887,16 @@ export default function AdminContractsPage() {
         ))}
       </div>
 
-      <div className="panel mb-6 p-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="relative w-full max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search client, service, order number, or audit reference"
-              className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center" ref={filterTriggerRef}>
-              <button
-                type="button"
-                onClick={() => setFilterOpen((current) => !current)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
-                aria-haspopup="menu"
-                aria-expanded={filterOpen}
-                aria-label="Contract filter"
-              >
-                <span className="max-w-[14rem] truncate text-sm text-slate-200">{activeFilter}</span>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
-
-              {filterOpen && filterMenuStyle
-                ? createPortal(
-                    <div ref={filterMenuRef} style={filterMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
-                      {filters.map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          onClick={() => {
-                            setActiveFilter(filter);
-                            setFilterOpen(false);
-                            setCurrentPage(1);
-                          }}
-                          className={`w-full px-4 py-2 text-left text-sm text-slate-200 hover:bg-white/5 ${activeFilter === filter ? 'bg-white/5' : ''}`}
-                        >
-                          {filter}
-                        </button>
-                      ))}
-                    </div>,
-                    document.body,
-                  )
-                : null}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {viewModes.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => setViewMode(mode.id)}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === mode.id ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                  aria-label={mode.label}
-                  title={mode.label}
-                >
-                  <mode.icon size={16} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {viewMode === 'table' ? (
-        <DataTable columns={columns} rows={paginatedContracts} emptyMessage={isLoadingPortal ? 'Loading contract records...' : 'No contracts match the current search and filter.'} />
+        <DataTable
+          columns={columns}
+          rows={paginatedContracts}
+          emptyMessage={isLoadingPortal ? 'Loading contract records...' : 'No contracts match the current search and filter.'}
+          enableAdminColumnVisibility
+          columnVisibilityStorageKey="admin-contracts-table"
+          compactColumnKeys={['clientName', 'serviceName', 'status', 'verification', 'actions']}
+          columnVisibilityPortalTargetId="admin-contracts-column-visibility-slot"
+        />
       ) : paginatedContracts.length ? (
         <div className="grid gap-4 xl:grid-cols-2">
           {paginatedContracts.map((contract) => {

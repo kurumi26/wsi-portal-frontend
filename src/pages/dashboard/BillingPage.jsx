@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, CreditCard, Eye, FileDown, FileText, Grid2x2, Headphones, List, Percent, Search, ShieldCheck, X, Calendar, ChevronDown } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -14,7 +14,7 @@ const DISCOUNT_CODES = {
   WSI10: 10,
 };
 
-const BILLING_ITEMS_PER_PAGE = 6;
+const BILLING_ITEMS_PER_PAGE = 5;
 
 export default function BillingPage() {
   const navigate = useNavigate();
@@ -36,6 +36,7 @@ export default function BillingPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
+  const [showPaymentPolicies, setShowPaymentPolicies] = useState(false);
 
   const invoiceRows = useMemo(
     () =>
@@ -505,20 +506,128 @@ export default function BillingPage() {
       <PageHeader
         eyebrow="Billing Center"
         title="Billing & Payments"
+        action={
+          <div className="flex items-center gap-3 flex-wrap">
+
+            <div className="relative w-64 flex-shrink-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search invoice"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+              />
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="rounded-full border border-white/10 bg-white/[0.02] py-2 pl-10 pr-3 text-sm text-slate-200 outline-none"
+                />
+              </div>
+              <span className="text-sm text-slate-400">to</span>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="rounded-full border border-white/10 bg-white/[0.02] py-2 pl-10 pr-3 text-sm text-slate-200 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative" ref={statusRef}>
+                <button
+                  type="button"
+                  onClick={() => setStatusOpen((s) => !s)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
+                  aria-haspopup="true"
+                  aria-expanded={statusOpen}
+                  title="Filter by status"
+                >
+                  <span className="sr-only">Status</span>
+                  <span className="text-sm text-slate-200">{statusFilter}</span>
+                  <ChevronDown size={14} className="text-slate-300" />
+                </button>
+
+                {statusOpen ? (
+                  <div className="absolute right-0 mt-2 w-40 rounded-lg border border-white/6 bg-slate-900 shadow z-50">
+                    {filters.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter(f);
+                          setStatusOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('list')}
+                  className={layoutMode === 'list' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+                  aria-label="List layout"
+                >
+                  <List size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('grid')}
+                  className={layoutMode === 'grid' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+                  aria-label="Grid layout"
+                >
+                  <Grid2x2 size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        }
       />
 
       <div className="space-y-6">
         <div className="panel p-6">
-          <div className="flex items-center gap-3">
-            <ShieldCheck className="text-sky-300" />
-            <h2 className="text-xl font-semibold text-white">Payment policies</h2>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="text-sky-300" />
+              <h2 className="text-xl font-semibold text-white">Payment policies</h2>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPaymentPolicies((s) => !s)}
+              aria-expanded={showPaymentPolicies}
+              aria-controls="payment-policies-content"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none hover:bg-white/[0.04]"
+              title={showPaymentPolicies ? 'Hide policies' : 'Show policies'}
+            >
+              <span className="sr-only">{showPaymentPolicies ? 'Hide payment policies' : 'Show payment policies'}</span>
+              <ChevronDown size={16} className={`transition-transform ${showPaymentPolicies ? 'rotate-180' : 'rotate-0'}`} />
+            </button>
           </div>
-          <ul className="mt-6 space-y-3 text-sm leading-7 text-slate-400">
-            <li>• Purchase Agreement and Terms are captured during checkout.</li>
-            <li>• Privacy Policy acknowledgement is required before payment processing.</li>
-            <li>• Failed payments can be retried directly from the checkout flow.</li>
-            <li>• Successful transactions trigger order IDs and provisioning actions.</li>
-          </ul>
+
+          {showPaymentPolicies ? (
+            <ul id="payment-policies-content" className="mt-6 space-y-3 text-sm leading-7 text-slate-400">
+              <li>• Purchase Agreement and Terms are captured during checkout.</li>
+              <li>• Privacy Policy acknowledgement is required before payment processing.</li>
+              <li>• Failed payments can be retried directly from the checkout flow.</li>
+              <li>• Successful transactions trigger order IDs and provisioning actions.</li>
+            </ul>
+          ) : null}
         </div>
 
         <div className="panel p-6">
@@ -529,103 +638,9 @@ export default function BillingPage() {
                 <h2 className="text-xl font-semibold text-white">Recent Charges</h2>
               </div>
 
-              <div className="flex items-center gap-4 w-full xl:max-w-[420px]">
-                <div className="relative flex-1 min-w-0">
-                  <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search invoice"
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/40"
-                  />
-                </div>
-              </div>
+
             </div>
 
-            <div className="flex flex-col gap-3 xl:items-end">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
-                <div className="flex items-center gap-3 xl:mr-4 xl:flex-1 xl:justify-end">
-                  <div className="flex items-center gap-2 w-full max-w-[520px] justify-end">
-                    <div className="relative flex-1 max-w-[360px] xl:max-w-[520px]">
-                      <div className="flex items-center gap-2 justify-end">
-                        <div className="relative w-1/2 ml-auto">
-                          <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                          <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="rounded-full border border-white/10 bg-white/[0.03] py-3 pl-10 pr-4 text-sm text-white outline-none w-full"
-                          />
-                        </div>
-                        <span className="text-sm text-slate-400 hidden sm:inline">to</span>
-                        <div className="relative w-1/2">
-                          <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                          <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="rounded-full border border-white/10 bg-white/[0.03] py-3 pl-10 pr-4 text-sm text-white outline-none w-full"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="relative" ref={statusRef}>
-                    <button
-                      type="button"
-                      onClick={() => setStatusOpen((s) => !s)}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none"
-                      aria-haspopup="true"
-                      aria-expanded={statusOpen}
-                      title="Filter by status"
-                    >
-                      <span className="sr-only">Status</span>
-                      <span className="text-sm text-slate-200">{statusFilter}</span>
-                      <ChevronDown size={14} className="text-slate-300" />
-                    </button>
-
-                    {statusOpen ? (
-                      <div className="absolute right-0 mt-2 w-40 rounded-lg border border-white/6 bg-slate-900 shadow z-50">
-                        {filters.map((f) => (
-                          <button
-                            key={f}
-                            type="button"
-                            onClick={() => {
-                              setStatusFilter(f);
-                              setStatusOpen(false);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
-                          >
-                            {f}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-start lg:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setLayoutMode('list')}
-                    className={layoutMode === 'list' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-                    aria-label="List layout"
-                  >
-                    <List size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLayoutMode('grid')}
-                    className={layoutMode === 'grid' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-                    aria-label="Grid layout"
-                  >
-                    <Grid2x2 size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
           {layoutMode === 'list' ? (
             <div className="panel overflow-hidden mt-6">
@@ -962,13 +977,13 @@ export default function BillingPage() {
           <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
         </div>
 
-        <div className="panel p-6">
+        {/* <div className="panel p-6">
           <h2 className="text-xl font-semibold text-white">Phase 2 readiness</h2>
           <p className="mt-3 text-sm leading-7 text-slate-400">
             Invoice and deeper billing automation are planned for the next release phase without changing the
             current route structure.
           </p>
-        </div>
+        </div> */}
 
         {selectedInvoices.length ? (
           <div className="sticky bottom-4 z-20 flex justify-center px-2">

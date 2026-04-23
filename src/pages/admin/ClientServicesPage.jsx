@@ -1001,12 +1001,45 @@ export default function ClientServicesPage() {
     }
   };
 
+  const clientServicesHeaderAction = (
+    <div className="flex w-full justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <label className="block w-full sm:w-[320px]">
+          <span className="sr-only">Search services</span>
+          <input
+            type="text"
+            value={servicesSearchQuery}
+            onChange={(event) => setServicesSearchQuery(event.target.value)}
+            placeholder="Search service, client, plan, or category"
+            className="input w-full"
+          />
+        </label>
+
+        <select className="input w-full sm:w-[180px]" value={servicesStatusFilter} onChange={(event) => setServicesStatusFilter(event.target.value)}>
+          <option value="All">All statuses</option>
+          {filterStatuses.map((status) => (
+            <option key={status} value={status}>{status}</option>
+          ))}
+        </select>
+
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+          <button type="button" onClick={() => setServicesViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${servicesViewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view" title="Grid view">
+            <LayoutGrid size={16} />
+          </button>
+          <button type="button" onClick={() => setServicesViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${servicesViewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view" title="List view">
+            <List size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
         eyebrow="Operations"
         title="Client Services"
-        description="Manage purchased client services from a dedicated workspace, including status changes, billing details, add-on breakdowns, and cancellation requests."
+        action={clientServicesHeaderAction}
       />
 
       {error ? <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{error}</div> : null}
@@ -1059,31 +1092,6 @@ export default function ClientServicesPage() {
             </button>
           </div>
         ) : null}
-
-        <div className="mt-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="grid flex-1 gap-4 md:grid-cols-[1fr_180px]">
-            <label className="relative block">
-              <span className="sr-only">Search services</span>
-              <input type="text" value={servicesSearchQuery} onChange={(event) => setServicesSearchQuery(event.target.value)} placeholder="Search service, client, plan, or category" className="input pl-11" />
-            </label>
-            <select className="input" value={servicesStatusFilter} onChange={(event) => setServicesStatusFilter(event.target.value)}>
-              <option value="All">All statuses</option>
-              {filterStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
-              <button type="button" onClick={() => setServicesViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${servicesViewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view" title="Grid view">
-                <LayoutGrid size={16} />
-              </button>
-              <button type="button" onClick={() => setServicesViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${servicesViewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view" title="List view">
-                <List size={16} />
-              </button>
-            </div>
-          </div>
-        </div>
 
         {servicesViewMode === 'list' ? (
           <div className="mt-4 overflow-x-auto">

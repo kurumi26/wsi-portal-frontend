@@ -14,7 +14,7 @@ import { formatDateTime } from '../../utils/format';
 import { hasSignedDocument } from '../../utils/contracts';
 
 const filters = ['All', 'Pending Review', 'Accepted', 'Rejected'];
-const CONTRACTS_PER_PAGE = 10;
+const CONTRACTS_PER_PAGE = 5;
 const viewModes = [
   { id: 'table', label: 'Table List', icon: List },
   { id: 'grid', label: 'Grid View', icon: LayoutGrid },
@@ -519,28 +519,79 @@ export default function ContractsPage() {
       <PageHeader
         eyebrow="Contracts & Agreements"
         title="Review, approve, and track agreement records"
-        description="Customers can review contract terms, accept or reject agreement packs, download agreement copies, upload signed documents when Finance asks for them, and keep an audit-ready acceptance trail."
         belowDescription={feedback ? (
           <div className={`rounded-2xl border px-4 py-3 text-sm ${feedbackToneClasses[feedback.tone] ?? feedbackToneClasses.success}`}>
             {feedback.text}
           </div>
         ) : null}
         action={
-          <div className="flex flex-wrap gap-3">
-            <Link to="/dashboard/orders" className="btn-secondary">
-              Order History
-            </Link>
-            {returnToCheckout ? (
-              <button
-                type="button"
-                onClick={() => navigate('/checkout')}
-                className={checkoutAgreementRecord?.status === 'Accepted' ? 'btn-primary' : 'btn-secondary'}
-              >
-                {checkoutAgreementRecord?.status === 'Accepted' ? 'Return to Checkout' : 'Back to Checkout'}
-              </button>
-            ) : null}
-          </div>
-        }
+            <div className="flex items-center gap-3 flex-wrap">
+
+              <div className="relative w-64 flex-shrink-0">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search service, agreement title, reference, or signed copy"
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center" ref={filterTriggerRef}>
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen((current) => !current)}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
+                    aria-haspopup="menu"
+                    aria-expanded={filterOpen}
+                    aria-label="Contract status filter"
+                  >
+                    <span className="max-w-[12rem] truncate text-sm text-slate-200">{statusFilter}</span>
+                    <ChevronDown size={14} className="text-slate-400" />
+                  </button>
+
+                  {filterOpen && filterMenuStyle
+                    ? createPortal(
+                        <div ref={filterMenuRef} style={filterMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
+                          {filters.map((filter) => (
+                            <button
+                              key={filter}
+                              type="button"
+                              onClick={() => {
+                                setStatusFilter(filter);
+                                setFilterOpen(false);
+                                setCurrentPage(1);
+                              }}
+                              className={`w-full px-4 py-2 text-left text-sm text-slate-200 hover:bg-white/5 ${statusFilter === filter ? 'bg-white/5' : ''}`}
+                            >
+                              {filter}
+                            </button>
+                          ))}
+                        </div>,
+                        document.body,
+                      )
+                    : null}
+                </div>
+
+                <div className="flex gap-2">
+                  {viewModes.map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setViewMode(mode.id)}
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === mode.id ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                      aria-label={mode.label}
+                      title={mode.label}
+                    >
+                      <mode.icon size={16} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          }
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -583,74 +634,6 @@ export default function ContractsPage() {
           </div>
         </div>
       ) : null}
-
-      <div className="panel mb-6 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search service, agreement title, reference, or signed copy"
-              className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center" ref={filterTriggerRef}>
-              <button
-                type="button"
-                onClick={() => setFilterOpen((current) => !current)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
-                aria-haspopup="menu"
-                aria-expanded={filterOpen}
-                aria-label="Contract status filter"
-              >
-                <span className="max-w-[12rem] truncate text-sm text-slate-200">{statusFilter}</span>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
-
-              {filterOpen && filterMenuStyle
-                ? createPortal(
-                    <div ref={filterMenuRef} style={filterMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
-                      {filters.map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          onClick={() => {
-                            setStatusFilter(filter);
-                            setFilterOpen(false);
-                            setCurrentPage(1);
-                          }}
-                          className={`w-full px-4 py-2 text-left text-sm text-slate-200 hover:bg-white/5 ${statusFilter === filter ? 'bg-white/5' : ''}`}
-                        >
-                          {filter}
-                        </button>
-                      ))}
-                    </div>,
-                    document.body,
-                  )
-                : null}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {viewModes.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => setViewMode(mode.id)}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === mode.id ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                  aria-label={mode.label}
-                  title={mode.label}
-                >
-                  <mode.icon size={16} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {viewMode === 'table' ? (
         <DataTable

@@ -523,51 +523,45 @@ export default function ClientsPage() {
     {
       key: 'actions',
       label: 'Actions',
+      hideable: false,
       render: (_, row) => renderClientActions(row),
     },
   ];
 
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Client Management"
-        title="Registered Customers"
-      />
-      {reviewError ? <p className="mb-4 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{reviewError}</p> : null}
-      {reviewMessage ? <p className="mb-4 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{reviewMessage}</p> : null}
+  const clientsHeaderAction = (
+    <div className="flex w-full justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <label className="relative block w-full sm:w-[280px] xl:w-[320px]">
+          <span className="sr-only">Search clients</span>
+          <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            value={clientsSearch}
+            onChange={(event) => setClientsSearch(event.target.value)}
+            placeholder="Search client, company, or email"
+            className="input pl-11"
+          />
+        </label>
 
-      <div className="mb-6 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
-          <label className="relative block flex-1">
-            <span className="sr-only">Search clients</span>
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={clientsSearch}
-              onChange={(event) => setClientsSearch(event.target.value)}
-              placeholder="Search client, company, or email"
-              className="input pl-11"
-            />
-          </label>
+        <select className="input w-full sm:w-44" value={clientsStatusFilter} onChange={(event) => setClientsStatusFilter(event.target.value)}>
+          <option value="All">All statuses</option>
+          <option value="Active">Active</option>
+          <option value="Pending">Pending</option>
+          <option value="Pending Approval">Pending Approval</option>
+          <option value="Rejected">Rejected</option>
+        </select>
 
-          <select className="input lg:w-48" value={clientsStatusFilter} onChange={(event) => setClientsStatusFilter(event.target.value)}>
-            <option value="All">All statuses</option>
-            <option value="Active">Active</option>
-            <option value="Pending">Pending</option>
-            <option value="Pending Approval">Pending Approval</option>
-            <option value="Rejected">Rejected</option>
-          </select>
+        <select className="input w-full sm:w-52" value={clientsApprovalFilter} onChange={(event) => setClientsApprovalFilter(event.target.value)}>
+          <option value="All">All approvals</option>
+          <option value="Pending">Pending</option>
+          <option value="Approved">Approved</option>
+          <option value="Rejected">Rejected</option>
+          <option value="No request">No request</option>
+        </select>
 
-          <select className="input lg:w-52" value={clientsApprovalFilter} onChange={(event) => setClientsApprovalFilter(event.target.value)}>
-            <option value="All">All approvals</option>
-            <option value="Pending">Pending</option>
-            <option value="Approved">Approved</option>
-            <option value="Rejected">Rejected</option>
-            <option value="No request">No request</option>
-          </select>
-        </div>
+        {clientsView === 'list' ? <div id="clients-column-visibility-slot" className="shrink-0" /> : null}
 
-        <div className="inline-flex items-center gap-2 self-end rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
           <button
             type="button"
             onClick={() => setClientsView('grid')}
@@ -588,9 +582,28 @@ export default function ClientsPage() {
           </button>
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Client Management"
+        title="Registered Customers"
+        action={clientsHeaderAction}
+      />
+      {reviewError ? <p className="mb-4 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{reviewError}</p> : null}
+      {reviewMessage ? <p className="mb-4 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{reviewMessage}</p> : null}
 
       {clientsView === 'list' ? (
-        <DataTable columns={columns} rows={filteredClients} />
+        <DataTable
+          columns={columns}
+          rows={filteredClients}
+          enableAdminColumnVisibility
+          columnVisibilityStorageKey="admin-clients-table"
+          compactColumnKeys={['name', 'company', 'email', 'services', 'status', 'actions']}
+          columnVisibilityPortalTargetId="clients-column-visibility-slot"
+        />
       ) : filteredClients.length ? (
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {filteredClients.map((client) => (

@@ -11,7 +11,7 @@ import { usePortal } from '../../context/PortalContext';
 import { formatDateTime } from '../../utils/format';
 import StatusBadge from '../../components/common/StatusBadge';
 
-const NOTIFICATIONS_PER_PAGE = 6;
+const NOTIFICATIONS_PER_PAGE = 5;
 
 export default function NotificationsPage() {
   const { notifications, updateNotificationStatus, markAllNotificationsRead, dismissNotification } = usePortal();
@@ -178,16 +178,77 @@ export default function NotificationsPage() {
         title="Portal alerts"
         action={
           notifications.length ? (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={markAllNotificationsRead} className="btn-secondary gap-2">
-                <CheckCheck size={16} /> Mark all read
-              </button>
-              <button type="button" onClick={handleDeleteSelected} disabled={!selectedIds.length} className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
-                <Trash2 size={16} /> Delete selected
-              </button>
-              <button type="button" onClick={handleDeleteAllFiltered} disabled={!filteredNotifications.length} className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
-                <Trash2 size={16} /> Delete all
-              </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={markAllNotificationsRead} className="btn-secondary gap-2">
+                  <CheckCheck size={16} /> Mark all read
+                </button>
+                <button type="button" onClick={handleDeleteSelected} disabled={!selectedIds.length} className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Trash2 size={16} /> Delete selected
+                </button>
+                <button type="button" onClick={handleDeleteAllFiltered} disabled={!filteredNotifications.length} className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Trash2 size={16} /> Delete all
+                </button>
+              </div>
+
+              <div className="relative w-64 flex-shrink-0">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                  placeholder="Search notifications"
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+                />
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2 ml-auto">
+                <div className="relative" ref={statusRef}>
+                  <button
+                    type="button"
+                    onClick={() => setStatusOpen((s) => !s)}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
+                  >
+                    <span className="text-sm text-slate-200">{filter}</span>
+                    <ChevronDown size={14} className="text-slate-400" />
+                  </button>
+
+                  {statusOpen && statusMenuStyle
+                    ? createPortal(
+                        <div ref={statusMenuRef} style={statusMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
+                          {filters.map((item) => {
+                            const Icon = STATUS_ICONS[item] || STATUS_ICONS[item.toString()];
+                            return (
+                              <button
+                                key={item}
+                                type="button"
+                                onClick={() => {
+                                  setFilter(item);
+                                  setStatusOpen(false);
+                                  setCurrentPage(1);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5 flex items-center gap-2"
+                              >
+                                {Icon ? <Icon size={14} className="text-slate-300" /> : null}
+                                <span>{item}</span>
+                              </button>
+                            );
+                          })}
+                        </div>,
+                        document.body,
+                      )
+                    : null}
+                </div>
+
+                <div className="inline-flex items-center gap-2 ml-3">
+                  <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
+                    <List size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null
         }
@@ -229,79 +290,7 @@ export default function NotificationsPage() {
         </button>
       </div>
 
-      <div className="mb-6 panel p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-3 text-sm text-slate-300 mr-2">
-              <input
-                type="checkbox"
-                checked={allVisibleSelected}
-                onChange={toggleSelectAllVisible}
-                className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
-              />
-              Select current page
-            </label>
-
-            <div className="relative mr-3">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                placeholder="Search notifications"
-                className="w-64 rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center">
-            <div className="relative" ref={statusRef}>
-              <button
-                type="button"
-                onClick={() => setStatusOpen((s) => !s)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
-              >
-                <span className="text-sm text-slate-200">{filter}</span>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
-
-              {statusOpen && statusMenuStyle
-                ? createPortal(
-                    <div ref={statusMenuRef} style={statusMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
-                      {filters.map((item) => {
-                        const Icon = STATUS_ICONS[item] || STATUS_ICONS[item.toString()];
-                        return (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() => {
-                              setFilter(item);
-                              setStatusOpen(false);
-                              setCurrentPage(1);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5 flex items-center gap-2"
-                          >
-                            {Icon ? <Icon size={14} className="text-slate-300" /> : null}
-                            <span>{item}</span>
-                          </button>
-                        );
-                      })}
-                    </div>,
-                    document.body,
-                  )
-                : null}
-            </div>
-            <div className="inline-flex items-center gap-2 ml-3">
-              <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
-                <LayoutGrid size={16} />
-              </button>
-              <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
-                <List size={16} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* controls moved into PageHeader.action for compact header */}
 
       {viewMode === 'list' ? (
         <div className="space-y-4">

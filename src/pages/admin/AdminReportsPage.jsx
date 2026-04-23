@@ -84,14 +84,68 @@ const iconToneClasses = {
   rose: 'border-rose-300/20 bg-rose-300/15 text-rose-200',
   slate: 'border-white/10 bg-white/10 text-slate-200',
 };
-const graphBarToneClasses = [
-  'from-emerald-600 via-emerald-500 to-emerald-400',
-  'from-cyan-700 via-cyan-500 to-cyan-300',
-  'from-indigo-700 via-indigo-500 to-indigo-300',
-  'from-violet-700 via-violet-500 to-violet-300',
-  'from-fuchsia-700 via-fuchsia-500 to-fuchsia-300',
-  'from-red-700 via-red-500 to-red-300',
+const graphPointToneStyles = [
+  { marker: '#2563eb', glow: 'rgba(37, 99, 235, 0.16)', swatch: 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)', surface: 'rgba(219, 234, 254, 0.55)' },
+  { marker: '#0f766e', glow: 'rgba(15, 118, 110, 0.16)', swatch: 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)', surface: 'rgba(204, 251, 241, 0.52)' },
+  { marker: '#7c3aed', glow: 'rgba(124, 58, 237, 0.16)', swatch: 'linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%)', surface: 'rgba(237, 233, 254, 0.58)' },
+  { marker: '#db2777', glow: 'rgba(219, 39, 119, 0.16)', swatch: 'linear-gradient(135deg, #be185d 0%, #ec4899 100%)', surface: 'rgba(252, 231, 243, 0.62)' },
+  { marker: '#d97706', glow: 'rgba(217, 119, 6, 0.16)', swatch: 'linear-gradient(135deg, #b45309 0%, #f59e0b 100%)', surface: 'rgba(254, 243, 199, 0.68)' },
+  { marker: '#059669', glow: 'rgba(5, 150, 105, 0.16)', swatch: 'linear-gradient(135deg, #047857 0%, #10b981 100%)', surface: 'rgba(209, 250, 229, 0.6)' },
 ];
+
+const graphLineStyles = {
+  strokeStart: '#38bdf8',
+  strokeMid: '#2563eb',
+  strokeEnd: '#1d4ed8',
+  fillTop: 'rgba(59, 130, 246, 0.18)',
+  fillBottom: 'rgba(59, 130, 246, 0.01)',
+  chartHalo: 'rgba(219, 234, 254, 0.95)',
+  chartSurface: 'rgba(255, 255, 255, 0.98)',
+  chartSurfaceBorder: 'rgba(226, 232, 240, 0.95)',
+  grid: 'rgba(148, 163, 184, 0.14)',
+  axis: 'rgba(148, 163, 184, 0.32)',
+  featureGuide: 'rgba(59, 130, 246, 0.18)',
+  lineShadow: 'rgba(37, 99, 235, 0.18)',
+  plotValue: '#0f172a',
+  plotValueMuted: '#64748b',
+  pointSurface: '#ffffff',
+  pointBorder: '#2563eb',
+  pointCore: '#2563eb',
+  pointGlow: 'rgba(37, 99, 235, 0.14)',
+  pointHighlightBorder: '#0f172a',
+  pointHighlightCore: '#0f172a',
+  pointHighlightGlow: 'rgba(15, 23, 42, 0.16)',
+  badgeSurface: 'rgba(255, 255, 255, 0.98)',
+  badgeBorder: 'rgba(148, 163, 184, 0.22)',
+  axisText: '#64748b',
+  captionText: '#0f172a',
+  captionMutedText: '#64748b',
+};
+
+const buildSmoothLinePath = (points) => {
+  if (points.length < 2) {
+    return '';
+  }
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) {
+      return `M ${point.x} ${point.y}`;
+    }
+
+    const previousPoint = points[index - 1];
+    const midpointX = (previousPoint.x + point.x) / 2;
+
+    return `${path} C ${midpointX} ${previousPoint.y}, ${midpointX} ${point.y}, ${point.x} ${point.y}`;
+  }, '');
+};
+
+const buildSmoothAreaPath = (points, baselineY) => {
+  if (points.length < 2) {
+    return '';
+  }
+
+  return `${buildSmoothLinePath(points)} L ${points[points.length - 1].x} ${baselineY} L ${points[0].x} ${baselineY} Z`;
+};
 
 const REPORT_FOCUS_META = {
   all: {
@@ -197,21 +251,17 @@ function FocusCard({ icon: Icon, label, helper, metric, active, tone = 'sky', on
     <button
       type="button"
       onClick={onClick}
-      className={`relative overflow-hidden rounded-3xl border p-4 text-center transition ${
+      aria-pressed={active}
+      className={`relative overflow-hidden rounded-3xl border p-4 text-left transition cursor-pointer ${
         active
           ? `${surfaceToneClasses[tone] ?? surfaceToneClasses.slate} shadow-[0_0_0_1px_rgba(148,163,184,0.18)]`
           : 'border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05]'
-      }`}
+      } focus:outline-none focus:ring-2 focus:ring-sky-400`}
     >
-      <div className="flex items-start justify-center gap-3">
-        <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${iconToneClasses[tone] ?? iconToneClasses.slate}`}>
-          <Icon size={18} />
-        </div>
-      </div>
       {active ? <span className="absolute right-4 top-4 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-200">Active</span> : null}
-      <p className="mt-4 text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
       <p className="mt-2 text-xl font-semibold text-white">{metric}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{helper}</p>
+      {helper ? <p className="mt-2 text-sm leading-6 text-slate-400">{helper}</p> : null}
     </button>
   );
 }
@@ -246,10 +296,23 @@ function ReportBarGraph({
     numericValue: Number(item.value) || 0,
   }));
   const maxValue = Math.max(...normalizedItems.map((item) => item.numericValue), 0);
+  const minValue = normalizedItems.length
+    ? Math.min(...normalizedItems.map((item) => item.numericValue))
+    : 0;
   const totalValue = normalizedItems.reduce((sum, item) => sum + item.numericValue, 0);
-  const averageValue = normalizedItems.length ? totalValue / normalizedItems.length : 0;
-  const leadingItem = normalizedItems[0] ?? null;
+  const highestItem = normalizedItems.reduce((currentHighest, item) => (
+    !currentHighest || item.numericValue > currentHighest.numericValue ? item : currentHighest
+  ), null);
+  const lowestItem = normalizedItems.reduce((currentLowest, item) => (
+    !currentLowest || item.numericValue < currentLowest.numericValue ? item : currentLowest
+  ), null);
   const gridRows = 6;
+  const chartHeight = 328;
+  const chartWidth = Math.max(760, normalizedItems.length * 180);
+  const chartPadding = { top: 28, right: 28, bottom: 28, left: 20 };
+  const chartInnerWidth = chartWidth - chartPadding.left - chartPadding.right;
+  const chartInnerHeight = chartHeight - chartPadding.top - chartPadding.bottom;
+  const baselineY = chartPadding.top + chartInnerHeight;
   const tickValues = Array.from({ length: gridRows + 1 }, (_, index) => {
     const value = maxValue ? ((gridRows - index) / gridRows) * maxValue : 0;
 
@@ -258,6 +321,46 @@ function ReportBarGraph({
       label: valueFormatter(value),
     };
   });
+  const chartSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const lineGradientId = `${chartSlug}-line-gradient`;
+  const fillGradientId = `${chartSlug}-fill-gradient`;
+  const shadowFilterId = `${chartSlug}-line-shadow`;
+  const highlightGradientId = `${chartSlug}-highlight-gradient`;
+  const clipPathId = `${chartSlug}-chart-clip`;
+  const splitLabel = (label) => {
+    const words = String(label).split(' ').filter(Boolean);
+
+    if (words.length <= 2) {
+      return [String(label)];
+    }
+
+    const midpoint = Math.ceil(words.length / 2);
+
+    return [words.slice(0, midpoint).join(' '), words.slice(midpoint).join(' ')];
+  };
+  const chartPoints = normalizedItems.map((item, index) => {
+    const x = normalizedItems.length === 1
+      ? chartPadding.left + chartInnerWidth / 2
+      : chartPadding.left + (index * chartInnerWidth) / (normalizedItems.length - 1);
+    const y = baselineY - (maxValue ? (item.numericValue / maxValue) * chartInnerHeight : 0);
+    const tone = graphPointToneStyles[index % graphPointToneStyles.length];
+
+    return {
+      ...item,
+      x,
+      y,
+      tone,
+      valueLabelY: Math.max(chartPadding.top + 16, y - 18),
+      shareOfTotal: totalValue ? (item.numericValue / totalValue) * 100 : 0,
+      shareOfPeak: maxValue ? (item.numericValue / maxValue) * 100 : 0,
+      labelLines: splitLabel(item.label),
+      isHighest: Boolean(highestItem) && item.label === highestItem.label && item.numericValue === highestItem.numericValue,
+    };
+  });
+  const featuredPoint = chartPoints.find((point) => point.isHighest) ?? chartPoints[chartPoints.length - 1] ?? null;
+  const hasLine = chartPoints.length > 1;
+  const linePath = buildSmoothLinePath(chartPoints);
+  const areaPath = buildSmoothAreaPath(chartPoints, baselineY);
 
   if (!normalizedItems.length) {
     return (
@@ -297,100 +400,219 @@ function ReportBarGraph({
         </div>
       </div>
 
-      <div className="space-y-5 p-5 lg:p-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Highest Bar</p>
-            <p className="mt-2 text-lg font-semibold text-white">{leadingItem ? leadingItem.label : '—'}</p>
-            <p className="mt-1 text-xs text-slate-400">{leadingItem ? valueFormatter(leadingItem.numericValue) : 'No plotted values'}</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Total Plotted</p>
-            <p className="mt-2 text-lg font-semibold text-white">{valueFormatter(totalValue)}</p>
-            <p className="mt-1 text-xs text-slate-400">Combined total across all bars in this chart.</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Average Per Bar</p>
-            <p className="mt-2 text-lg font-semibold text-white">{valueFormatter(averageValue)}</p>
-            <p className="mt-1 text-xs text-slate-400">Average value across the plotted categories.</p>
-          </div>
-        </div>
+      <div className="space-y-6 p-5 lg:p-6">
+        <div className="rounded-[32px] border border-slate-200/80 bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.92),rgba(255,255,255,0.98)_42%,rgba(248,250,252,0.98)_100%)] p-4 shadow-[0_26px_60px_rgba(148,163,184,0.12)] lg:p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Executive Trendline</p>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                  A cleaner line view of how the current report values rise, drop, and peak across the plotted categories.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {featuredPoint ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-sm">
+                    Peak: {featuredPoint.label}
+                  </span>
+                ) : null}
+                {lowestItem ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
+                    Low: {lowestItem.label}
+                  </span>
+                ) : null}
+              </div>
+            </div>
 
-        <div className="overflow-x-auto pb-2">
-          <div className="min-w-[700px]">
-            <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-4 rounded-3xl border border-white/10 bg-white/[0.02] p-4">
-              <div className="relative h-[24rem]">
-                <div className="absolute inset-0 flex flex-col justify-between pb-10 pt-1 text-right">
-                  {tickValues.map((tick) => (
-                    <div key={tick.id} className="flex h-0 items-center justify-end">
-                      <span className="rounded-full bg-slate-950/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-300">
-                        {tick.label}
-                      </span>
+            <div className="overflow-x-auto pb-2">
+              <div className="min-w-[780px]">
+                <div className="grid grid-cols-[74px_minmax(0,1fr)] gap-4">
+                  <div className="relative h-[22rem]">
+                    <div className="absolute inset-0 flex flex-col justify-between pb-8 pt-1 text-right">
+                      {tickValues.map((tick) => (
+                        <div key={tick.id} className="flex h-0 items-center justify-end">
+                          <span className="px-1 text-[11px] font-semibold text-slate-500">
+                            {tick.label}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <p className="absolute bottom-0 right-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{axisLabel}</p>
-              </div>
+                    <p className="absolute bottom-0 right-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{axisLabel}</p>
+                  </div>
 
-              <div className="relative h-[24rem] rounded-3xl border border-white/10 bg-[linear-gradient(to_top,rgba(255,255,255,0.14)_1px,transparent_1px)] bg-[length:100%_16.666%] px-5 pb-0 pt-4">
-                <div className="pointer-events-none absolute inset-x-5 bottom-0 top-4 rounded-2xl border-x border-t border-white/15" />
-                <div className="pointer-events-none absolute inset-x-5 bottom-0 h-[2px] bg-white/40" />
+                  <div className="space-y-4">
+                    <div className="rounded-[30px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_20px_48px_rgba(148,163,184,0.14)]">
+                      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[18.5rem] w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label={title}>
+                        <defs>
+                          <linearGradient id={lineGradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor={graphLineStyles.strokeStart} />
+                            <stop offset="55%" stopColor={graphLineStyles.strokeMid} />
+                            <stop offset="100%" stopColor={graphLineStyles.strokeEnd} />
+                          </linearGradient>
+                          <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor={graphLineStyles.fillTop} />
+                            <stop offset="100%" stopColor={graphLineStyles.fillBottom} />
+                          </linearGradient>
+                          <radialGradient id={highlightGradientId} cx="50%" cy="0%" r="100%">
+                            <stop offset="0%" stopColor={graphLineStyles.chartHalo} />
+                            <stop offset="100%" stopColor={graphLineStyles.chartSurface} />
+                          </radialGradient>
+                          <filter id={shadowFilterId} x="-20%" y="-30%" width="140%" height="180%">
+                            <feDropShadow dx="0" dy="8" stdDeviation="12" floodColor={graphLineStyles.lineShadow} />
+                          </filter>
+                          <clipPath id={clipPathId}>
+                            <rect
+                              x={chartPadding.left}
+                              y={chartPadding.top}
+                              width={chartInnerWidth}
+                              height={chartInnerHeight}
+                              rx="28"
+                            />
+                          </clipPath>
+                        </defs>
 
-                <div className="relative flex h-full items-end justify-between gap-4">
-                  {normalizedItems.map((item, index) => {
-                    const barHeight = maxValue ? Math.max((item.numericValue / maxValue) * 100, item.numericValue > 0 ? 12 : 0) : 0;
-                    const shareOfTotal = totalValue ? (item.numericValue / totalValue) * 100 : 0;
-                    const shareOfPeak = maxValue ? (item.numericValue / maxValue) * 100 : 0;
+                        <rect
+                          x={chartPadding.left}
+                          y={chartPadding.top}
+                          width={chartInnerWidth}
+                          height={chartInnerHeight}
+                          rx="28"
+                          fill={`url(#${highlightGradientId})`}
+                          stroke={graphLineStyles.chartSurfaceBorder}
+                        />
 
-                    return (
-                      <div key={item.label} className="flex min-w-[74px] flex-1 flex-col items-center justify-end gap-3">
-                        <div className="text-center">
-                          <p className="text-sm font-semibold text-white">{valueFormatter(item.numericValue)}</p>
-                          <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                            {shareOfTotal.toFixed(1)}% of chart
-                          </p>
+                        <g clipPath={`url(#${clipPathId})`}>
+                          {tickValues.map((tick, index) => {
+                            const y = chartPadding.top + (index * chartInnerHeight) / gridRows;
+
+                            return (
+                              <line
+                                key={tick.id}
+                                x1={chartPadding.left}
+                                y1={y}
+                                x2={chartWidth - chartPadding.right}
+                                y2={y}
+                                stroke={graphLineStyles.grid}
+                                strokeWidth="1"
+                                strokeDasharray={index === gridRows ? undefined : '4 10'}
+                              />
+                            );
+                          })}
+
+                          {featuredPoint ? (
+                            <line
+                              x1={featuredPoint.x}
+                              y1={chartPadding.top + 10}
+                              x2={featuredPoint.x}
+                              y2={baselineY}
+                              stroke={graphLineStyles.featureGuide}
+                              strokeWidth="1"
+                              strokeDasharray="5 8"
+                            />
+                          ) : null}
+
+                          {hasLine ? <path d={areaPath} fill={`url(#${fillGradientId})`} /> : null}
+                          {hasLine ? <path d={linePath} fill="none" stroke={`url(#${lineGradientId})`} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" filter={`url(#${shadowFilterId})`} /> : null}
+                        </g>
+
+                        <line
+                          x1={chartPadding.left}
+                          y1={baselineY}
+                          x2={chartWidth - chartPadding.right}
+                          y2={baselineY}
+                          stroke={graphLineStyles.axis}
+                          strokeWidth="1.5"
+                        />
+
+                        {chartPoints.map((point) => {
+                          const markerRadius = point.isHighest ? 6.5 : 5;
+                          const glowRadius = point.isHighest ? 13 : 9;
+
+                          return (
+                            <g key={point.label}>
+                              {!point.isHighest ? (
+                                <text
+                                  x={point.x}
+                                  y={point.valueLabelY}
+                                  fill={graphLineStyles.plotValueMuted}
+                                  fontSize="12"
+                                  fontWeight="700"
+                                  textAnchor="middle"
+                                >
+                                  {valueFormatter(point.numericValue)}
+                                </text>
+                              ) : null}
+
+                              <circle cx={point.x} cy={point.y} r={glowRadius} fill={point.isHighest ? graphLineStyles.pointHighlightGlow : point.tone.glow} />
+                              <circle cx={point.x} cy={point.y} r={markerRadius} fill={graphLineStyles.pointSurface} stroke={point.isHighest ? graphLineStyles.pointHighlightBorder : graphLineStyles.pointBorder} strokeWidth={point.isHighest ? '2.8' : '2.3'} />
+                              <circle cx={point.x} cy={point.y} r={point.isHighest ? '2.8' : '2.2'} fill={point.isHighest ? graphLineStyles.pointHighlightCore : graphLineStyles.pointCore} />
+                            </g>
+                          );
+                        })}
+
+                        {featuredPoint ? (
+                          <g>
+                            <rect
+                              x={Math.min(
+                                Math.max(featuredPoint.x - 56, chartPadding.left + 12),
+                                chartWidth - chartPadding.right - 112,
+                              )}
+                              y={Math.max(chartPadding.top + 10, featuredPoint.y - 48)}
+                              width="112"
+                              height="34"
+                              rx="17"
+                              fill={graphLineStyles.badgeSurface}
+                              stroke={graphLineStyles.badgeBorder}
+                            />
+                            <text
+                              x={featuredPoint.x}
+                              y={Math.max(chartPadding.top + 31, featuredPoint.y - 27)}
+                              fill={graphLineStyles.plotValue}
+                              fontSize="12"
+                              fontWeight="800"
+                              textAnchor="middle"
+                            >
+                              {valueFormatter(featuredPoint.numericValue)}
+                            </text>
+                          </g>
+                        ) : null}
+                      </svg>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      {chartPoints.map((point, index) => (
+                        <div
+                          key={point.label}
+                          className="min-w-[170px] flex-1 rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-3 shadow-[0_10px_26px_rgba(148,163,184,0.08)]"
+                          style={{ backgroundImage: `linear-gradient(180deg, ${point.tone.surface}, rgba(255,255,255,0.96))` }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{point.label}</p>
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                {point.shareOfTotal.toFixed(1)}% of chart
+                              </p>
+                            </div>
+                            <span
+                              className="inline-flex h-3 w-3 rounded-full"
+                              style={{ background: point.tone.swatch, boxShadow: `0 0 0 5px ${point.tone.glow}` }}
+                            />
+                          </div>
+                          <div className="mt-3 flex items-end justify-between gap-3">
+                            <p className="text-lg font-semibold text-slate-900">{valueFormatter(point.numericValue)}</p>
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">#{index + 1}</span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            <span>{point.shareOfPeak.toFixed(0)}% of peak</span>
+                            {point.isHighest ? <span className="text-sky-600">Peak</span> : null}
+                          </div>
+                          {point.helper ? <p className="mt-2 text-xs leading-5 text-slate-500">{point.helper}</p> : null}
                         </div>
-
-                        <div className="flex h-[15rem] w-full items-end justify-center">
-                          <div
-                            className={`w-full max-w-[52px] rounded-t-[6px] border-2 border-slate-950/80 bg-gradient-to-r ${graphBarToneClasses[index % graphBarToneClasses.length]} shadow-[inset_1px_0_0_rgba(255,255,255,0.24),inset_-1px_0_0_rgba(0,0,0,0.22),0_6px_16px_rgba(15,23,42,0.24)] transition-[height] duration-300`}
-                            style={{ height: `${barHeight}%` }}
-                          />
-                        </div>
-
-                        <div className="w-full border-t border-white/10 pt-3 text-center">
-                          <p className="text-sm font-medium text-white">{item.label}</p>
-                          <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-slate-500">{shareOfPeak.toFixed(0)}% of peak</p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {normalizedItems.map((item, index) => (
-            <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex h-3 w-3 rounded-sm border border-slate-950/70 bg-gradient-to-r ${graphBarToneClasses[index % graphBarToneClasses.length]}`} />
-                <p className="text-sm font-medium text-white">{item.label}</p>
-              </div>
-              <p className="mt-2 text-sm font-semibold text-slate-200">{valueFormatter(item.numericValue)}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1">Rank #{index + 1}</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1">
-                  {totalValue ? ((item.numericValue / totalValue) * 100).toFixed(1) : '0.0'}% share
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1">
-                  {maxValue ? ((item.numericValue / maxValue) * 100).toFixed(0) : '0'}% of peak
-                </span>
-              </div>
-              {item.helper ? <p className="mt-1 text-xs leading-5 text-slate-400">{item.helper}</p> : null}
-            </div>
-          ))}
         </div>
       </div>
     </div>
@@ -404,6 +626,9 @@ function PaginatedReportTable({
   currentPage,
   onPageChange,
   itemLabel,
+  enableAdminColumnVisibility = false,
+  columnVisibilityStorageKey,
+  compactColumnKeys = [],
 }) {
   const totalPages = Math.max(1, Math.ceil(rows.length / REPORT_TABLE_PAGE_SIZE));
   const safePage = Math.min(Math.max(currentPage, 1), totalPages);
@@ -413,7 +638,14 @@ function PaginatedReportTable({
 
   return (
     <div>
-      <DataTable columns={columns} rows={paginatedRows} emptyMessage={emptyMessage} />
+      <DataTable
+        columns={columns}
+        rows={paginatedRows}
+        emptyMessage={emptyMessage}
+        enableAdminColumnVisibility={enableAdminColumnVisibility}
+        columnVisibilityStorageKey={columnVisibilityStorageKey}
+        compactColumnKeys={compactColumnKeys}
+      />
       {rows.length ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.16em] text-slate-500">
           <span>Showing {startIndex + 1}-{endIndex} of {rows.length} {itemLabel}</span>
@@ -1795,15 +2027,11 @@ export default function AdminReportsPage({ audience = 'admin' }) {
       </div>
 
       <div className="panel p-5 lg:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-6">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-sky-200">
-              <SlidersHorizontal size={20} />
-            </div>
+        <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold text-white">Report Workspace</h2>
             </div>
-          </div>
+
 
           <button
             type="button"
@@ -2171,6 +2399,9 @@ export default function AdminReportsPage({ audience = 'admin' }) {
             currentPage={tablePages.sales}
             onPageChange={(page) => setReportTablePage('sales', page)}
             itemLabel="sales rows"
+            enableAdminColumnVisibility={!isCustomerAudience}
+            columnVisibilityStorageKey="admin-reports-sales-table"
+            compactColumnKeys={['orderLabel', 'date', 'clientName', 'productName', 'amount', 'status']}
           />
         </ReportSection>
       ) : null}
@@ -2201,6 +2432,9 @@ export default function AdminReportsPage({ audience = 'admin' }) {
               currentPage={tablePages.services}
               onPageChange={(page) => setReportTablePage('services', page)}
               itemLabel="service rows"
+              enableAdminColumnVisibility={!isCustomerAudience}
+              columnVisibilityStorageKey="admin-reports-services-table"
+              compactColumnKeys={['serviceName', 'clientName', 'productType', 'lifecycleStatus', 'status', 'renewsOn']}
             />
           </ReportSection>
 
@@ -2226,6 +2460,9 @@ export default function AdminReportsPage({ audience = 'admin' }) {
               currentPage={tablePages.renewals}
               onPageChange={(page) => setReportTablePage('renewals', page)}
               itemLabel="renewal rows"
+              enableAdminColumnVisibility={!isCustomerAudience}
+              columnVisibilityStorageKey="admin-reports-renewals-table"
+              compactColumnKeys={['serviceName', 'clientName', 'productType', 'renewsOn', 'daysUntilRenewal']}
             />
           </ReportSection>
         </div>
@@ -2265,6 +2502,9 @@ export default function AdminReportsPage({ audience = 'admin' }) {
             currentPage={tablePages.receivables}
             onPageChange={(page) => setReportTablePage('receivables', page)}
             itemLabel="receivable rows"
+            enableAdminColumnVisibility={!isCustomerAudience}
+            columnVisibilityStorageKey="admin-reports-receivables-table"
+            compactColumnKeys={['invoiceNumber', 'orderLabel', 'clientName', 'productName', 'amount', 'dueDate', 'paymentState']}
           />
         </ReportSection>
       ) : null}
@@ -2292,6 +2532,9 @@ export default function AdminReportsPage({ audience = 'admin' }) {
             currentPage={tablePages.tax}
             onPageChange={(page) => setReportTablePage('tax', page)}
             itemLabel="tax rows"
+            enableAdminColumnVisibility={!isCustomerAudience}
+            columnVisibilityStorageKey="admin-reports-tax-table"
+            compactColumnKeys={['period', 'grossSales', 'taxDue', 'netRevenue']}
           />
         </ReportSection>
       ) : null}

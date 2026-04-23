@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BarChart3, Bell, ChevronDown, FileSignature, LayoutDashboard, LayoutGrid, LifeBuoy, List, LogOut, ReceiptText, ClipboardList, Settings, Shield, ShieldAlert, ShieldCheck, UserCircle2, Users } from 'lucide-react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
 import StatusBadge from '../components/common/StatusBadge';
@@ -8,6 +8,14 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { usePortal } from '../context/PortalContext';
 import { formatDateTime } from '../utils/format';
+import { buildReportFocusPath, REPORT_SIDEBAR_ITEMS } from '../utils/reports';
+
+const buildReportSubmenu = (basePath) => REPORT_SIDEBAR_ITEMS.map((item) => ({
+  label: item.label,
+  to: buildReportFocusPath(item.value, basePath),
+}));
+
+const isNestedRouteActive = (pathname, basePath) => pathname === basePath || pathname.startsWith(`${basePath}/`);
 
 const adminNav = [
   { label: 'Dashboard', to: '/admin', icon: LayoutDashboard },
@@ -20,16 +28,20 @@ const adminNav = [
   { label: 'Purchases', to: '/admin/purchases', icon: ReceiptText },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
   { label: 'Helpdesk', to: '/admin/helpdesk', icon: LifeBuoy },
-  { label: 'Reports', to: '/admin/reports', icon: BarChart3 },
+  { label: 'Reports', to: '/admin/reports', icon: BarChart3, children: buildReportSubmenu('/admin/reports') },
 ];
 
 export default function AdminLayout() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, showIdleWarning, idleCountdown, resetInactivityTimers } = useAuth();
   const { stats, clients, adminServices, notifications, updateNotificationStatus } = usePortal();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [openMenus, setOpenMenus] = useState({
+    '/admin/reports': false,
+  });
 
   const notificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
@@ -107,21 +119,80 @@ export default function AdminLayout() {
             </div>
 
             <nav className="mt-8 space-y-1">
-              {adminNav.map(({ label, to, icon: Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={to === '/admin'}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
-                      isActive ? 'bg-orange-400 text-white' : 'text-slate-300 hover:bg-sky-300/10 hover:text-white'
-                    }`
-                  }
-                  onClick={() => setIsSidebarOpen(false)}
-                >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </NavLink>
+              {adminNav.map(({ label, to, icon: Icon, children = [] }) => (
+                <div key={to} className="space-y-1">
+                  {children.length ? (() => {
+                    const isExpanded = Boolean(openMenus[to]);
+                    const isSectionActive = isNestedRouteActive(location.pathname, to);
+
+                    return (
+                      <>
+                        <div className={`flex items-center rounded-2xl transition ${isSectionActive ? 'bg-orange-400 text-white' : 'text-slate-300 hover:bg-sky-300/10 hover:text-white'}`}>
+                          <NavLink
+                            to={to}
+                            end
+                            className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-sm"
+                            onClick={() => setIsSidebarOpen(false)}
+                          >
+                            <Icon size={18} />
+                            <span>{label}</span>
+                          </NavLink>
+
+                          <button
+                            type="button"
+                            onClick={() => setOpenMenus((current) => ({ ...current, [to]: !current[to] }))}
+                            className={`mr-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${isSectionActive ? 'text-white/80 hover:bg-white/10 hover:text-white' : 'text-slate-400 hover:bg-sky-300/10 hover:text-white'}`}
+                            aria-label={`Toggle ${label} submenu`}
+                            aria-expanded={isExpanded}
+                          >
+                            <ChevronDown size={16} className={`transition ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                        </div>
+
+                        {isExpanded ? (
+                          <div className="ml-8 border-l border-white/10 pl-3">
+                            <div className="space-y-1 py-1">
+                              {children.map((child) => (
+                                <NavLink
+                                  key={child.to}
+                                  to={child.to}
+                                  end
+                                  className={({ isActive }) =>
+                                    `flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] transition ${
+                                      isActive ? 'bg-sky-300/10 text-sky-200' : 'text-slate-400 hover:bg-sky-300/10 hover:text-white'
+                                    }`
+                                  }
+                                  onClick={() => setIsSidebarOpen(false)}
+                                >
+                                  {({ isActive }) => (
+                                    <>
+                                      <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-sky-300' : 'bg-slate-600'}`} />
+                                      <span className="leading-5">{child.label}</span>
+                                    </>
+                                  )}
+                                </NavLink>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })() : (
+                    <NavLink
+                      to={to}
+                      end={to === '/admin'}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
+                          isActive ? 'bg-orange-400 text-white' : 'text-slate-300 hover:bg-sky-300/10 hover:text-white'
+                        }`
+                      }
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      <Icon size={18} />
+                      <span>{label}</span>
+                    </NavLink>
+                  )}
+                </div>
               ))}
             </nav>
           </div>

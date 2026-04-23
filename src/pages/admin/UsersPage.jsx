@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { KeyRound, LayoutGrid, List, PencilLine, Plus, Power, Search, UsersRound } from 'lucide-react';
+import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
@@ -235,6 +236,152 @@ export default function UsersPage() {
     }
   };
 
+  const columns = [
+    {
+      key: 'name',
+      label: 'User Details',
+      sortable: true,
+      hideable: false,
+      render: (value, user) => (
+        <div className="flex items-start gap-3">
+          <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300">
+            <UsersRound size={18} />
+          </div>
+          <div>
+            <p className="font-semibold text-white">{value}</p>
+            <p className="mt-1 text-sm text-slate-400">{user.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      label: 'Role',
+      sortable: true,
+      render: (value) => (
+        <span className={`badge ${roleClasses[value] ?? 'border-white/10 bg-white/10 text-slate-100'} text-white`}>
+          {value}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      render: (value) => <StatusBadge status={value} />,
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      hideable: false,
+      render: (_, user) => {
+        const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
+        const statusActionClass = user.status === 'Enabled'
+          ? 'bg-rose-400 text-white hover:bg-rose-500'
+          : 'bg-emerald-400 text-white hover:bg-emerald-500';
+
+        return (
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => handleUpdateDetails(user)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
+              title={`Update details for ${user.name}`}
+              aria-label={`Update details for ${user.name}`}
+            >
+              <PencilLine size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleResetPassword(user)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
+              title={`Reset password for ${user.name}`}
+              aria-label={`Reset password for ${user.name}`}
+            >
+              <KeyRound size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(user)}
+              disabled={togglingUserId === user.id}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${statusActionClass}`}
+              title={`${statusActionLabel} for ${user.name}`}
+              aria-label={`${statusActionLabel} for ${user.name}`}
+            >
+              <Power size={16} />
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  const usersHeaderAction = (
+    <div className="flex w-full justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <label className="relative block w-full sm:w-[280px] xl:w-[320px]">
+          <span className="sr-only">Search users</span>
+          <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            value={usersSearch}
+            onChange={(event) => setUsersSearch(event.target.value)}
+            placeholder="Search user, email, or role"
+            className="input pl-11"
+          />
+        </label>
+
+        <select className="input w-full sm:w-44" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+          <option value="All">All roles</option>
+          <option value="Admin">Admin</option>
+          <option value="Technical Support">Technical Support</option>
+          <option value="Sales">Sales</option>
+        </select>
+
+        <select className="input w-full sm:w-44" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <option value="All">All statuses</option>
+          <option value="Enabled">Enabled</option>
+          <option value="Disabled">Disabled</option>
+        </select>
+
+        <button
+          type="button"
+          onClick={() => {
+            setError('');
+            setMessage('');
+            setShowAddUserModal(true);
+          }}
+          className="btn-primary gap-2 px-6 py-2"
+        >
+          <Plus size={20} /> Add User
+        </button>
+
+        {usersView === 'list' ? <div id="users-column-visibility-slot" className="shrink-0" /> : null}
+
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+          <button
+            type="button"
+            onClick={() => setUsersView('grid')}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${usersView === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+            aria-label="Grid view"
+            title="Grid view"
+          >
+            <LayoutGrid size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setUsersView('list')}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${usersView === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+            aria-label="List view"
+            title="List view"
+          >
+            <List size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       {statusConfirmUser ? (
@@ -296,6 +443,7 @@ export default function UsersPage() {
       <PageHeader
         eyebrow="Admin Users"
         title="Users"
+        action={usersHeaderAction}
       />
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -346,149 +494,17 @@ export default function UsersPage() {
         </div>
       ) : null}
 
-      <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center">
-          <label className="relative block flex-1">
-            <span className="sr-only">Search users</span>
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={usersSearch}
-              onChange={(event) => setUsersSearch(event.target.value)}
-              placeholder="Search user, email, or role"
-              className="input pl-11"
-            />
-          </label>
-
-          <select className="input lg:w-48" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
-            <option value="All">All roles</option>
-            <option value="Admin">Admin</option>
-            <option value="Technical Support">Technical Support</option>
-            <option value="Sales">Sales</option>
-          </select>
-
-          <select className="input lg:w-44" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="All">All statuses</option>
-            <option value="Enabled">Enabled</option>
-            <option value="Disabled">Disabled</option>
-          </select>
-        </div>
-          <button
-            type="button"
-            onClick={() => {
-              setError('');
-              setMessage('');
-              setShowAddUserModal(true);
-            }}
-            className="btn-primary gap-2 px-6 py-2"
-          >
-            <Plus size={20} /> Add User
-          </button>
-        <div className="inline-flex items-center gap-2 self-end rounded-2xl border border-white/10 bg-slate-900/70 p-1">
-
-          <button
-            type="button"
-            onClick={() => setUsersView('grid')}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${usersView === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-            aria-label="Grid view"
-            title="Grid view"
-          >
-            <LayoutGrid size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setUsersView('list')}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${usersView === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-            aria-label="List view"
-            title="List view"
-          >
-            <List size={16} />
-          </button>
-        </div>
-      </div>
-
       {usersView === 'list' ? (
-        <div className="panel mt-6 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-white/10 text-left">
-              <thead className="bg-white/5 text-sm text-slate-400">
-                <tr>
-                  <th className="px-5 py-4 font-semibold text-white">User Details</th>
-                  <th className="px-5 py-4 font-semibold text-white">Role</th>
-                  <th className="px-5 py-4 font-semibold text-white">Status</th>
-                  <th className="px-5 py-4 text-right font-semibold text-white">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
-                {filteredUsers.length ? filteredUsers.map((user) => {
-                const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
-                const statusActionClass = user.status === 'Enabled'
-                  ? 'bg-rose-400 text-white hover:bg-rose-500'
-                  : 'bg-emerald-400 text-white hover:bg-emerald-500';
-
-                return (
-                  <tr key={user.id} className="table-row-hoverable">
-                    <td className="px-5 py-4">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300">
-                          <UsersRound size={18} />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-white">{user.name}</p>
-                          <p className="mt-1 text-sm text-slate-400">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`badge ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'} text-white`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <StatusBadge status={user.status} />
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateDetails(user)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
-                          title={`Update details for ${user.name}`}
-                          aria-label={`Update details for ${user.name}`}
-                        >
-                          <PencilLine size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleResetPassword(user)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
-                          title={`Reset password for ${user.name}`}
-                          aria-label={`Reset password for ${user.name}`}
-                        >
-                          <KeyRound size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(user)}
-                          disabled={togglingUserId === user.id}
-                          className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${statusActionClass}`}
-                          title={`${statusActionLabel} for ${user.name}`}
-                          aria-label={`${statusActionLabel} for ${user.name}`}
-                        >
-                          <Power size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-                }) : (
-                  <tr>
-                    <td colSpan={4} className="px-5 py-12 text-center text-slate-400">No users match the current search and filters.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="mt-6">
+          <DataTable
+            columns={columns}
+            rows={filteredUsers}
+            emptyMessage="No users match the current search and filters."
+            enableAdminColumnVisibility
+            columnVisibilityStorageKey="admin-users-table"
+            compactColumnKeys={['name', 'status', 'actions']}
+            columnVisibilityPortalTargetId="users-column-visibility-slot"
+          />
         </div>
       ) : filteredUsers.length ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -16,6 +16,12 @@ export const REPORT_FOCUS_OPTIONS = [
   { value: 'receivables', label: 'Receivables & Payments' },
   { value: 'tax', label: 'Tax & Accounting' },
 ];
+export const REPORT_SIDEBAR_ITEMS = [
+  { value: 'sales', label: 'Sales' },
+  { value: 'services', label: 'Service Cycle' },
+  { value: 'receivables', label: 'Receivables' },
+  { value: 'tax', label: 'Tax & Accounting' },
+];
 export const REPORT_VISIBILITY_OPTIONS = [
   { value: 'own', label: 'Own' },
   { value: 'public', label: 'Public' },

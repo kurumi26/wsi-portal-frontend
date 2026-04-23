@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ShieldCheck, Eye, MessageSquare, LayoutGrid, List, CheckCircle2, XCircle, CircleOff, Percent, CreditCard, PencilLine } from 'lucide-react';
+import { ShieldCheck, Eye, MessageSquare, LayoutGrid, List, CheckCircle2, XCircle, CircleOff, Percent, CreditCard, PencilLine, Search } from 'lucide-react';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import UserAvatar from '../../components/common/UserAvatar';
@@ -1010,9 +1010,36 @@ export default function ApprovalsPage() {
     }
   };
 
+  const headerAction = (
+    <div className="w-full lg:w-auto flex items-center gap-3">
+      <label className="relative block">
+        <span className="sr-only">Search and select client</span>
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input type="text" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Search and select client" className="input pl-10 w-56" />
+      </label>
+
+      <div className="hidden sm:flex items-center gap-3">
+        <select className="input w-44 md:w-56" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="all">All</option>
+          <option value="order">Orders</option>
+          <option value="cancellation">Cancellations</option>
+        </select>
+
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+          <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view" title="Grid view">
+            <LayoutGrid size={16} />
+          </button>
+          <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view" title="List view">
+            <List size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
-      <PageHeader eyebrow="Operations" title="Approve New Orders" />
+      <PageHeader eyebrow="Operations" title="Approve New Orders" action={headerAction} />
 
       {error ? <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{error}</div> : null}
       {message ? <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{message}</div> : null}
@@ -1027,31 +1054,7 @@ export default function ApprovalsPage() {
                 <h2 className="mt-2 text-xl font-semibold text-white">Pending Orders</h2>
               </div>
 
-              <div className="flex-1 pl-5">
-                <div className="grid gap-4 md:grid-cols-1 items-center">
-                  <label className="relative block">
-                    <span className="sr-only">Search and select client</span>
-                    <input type="text" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Search and select client" className="input pl-11" />
-                  </label>
-                </div>
-              </div>
 
-                  <div className="flex items-center gap-4 ml-4 md:ml-6">
-                    <select className="input w-44 md:w-56" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                      <option value="all">All</option>
-                      <option value="order">Orders</option>
-                      <option value="cancellation">Cancellations</option>
-                    </select>
-
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
-                      <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view" title="Grid view">
-                        <LayoutGrid size={16} />
-                      </button>
-                      <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view" title="List view">
-                        <List size={16} />
-                      </button>
-                    </div>
-                  </div>
             </div>
 
         {typeFilter === 'services' ? (

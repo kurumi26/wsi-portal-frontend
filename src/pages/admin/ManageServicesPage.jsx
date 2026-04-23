@@ -907,6 +907,59 @@ export default function ManageServicesPage() {
       .filter(Boolean);
   };
 
+  const manageServicesHeaderAction = (
+    <div className="flex w-full justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="relative w-full sm:w-[280px] xl:w-[320px]">
+          <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+          <input
+            type="text"
+            value={servicesSearch}
+            onChange={(event) => setServicesSearch(event.target.value)}
+            placeholder="Search services"
+            className="input w-full pl-11"
+          />
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-200 outline-none sm:w-auto"
+        >
+          <option value="All">All categories</option>
+          {serviceCategories.map((category) => (
+            <option key={category} value={category}>
+              {category}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={priceFilter}
+          onChange={(event) => setPriceFilter(event.target.value)}
+          className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-200 outline-none sm:w-auto"
+        >
+          <option value="Price: Low to High">Price: Low to High</option>
+          <option value="Price: High to Low">Price: High to Low</option>
+          <option value="Most Popular">Most Popular</option>
+        </select>
+
+        <button type="button" onClick={() => openAddModal()} className="btn-primary gap-2 px-3 py-2">
+          <Plus size={16} /> Add Service
+        </button>
+
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+          <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
+            <LayoutGrid size={16} />
+          </button>
+          <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
+            <List size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       {showAddModal ? (
@@ -1365,7 +1418,7 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
-      <PageHeader eyebrow="Manage Services" />
+      <PageHeader eyebrow="Manage Services" title="All Services" action={manageServicesHeaderAction} />
 
       {error ? (
         <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">
@@ -1381,62 +1434,6 @@ export default function ManageServicesPage() {
 
 
       <div className="mt-8">
-        <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">All Services</p>
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1 min-w-0">
-                <label className="sr-only">Search services</label>
-                <input
-                  type="text"
-                  value={servicesSearch}
-                  onChange={(event) => setServicesSearch(event.target.value)}
-                  placeholder="Search services"
-                  className="input pl-11 w-full"
-                />
-              </div>
-
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-200 outline-none sm:w-auto"
-              >
-                <option value="All">All categories</option>
-                {serviceCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={priceFilter}
-                onChange={(event) => setPriceFilter(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2 text-sm text-slate-200 outline-none sm:w-auto"
-              >
-                <option value="Price: Low to High">Price: Low to High</option>
-                <option value="Price: High to Low">Price: High to Low</option>
-                <option value="Most Popular">Most Popular</option>
-              </select>
-          </div>
-
-          <div className="flex items-center gap-2 self-end xl:self-auto">
-            <button type="button" onClick={() => openAddModal()} className="btn-primary gap-2 px-3 py-2">
-              <Plus size={16} /> Add Service
-            </button>
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
-              <button type="button" onClick={() => setViewMode('grid')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="Grid view">
-                <LayoutGrid size={16} />
-              </button>
-              <button type="button" onClick={() => setViewMode('list')} className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${viewMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`} aria-label="List view">
-                <List size={16} />
-              </button>
-            </div>
-          </div>
-        </div>
-
         {viewMode === 'list' ? (
           <div className="panel mt-6 overflow-hidden">
             <div className="overflow-x-auto">

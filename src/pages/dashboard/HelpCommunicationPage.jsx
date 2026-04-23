@@ -595,9 +595,6 @@ export default function HelpCommunicationPage() {
               <div className="max-w-2xl">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">WebFocus contact details</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">{SUPPORT_CONTACT.company}</h2>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  Reach the service desk for billing concerns, provisioning follow-up, technical incidents, and account assistance.
-                </p>
               </div>
               <a href={SUPPORT_CONTACT.freshdeskUrl} target="_blank" rel="noreferrer" className="btn-primary gap-2 lg:shrink-0">
                 <MessageSquareText size={16} /> Start Freshdesk chat
@@ -705,9 +702,6 @@ export default function HelpCommunicationPage() {
 
         <form onSubmit={handleSubmitTicket} className="panel rounded-3xl p-6 lg:p-7">
           <div className="flex items-center gap-3">
-            <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-400/12 text-sky-300">
-              <Headphones size={20} />
-            </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Submit support ticket</p>
               <h2 className="mt-1 text-xl font-semibold text-white">Create a request tied to your service</h2>

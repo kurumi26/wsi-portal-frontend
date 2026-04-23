@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, FileDown, Search, ChevronDown, List, Grid2x2 } from 'lucide-react';
+import { Eye, FileDown, Search, ChevronDown, List, Grid2x2, Calendar } from 'lucide-react';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
@@ -21,6 +21,8 @@ export default function OrderHistoryPage() {
   const statusRef = useRef(null);
   const [statusMenuStyle, setStatusMenuStyle] = useState(null);
   const [layoutMode, setLayoutMode] = useState('list');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const filters = ['All', 'Paid', 'Failed', 'Pending Review'];
 
   const filteredOrders = useMemo(() => {
@@ -31,6 +33,17 @@ export default function OrderHistoryPage() {
       const matchesStatus = statusFilter === 'All' ? true : order.status === statusFilter;
       if (!matchesStatus) return false;
 
+      // date range filter
+      const orderDate = new Date(order.date);
+      if (startDate) {
+        const s = new Date(startDate + 'T00:00:00');
+        if (orderDate < s) return false;
+      }
+      if (endDate) {
+        const e = new Date(endDate + 'T23:59:59');
+        if (orderDate > e) return false;
+      }
+
       // search
       if (normalizedSearch) {
         const hay = [order.id, order.serviceName, order.paymentMethod, order.status].join(' ').toLowerCase();
@@ -39,7 +52,7 @@ export default function OrderHistoryPage() {
 
       return true;
     });
-  }, [orders, searchTerm, statusFilter]);
+  }, [orders, searchTerm, statusFilter, startDate, endDate]);
 
   const sortedOrders = useMemo(() => {
     const rows = [...filteredOrders];
@@ -254,21 +267,41 @@ export default function OrderHistoryPage() {
       <PageHeader
         eyebrow="Order History"
         title="Purchases & order records"
-      />
-      <div className="panel p-4 mb-4">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-[420px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              placeholder="Search orders"
-              className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
-            />
-          </div>
+        action={
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 max-w-[420px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                placeholder="Search orders"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+              />
+            </div>
 
-          <div className="ml-auto flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2">
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+                  className="rounded-full border border-white/10 bg-white/[0.02] py-2 pl-10 pr-3 text-sm text-slate-200 outline-none"
+                />
+              </div>
+              <span className="text-sm text-slate-400">to</span>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+                  className="rounded-full border border-white/10 bg-white/[0.02] py-2 pl-10 pr-3 text-sm text-slate-200 outline-none"
+                />
+              </div>
+            </div>
+
             <div className="relative" ref={statusRef}>
               <button
                 type="button"
@@ -303,25 +336,27 @@ export default function OrderHistoryPage() {
                 : null}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setLayoutMode('list')}
-              className={layoutMode === 'list' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-              aria-label="List layout"
-            >
-              <List size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMode('grid')}
-              className={layoutMode === 'grid' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-              aria-label="Grid layout"
-            >
-              <Grid2x2 size={16} />
-            </button>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setLayoutMode('list')}
+                className={layoutMode === 'list' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+                aria-label="List layout"
+              >
+                <List size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('grid')}
+                className={layoutMode === 'grid' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+                aria-label="Grid layout"
+              >
+                <Grid2x2 size={16} />
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        }
+      />
       {layoutMode === 'list' ? (
         <>
           <DataTable columns={columns} rows={paginatedOrders} />

@@ -119,84 +119,100 @@ export default function PurchasesPage() {
       render: (value) => <StatusBadge status={value} />,
     },
   ];
+
+  const purchasesHeaderAction = (
+    <div className="flex w-full justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="relative w-full sm:w-[280px] xl:w-[320px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search purchases"
+            className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
+          />
+        </div>
+
+        <div className="relative shrink-0" ref={statusRef}>
+          <button
+            type="button"
+            onClick={() => setStatusOpen((current) => !current)}
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
+          >
+            <span className="sr-only">Status</span>
+            <span className="text-sm text-slate-200">{statusFilter}</span>
+            <ChevronDown size={14} className="text-slate-400" />
+          </button>
+
+          {statusOpen && statusMenuStyle
+            ? createPortal(
+                <div ref={statusMenuRef} style={statusMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
+                  {filters.map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter(filter);
+                        setStatusOpen(false);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>,
+                document.body,
+              )
+            : null}
+        </div>
+
+        {layoutMode === 'list' ? <div id="purchases-column-visibility-slot" className="shrink-0" /> : null}
+
+        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
+          <button
+            type="button"
+            onClick={() => setLayoutMode('list')}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${layoutMode === 'list' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+            aria-label="List layout"
+          >
+            <List size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setLayoutMode('grid')}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition ${layoutMode === 'grid' ? 'bg-orange-400 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+            aria-label="Grid layout"
+          >
+            <Grid2x2 size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
         eyebrow="Purchase Ledger"
         title="Recorded Purchases"
+        action={purchasesHeaderAction}
       />
-
-      <div className="panel p-4 mb-4">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-[420px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              placeholder="Search purchases"
-              className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-2 pl-10 pr-4 text-sm text-slate-200 outline-none"
-            />
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <div className="relative" ref={statusRef}>
-              <button
-                type="button"
-                onClick={() => setStatusOpen((s) => !s)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200"
-              >
-                <span className="sr-only">Status</span>
-                <span className="text-sm text-slate-200">{statusFilter}</span>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
-
-              {statusOpen && statusMenuStyle
-                ? createPortal(
-                    <div ref={statusMenuRef} style={statusMenuStyle} className="rounded-lg border border-white/6 bg-slate-900 shadow">
-                      {filters.map((f) => (
-                        <button
-                          key={f}
-                          type="button"
-                          onClick={() => {
-                            setStatusFilter(f);
-                            setStatusOpen(false);
-                            setCurrentPage(1);
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
-                        >
-                          {f}
-                        </button>
-                      ))}
-                    </div>,
-                    document.body,
-                  )
-                : null}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setLayoutMode('list')}
-              className={layoutMode === 'list' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-              aria-label="List layout"
-            >
-              <List size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMode('grid')}
-              className={layoutMode === 'grid' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
-              aria-label="Grid layout"
-            >
-              <Grid2x2 size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
 
       {layoutMode === 'list' ? (
         <>
-          <DataTable columns={columns} rows={paginatedPurchases} />
+          <DataTable
+            columns={columns}
+            rows={paginatedPurchases}
+            enableAdminColumnVisibility
+            columnVisibilityStorageKey="admin-purchases-table"
+            compactColumnKeys={['id', 'client', 'serviceName', 'amount', 'status']}
+            columnVisibilityPortalTargetId="purchases-column-visibility-slot"
+          />
           <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
         </>
       ) : (
