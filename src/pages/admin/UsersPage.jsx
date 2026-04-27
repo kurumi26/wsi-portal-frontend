@@ -243,8 +243,8 @@ export default function UsersPage() {
       sortable: true,
       hideable: false,
       render: (value, user) => (
-        <div className="flex items-start gap-3">
-          <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300">
             <UsersRound size={18} />
           </div>
           <div>
@@ -274,6 +274,9 @@ export default function UsersPage() {
       key: 'actions',
       label: 'Actions',
       hideable: false,
+      headerClassName: 'text-right',
+      headerContentClassName: 'justify-end',
+      cellClassName: 'text-right',
       render: (_, user) => {
         const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
         const statusActionClass = user.status === 'Enabled'
@@ -281,7 +284,7 @@ export default function UsersPage() {
           : 'bg-emerald-400 text-white hover:bg-emerald-500';
 
         return (
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => handleUpdateDetails(user)}

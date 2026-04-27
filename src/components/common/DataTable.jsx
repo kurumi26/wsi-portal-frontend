@@ -423,10 +423,10 @@ export default function DataTable({
                 return (
                   <th
                     key={column.key}
-                    className={`px-6 py-5 font-medium ${column.sortable ? 'cursor-pointer select-none' : ''}`}
+                    className={`px-6 py-5 font-medium ${column.sortable ? 'cursor-pointer select-none' : ''} ${column.headerClassName ?? ''}`}
                     onClick={() => handleSort(column)}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-2 ${column.headerContentClassName ?? ''}`}>
                       <span>{column.label}</span>
                       {column.sortable ? (
                         <span className="ml-1 flex flex-col items-center gap-0">
@@ -467,7 +467,7 @@ export default function DataTable({
               sortedRows.map((row, index) => (
                 <tr key={row.id ?? index} className="table-row-hoverable">
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className="px-6 py-5 text-slate-200">
+                    <td key={column.key} className={`px-6 py-5 text-slate-200 ${column.cellClassName ?? ''}`}>
                       {column.render ? column.render(row[column.key], row) : row[column.key]}
                     </td>
                   ))}
