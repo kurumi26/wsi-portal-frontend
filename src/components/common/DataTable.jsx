@@ -62,7 +62,7 @@ const sanitizeVisibleColumnKeys = (candidateKeys, columns, fallbackKeys) => {
   return allKeys.filter((key) => fallbackSet.has(key) || lockedSet.has(key));
 };
 
-const readStoredVisibleColumns = (storageKey) => {
+export const readStoredVisibleColumns = (storageKey) => {
   if (!storageKey || typeof window === 'undefined') {
     return null;
   }
@@ -82,7 +82,7 @@ const readStoredVisibleColumns = (storageKey) => {
   }
 };
 
-const writeStoredVisibleColumns = (storageKey, visibleColumnKeys) => {
+export const writeStoredVisibleColumns = (storageKey, visibleColumnKeys) => {
   if (!storageKey || typeof window === 'undefined') {
     return;
   }
@@ -94,6 +94,23 @@ const writeStoredVisibleColumns = (storageKey, visibleColumnKeys) => {
   }
 };
 
+const getInitialVisibleColumnKeys = ({
+  columns,
+  columnVisibilityStorageKey,
+  defaultVisibleColumnKeys,
+  enableAdminColumnVisibility,
+}) => {
+  if (!enableAdminColumnVisibility) {
+    return getAllColumnKeys(columns);
+  }
+
+  return sanitizeVisibleColumnKeys(
+    readStoredVisibleColumns(columnVisibilityStorageKey) ?? defaultVisibleColumnKeys,
+    columns,
+    defaultVisibleColumnKeys,
+  );
+};
+
 export default function DataTable({
   columns,
   rows,
@@ -101,6 +118,7 @@ export default function DataTable({
   enableAdminColumnVisibility = false,
   columnVisibilityStorageKey = '',
   compactColumnKeys = [],
+  columnVisibilitySyncKey = 0,
   columnVisibilityPortalTargetId = '',
 }) {
   const [sortKey, setSortKey] = useState(null);
@@ -113,14 +131,18 @@ export default function DataTable({
     () => getDefaultVisibleColumnKeys(columns, compactColumnKeys),
     [columnSignature, compactColumnSignature, columns, compactColumnKeys],
   );
-  const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => (
-    enableAdminColumnVisibility ? defaultVisibleColumnKeys : getAllColumnKeys(columns)
-  ));
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState(() => getInitialVisibleColumnKeys({
+    columns,
+    columnVisibilityStorageKey,
+    defaultVisibleColumnKeys,
+    enableAdminColumnVisibility,
+  }));
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [columnMenuStyle, setColumnMenuStyle] = useState(null);
   const [columnVisibilityPortalTarget, setColumnVisibilityPortalTarget] = useState(null);
   const columnMenuTriggerRef = useRef(null);
   const columnMenuRef = useRef(null);
+  const skipColumnVisibilityWriteRef = useRef(false);
   const useExternalColumnVisibilityControl = enableAdminColumnVisibility && Boolean(columnVisibilityPortalTargetId);
 
   useEffect(() => {
@@ -139,12 +161,21 @@ export default function DataTable({
       const currentSignature = current.join('|');
       const nextSignature = nextVisibleColumns.join('|');
 
+      if (currentSignature !== nextSignature) {
+        skipColumnVisibilityWriteRef.current = true;
+      }
+
       return currentSignature === nextSignature ? current : nextVisibleColumns;
     });
-  }, [columnSignature, columnVisibilityStorageKey, columns, defaultVisibleColumnKeys, enableAdminColumnVisibility]);
+  }, [columnSignature, columnVisibilityStorageKey, columnVisibilitySyncKey, columns, defaultVisibleColumnKeys, enableAdminColumnVisibility]);
 
   useEffect(() => {
     if (!enableAdminColumnVisibility) {
+      return;
+    }
+
+    if (skipColumnVisibilityWriteRef.current) {
+      skipColumnVisibilityWriteRef.current = false;
       return;
     }
 
