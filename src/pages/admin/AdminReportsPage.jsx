@@ -466,24 +466,39 @@ function ReportSection({
   action,
   children,
   hideMetricCard = false,
+  centerTitle = false,
 }) {
   return (
     <section className="space-y-4">
       <div className="panel overflow-hidden">
         <div className="bg-gradient-to-r from-sky-400/10 via-white/[0.02] to-transparent p-5 lg:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex max-w-3xl items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-sky-200">
-                <Icon size={18} />
+          <div className={`flex ${centerTitle ? 'items-center' : 'items-start'} justify-between gap-4`}>
+            {centerTitle ? (
+              <div className="flex-1 flex items-center justify-center min-w-0">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-sky-200">
+                    <Icon size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-semibold text-white text-center truncate">{title}</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-400 text-center">{description}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-semibold text-white">{title}</h2>
-                <p className="mt-2 text-sm leading-7 text-slate-400">{description}</p>
+            ) : (
+              <div className="flex max-w-3xl items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-sky-200">
+                  <Icon size={18} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-white">{title}</h2>
+                  <p className="mt-2 text-sm leading-7 text-slate-400">{description}</p>
+                </div>
               </div>
-            </div>
+            )}
 
             {action || !hideMetricCard ? (
-              <div className="flex flex-wrap items-start justify-end gap-3">
+              <div className="flex items-center justify-end gap-3">
                 {action ? <div className="shrink-0">{action}</div> : null}
                 {!hideMetricCard ? (
                   <div className="min-w-[220px] rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-4 text-right">
@@ -547,6 +562,12 @@ const downloadBlob = (blob, filename) => {
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(url);
+};
+
+const sanitizeFileName = (value, fallback = 'export') => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  const safe = normalized.replace(/[<>:"/\\|?*\u0000-\u001F]+/g, '-').replace(/\s+/g, ' ').trim();
+  return safe || fallback;
 };
 
 const buildFilterSummary = (filters, productTypeOptions, dealTypeOptions, collectionMonthOptions = []) => {
@@ -1629,6 +1650,56 @@ export default function AdminReportsPage({ audience = 'admin' }) {
   };
 
   const exportExcel = () => {
+    // If exporting a specific collection month, produce a flat table (one sheet) matching the on-screen columns
+    if (reportData?.selectedCollectionMonthKey && reportData.monthlyCollectionRows && reportData.monthlyCollectionRows.length) {
+      const cols = collectionColumns.map((c) => (c.label || c.key || '').toUpperCase());
+      const rows = reportData.monthlyCollectionRows.map((r) => [
+        r.billingInCharge || '',
+        r.dealOwner || '',
+        r.clientName || '',
+        r.productCategory || '',
+        r.dealName || '',
+        r.dealType || '',
+        r.dealSubType || '',
+        typeof r.collectionAmount === 'number' ? formatCurrency(r.collectionAmount) : (r.collectionAmount ?? ''),
+        typeof r.amount === 'number' ? formatCurrency(r.amount) : (r.amount ?? ''),
+        r.invoiceNumber || '',
+        r.serviceInvoiceDate ? formatDate(r.serviceInvoiceDate) : '',
+        r.tinNumber || '',
+        r.billingAddress || '',
+        r.taxClassification || '',
+      ]);
+
+      const headerMarkup = cols.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
+      const bodyMarkup = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell ?? ''))}</td>`).join('')}</tr>`).join('');
+
+      const html = `
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              table{border-collapse:collapse;width:100%}
+              th,td{border:1px solid #ddd;padding:6px;text-align:left}
+              th{background:#f1f5f9}
+            </style>
+          </head>
+          <body>
+            <h2>${escapeHtml(reportData.selectedCollectionMonthLabel + ' Collection Summary')}</h2>
+            <table>
+              <thead><tr>${headerMarkup}</tr></thead>
+              <tbody>${bodyMarkup}</tbody>
+            </table>
+          </body>
+        </html>
+      `;
+
+      const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      downloadBlob(blob, `${sanitizeFileName(reportData.selectedCollectionMonthLabel || 'collection')}-collection.xls`);
+      setFeedback({ tone: 'success', message: `Excel export generated for ${reportData.selectedCollectionMonthLabel} collection.` });
+      return;
+    }
+
+    // Default workbook export for other report views
     const title = REPORT_FOCUS_OPTIONS.find((option) => option.value === filters.reportFocus)?.label ?? 'All Reports';
     const generatedAt = formatDateTime(new Date());
     const html = buildWorkbookHtml({
@@ -1642,6 +1713,215 @@ export default function AdminReportsPage({ audience = 'admin' }) {
 
     downloadBlob(blob, `${pageConfig.filenamePrefix}-${filters.reportFocus}-report.xls`);
     setFeedback({ tone: 'success', message: `Excel export generated for the current ${pageConfig.feedbackDatasetLabel} report view.` });
+  };
+
+  const buildExportHeaders = (columnsDef) => (
+    (columnsDef || []).map((c) => (typeof c === 'string' ? c : (c.label || c.key || '')))
+  );
+
+  const buildExportRowsFromObjects = (columnsDef, rowsObjects) => {
+    const headers = buildExportHeaders(columnsDef);
+
+    return (rowsObjects || []).map((r) => headers.map((header, index) => {
+      const col = columnsDef[index];
+      const key = col && typeof col === 'object' ? (col.key || '') : (typeof col === 'string' ? col : '');
+      let value = key && r ? r[key] : (r && typeof r === 'string' ? r : '');
+
+      if (value === null || value === undefined) return '';
+
+      if (key && /date/i.test(key)) return formatDate(value);
+      if (key && /(amount|total|sales|tax|collection|due|balance|price)/i.test(key) && typeof value === 'number') return formatCurrency(value);
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      return String(value);
+    }));
+  };
+
+  const exportRowsAsExcel = (title, columnsDef, rowsObjects) => {
+    const cols = buildExportHeaders(columnsDef);
+    const rows = buildExportRowsFromObjects(columnsDef, rowsObjects);
+
+    const headerMarkup = cols.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
+    const bodyMarkup = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell ?? ''))}</td>`).join('')}</tr>`).join('');
+
+    const html = `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            table{border-collapse:collapse;width:100%}
+            th,td{border:1px solid #ddd;padding:6px;text-align:left}
+            th{background:#f1f5f9}
+          </style>
+        </head>
+        <body>
+          <h2>${escapeHtml(title)}</h2>
+          <table>
+            <thead><tr>${headerMarkup}</tr></thead>
+            <tbody>${bodyMarkup}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    downloadBlob(blob, `${sanitizeFileName(title)}.xls`);
+    setFeedback({ tone: 'success', message: `Excel export generated for ${title}.` });
+  };
+
+  const exportRowsAsPdf = (title, columnsDef, rowsObjects) => {
+    const generatedAt = formatDateTime(new Date());
+    const document = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+    const pageWidth = document.internal.pageSize.getWidth();
+    const pageHeight = document.internal.pageSize.getHeight();
+    const margin = 32;
+    const bottomMargin = 28;
+    const maxWidth = pageWidth - margin * 2;
+    const palette = {
+      ink: [15, 23, 42],
+      muted: [100, 116, 139],
+      line: [203, 213, 225],
+      brand: [15, 23, 42],
+      brandAccent: [21, 94, 117],
+      white: [255, 255, 255],
+      surface: [248, 250, 252],
+    };
+    let cursorY = margin;
+
+    const setDocumentFont = (size = 10, weight = 'normal', color = palette.ink) => {
+      document.setFont('helvetica', weight);
+      document.setFontSize(size);
+      document.setTextColor(...color);
+    };
+
+    const splitLines = (text, width, size = 10, weight = 'normal') => {
+      setDocumentFont(size, weight);
+      return document.splitTextToSize(normalizeExportText(text), Math.max(width, 24));
+    };
+
+    const startNewPage = () => {
+      document.addPage();
+      cursorY = margin;
+    };
+
+    const ensureSpace = (height = 18) => {
+      if (cursorY + height > pageHeight - bottomMargin) {
+        startNewPage();
+      }
+    };
+
+    // Hero
+    const heroHeight = 88;
+    ensureSpace(heroHeight + 8);
+    document.setFillColor(...palette.brand);
+    document.roundedRect(margin, cursorY, maxWidth, heroHeight, 18, 18, 'F');
+
+    setDocumentFont(10, 'bold', [186, 230, 253]);
+    document.text('WSI REPORT EXPORT', margin + 20, cursorY + 22);
+
+    setDocumentFont(20, 'bold', palette.white);
+    document.text(normalizeExportText(pageConfig.exportTitle), margin + 20, cursorY + 46);
+
+    setDocumentFont(11, 'normal', [219, 234, 254]);
+    document.text(normalizeExportText(`${title}`), margin + 20, cursorY + 66);
+    document.text(normalizeExportText(`Generated ${generatedAt}`), pageWidth - margin - 20, cursorY + 28, { align: 'right' });
+    cursorY += heroHeight + 16;
+
+    // Build table
+    const columns = buildExportHeaders(columnsDef);
+    const rows = buildExportRowsFromObjects(columnsDef, rowsObjects);
+
+    const sampleRows = rows.slice(0, 6);
+    const weights = columns.map((column, columnIndex) => {
+      const headerLength = normalizeExportText(column).length;
+      const sampleLength = sampleRows.reduce((largest, row) => Math.max(largest, normalizeExportText(row[columnIndex]).length), headerLength);
+
+      return Math.min(Math.max(sampleLength, 10), 28);
+    });
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+    const columnWidths = weights.map((weight, columnIndex) => {
+      if (columnIndex === weights.length - 1) {
+        return maxWidth - weights.slice(0, -1).reduce((sum, item) => sum + ((item / totalWeight) * maxWidth), 0);
+      }
+
+      return (weight / totalWeight) * maxWidth;
+    });
+
+    const headerLineSets = columns.map((column, columnIndex) => splitLines(column, columnWidths[columnIndex] - 10, 8.5, 'bold'));
+    const headerHeight = Math.max(...headerLineSets.map((lines) => lines.length || 1), 1) * 10 + 10;
+
+    const drawHeaderRow = (continuedLabel = '') => {
+      if (continuedLabel) {
+        setDocumentFont(9, 'bold', palette.muted);
+        document.text(normalizeExportText(continuedLabel), margin, cursorY);
+        cursorY += 14;
+      }
+
+      let x = margin;
+
+      columns.forEach((column, columnIndex) => {
+        document.setDrawColor(...palette.line);
+        document.setFillColor(...palette.brandAccent);
+        document.rect(x, cursorY, columnWidths[columnIndex], headerHeight, 'FD');
+        setDocumentFont(8.5, 'bold', palette.white);
+        document.text(headerLineSets[columnIndex], x + 5, cursorY + 13);
+        x += columnWidths[columnIndex];
+      });
+
+      cursorY += headerHeight;
+    };
+
+    ensureSpace(headerHeight + 40);
+
+    drawHeaderRow();
+
+    if (!rows.length) {
+      ensureSpace(30);
+      document.setDrawColor(...palette.line);
+      document.setFillColor(...palette.surface);
+      document.rect(margin, cursorY, maxWidth, 30, 'FD');
+      setDocumentFont(9, 'normal', palette.muted);
+      document.text(normalizeExportText('No records found.'), margin + 8, cursorY + 19);
+      cursorY += 44;
+    } else {
+      rows.forEach((row, rowIndex) => {
+        const cellLineSets = row.map((value, columnIndex) => splitLines(value, columnWidths[columnIndex] - 10, 8.5, 'normal'));
+        const rowHeight = Math.max(...cellLineSets.map((lines) => lines.length || 1), 1) * 10 + 10;
+
+        if (cursorY + rowHeight > pageHeight - bottomMargin) {
+          startNewPage();
+          drawHeaderRow(`${title} (continued)`);
+        }
+
+        let x = margin;
+
+        row.forEach((_, columnIndex) => {
+          document.setDrawColor(...palette.line);
+          document.setFillColor(...(rowIndex % 2 === 0 ? palette.white : palette.surface));
+          document.rect(x, cursorY, columnWidths[columnIndex], rowHeight, 'FD');
+          setDocumentFont(8.5, 'normal', palette.ink);
+          document.text(cellLineSets[columnIndex], x + 5, cursorY + 13);
+          x += columnWidths[columnIndex];
+        });
+
+        cursorY += rowHeight;
+      });
+
+      cursorY += 18;
+    }
+
+    const totalPages = document.getNumberOfPages();
+
+    for (let pageIndex = 1; pageIndex <= totalPages; pageIndex += 1) {
+      document.setPage(pageIndex);
+      document.setDrawColor(...palette.line);
+      document.line(margin, pageHeight - 16, pageWidth - margin, pageHeight - 16);
+      setDocumentFont(8.5, 'normal', palette.muted);
+      document.text(normalizeExportText(pageConfig.exportTitle), margin, pageHeight - 6);
+      document.text(`Page ${pageIndex} of ${totalPages}`, pageWidth - margin, pageHeight - 6, { align: 'right' });
+    }
+
+    document.save(`${sanitizeFileName(title)}.pdf`);
+    setFeedback({ tone: 'success', message: `PDF export generated for ${title}.` });
   };
 
   const sortedTemplates = useMemo(
@@ -1862,7 +2142,7 @@ export default function AdminReportsPage({ audience = 'admin' }) {
 
   const headerAction = (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <button
+      {/* <button
         type="button"
         onClick={exportPdf}
         className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
@@ -1877,7 +2157,7 @@ export default function AdminReportsPage({ audience = 'admin' }) {
       >
         <FileSpreadsheet size={16} />
         Export Excel
-      </button>
+      </button> */}
     </div>
   );
 
@@ -1910,32 +2190,56 @@ export default function AdminReportsPage({ audience = 'admin' }) {
   };
 
   const collectionSectionAction = !isCustomerAudience ? (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="block min-w-[220px] text-left text-sm text-slate-300">
-        <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Collection Month</span>
-        <input
-          type="month"
-          value={filters.reportMonth}
-          onChange={(event) => setFilter('reportMonth', event.target.value)}
-          className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-slate-200 outline-none"
-        />
-        <p className="mt-2 text-xs text-slate-500">
-          {filters.reportMonth
-            ? 'Using the selected month for the admin collection summary.'
-            : `Showing the latest paid month: ${reportData.selectedCollectionMonthLabel}.`}
-        </p>
-      </label>
+    <div className="w-full flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <label className="block min-w-0 max-w-[420px] text-left text-sm text-slate-300">
+          <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Collection Month</span>
+          <input
+            type="month"
+            value={filters.reportMonth}
+            onChange={(event) => setFilter('reportMonth', event.target.value)}
+            className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-slate-200 outline-none"
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            {filters.reportMonth
+              ? 'Using the selected month for the admin collection summary.'
+              : `Showing the latest paid month: ${reportData.selectedCollectionMonthLabel}.`}
+          </p>
+        </label>
 
-      {filters.reportMonth ? (
+        {filters.reportMonth ? (
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => setFilter('reportMonth', '')}
+              className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+            >
+              <CalendarRange size={16} />
+              Use Latest Month
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2 flex-shrink-0">
         <button
           type="button"
-          onClick={() => setFilter('reportMonth', '')}
+          onClick={exportPdf}
           className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
         >
-          <CalendarRange size={16} />
-          Use Latest Month
+          <FileText size={16} />
+          Export PDF
         </button>
-      ) : null}
+
+        <button
+          type="button"
+          onClick={exportExcel}
+          className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+        >
+          <FileSpreadsheet size={16} />
+          Export Excel
+        </button>
+      </div>
     </div>
   ) : null;
 
@@ -2352,7 +2656,7 @@ export default function AdminReportsPage({ audience = 'admin' }) {
         <ReportSection
           icon={CalendarRange}
           title={reportData.selectedCollectionMonthKey ? `${reportData.selectedCollectionMonthLabel} Collection Summary` : 'Monthly Collection Summary'}
-          description="Generate a month-ledger view for collected admin orders with billing owner, invoice, TIN, billing address, and tax classification details aligned with the finance reporting layout."
+          centerTitle
           hideMetricCard
           metricLabel="Total Records"
           metricValue={String(reportData.monthlyCollectionSummary.totalRecords)}
@@ -2401,6 +2705,27 @@ export default function AdminReportsPage({ audience = 'admin' }) {
         <ReportSection
           icon={TrendingUp}
           title="Sales Reports"
+          action={(
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportRowsAsPdf('Sales Report', salesColumns, reportData.filteredSalesRows)}
+                className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+              >
+                <FileText size={16} />
+                Export PDF
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportRowsAsExcel('Sales Report', salesColumns, reportData.filteredSalesRows)}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+              >
+                <FileSpreadsheet size={16} />
+                Export Excel
+              </button>
+            </div>
+          )}
           hideMetricCard
           metricLabel="Filtered Sales"
           metricValue={formatCurrency(reportData.summary.filteredRevenue)}
@@ -2432,6 +2757,27 @@ export default function AdminReportsPage({ audience = 'admin' }) {
           <ReportSection
             icon={ShieldCheck}
             title={isCustomerAudience ? 'Renewal vs Cancellation Rate' : 'Service Lifecycle'}
+            action={(
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => exportRowsAsPdf(isCustomerAudience ? 'Renewal vs Cancellation Rate' : 'Service Lifecycle', serviceColumns, reportData.filteredServiceRows)}
+                  className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+                >
+                  <FileText size={16} />
+                  Export PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => exportRowsAsExcel(isCustomerAudience ? 'Renewal vs Cancellation Rate' : 'Service Lifecycle', serviceColumns, reportData.filteredServiceRows)}
+                  className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+                >
+                  <FileSpreadsheet size={16} />
+                  Export Excel
+                </button>
+              </div>
+            )}
             description={isCustomerAudience
               ? 'Track renewal versus cancellation rate while reviewing active, pending, and cancelled services in the same customer report.'
               : 'Track renewal versus cancellation rate, plus active, pending, and cancelled services under the same report view.'}
@@ -2463,6 +2809,27 @@ export default function AdminReportsPage({ audience = 'admin' }) {
           <ReportSection
             icon={Clock3}
             title="Upcoming Renewals"
+            action={(
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => exportRowsAsPdf('Upcoming Renewals', renewalColumns, reportData.upcomingRenewalRows)}
+                  className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+                >
+                  <FileText size={16} />
+                  Export PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => exportRowsAsExcel('Upcoming Renewals', renewalColumns, reportData.upcomingRenewalRows)}
+                  className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+                >
+                  <FileSpreadsheet size={16} />
+                  Export Excel
+                </button>
+              </div>
+            )}
             description={pageConfig.upcomingRenewalsDescription}
             hideMetricCard
             metricLabel="Renewing Soon"
@@ -2495,6 +2862,27 @@ export default function AdminReportsPage({ audience = 'admin' }) {
         <ReportSection
           icon={ReceiptText}
           title={isCustomerAudience ? 'Open/Aging Invoices, Payments & Unpaid Invoices' : 'Receivables & Payments'}
+          action={(
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportRowsAsPdf(isCustomerAudience ? 'Open/Aging Invoices' : 'Receivables & Payments', receivableColumns, reportData.filteredSalesRows)}
+                className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+              >
+                <FileText size={16} />
+                Export PDF
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportRowsAsExcel(isCustomerAudience ? 'Open/Aging Invoices' : 'Receivables & Payments', receivableColumns, reportData.filteredSalesRows)}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+              >
+                <FileSpreadsheet size={16} />
+                Export Excel
+              </button>
+            </div>
+          )}
           description={isCustomerAudience
             ? 'Review open invoices, aging invoices, on-time versus late payments, and unpaid invoice balances in one ledger-style customer report.'
             : 'Review overdue invoices, unpaid invoices, and on-time versus late payment performance in one ledger-style report.'}
@@ -2537,6 +2925,27 @@ export default function AdminReportsPage({ audience = 'admin' }) {
         <ReportSection
           icon={FileText}
           title="Tax & Accounting"
+          action={(
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportRowsAsPdf('Tax & Accounting', taxColumns, reportData.taxRows)}
+                className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+              >
+                <FileText size={16} />
+                Export PDF
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportRowsAsExcel('Tax & Accounting', taxColumns, reportData.taxRows)}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+              >
+                <FileSpreadsheet size={16} />
+                Export Excel
+              </button>
+            </div>
+          )}
           description="Use paid sales to estimate tax due, net revenue, and receivables by monthly accounting period."
           hideMetricCard
           metricLabel="Tax Due"
