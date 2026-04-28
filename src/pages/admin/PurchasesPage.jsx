@@ -9,7 +9,7 @@ import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { getDesiredDomainValue } from '../../utils/orders';
 
-const PURCHASES_PER_PAGE = 6;
+const PURCHASES_PER_PAGE = 5;
 
 export default function PurchasesPage() {
   const { adminPurchases } = usePortal();

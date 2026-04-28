@@ -1094,7 +1094,7 @@ export default function AdminDashboardPage() {
     : null;
 
   return (
-    <div className="space-y-5">
+    <div className="admin-dashboard-page space-y-5">
       <div className="panel flex flex-wrap items-center justify-between gap-3 rounded-[24px] px-5 py-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Dashboard Display</p>

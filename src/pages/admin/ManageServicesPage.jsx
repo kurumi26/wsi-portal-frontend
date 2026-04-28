@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -9,6 +9,7 @@ import {
   Percent,
   Eye,
   LayoutGrid,
+  ChevronDown,
   List,
   Mail,
   MapPin,
@@ -29,7 +30,7 @@ import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import { getDesiredDomainValue } from '../../utils/orders';
 
 const serviceCategories = ['Shared Hosting', 'Domains', 'Dedicated server'];
-const SERVICES_PER_PAGE = 10;
+const SERVICES_PER_PAGE = 5;
 const BILLING_CYCLE_OPTIONS = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'yearly', label: 'Yearly' },
@@ -180,14 +181,38 @@ export default function ManageServicesPage() {
     description: '',
     category: 'Domains',
     price: '',
-    billingCycle: 'monthly',
+    billingCycle: 'yearly',
     addonEntries: [createAddonDraft()],
   });
+
+  const [selectedCatalogServiceId, setSelectedCatalogServiceId] = useState('');
+  const [isPriceCustomized, setIsPriceCustomized] = useState(true);
+  const [isCatalogMenuOpen, setIsCatalogMenuOpen] = useState(false);
+  const catalogMenuRef = useRef(null);
+  const catalogButtonRef = useRef(null);
 
   const eligibleClients = useMemo(
     () => clients.filter((client) => client.registrationApproval?.statusKey !== 'pending' && client.registrationApproval?.statusKey !== 'rejected'),
     [clients],
   );
+
+  useEffect(() => {
+    if (!isCatalogMenuOpen) return undefined;
+
+    const handleClickOutside = (event) => {
+      if (
+        catalogMenuRef.current
+        && !catalogMenuRef.current.contains(event.target)
+        && catalogButtonRef.current
+        && !catalogButtonRef.current.contains(event.target)
+      ) {
+        setIsCatalogMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isCatalogMenuOpen]);
 
   const matchedClients = useMemo(() => {
     const normalizedSearch = clientSearch.trim().toLowerCase();
@@ -281,6 +306,24 @@ export default function ManageServicesPage() {
       return matchesSearch && matchesStatus;
     });
   }, [catalogServices, servicesSearch, statusFilter]);
+  const getServiceBasePrice = (service) => (
+    typeof service.basePrice === 'number'
+      ? service.basePrice
+      : (typeof service.price === 'number' ? service.price : null)
+  );
+
+  const getServiceAnnualPrice = (service) => {
+    const base = getServiceBasePrice(service);
+    if (typeof base !== 'number') return null;
+
+    const cycle = normalizeBillingCycle(
+      service?.billingCycle ?? service?.billing_cycle ?? service?.billing ?? service?.period ?? service?.term ?? service?.duration ?? service?.interval ?? service?.cycle,
+      'monthly',
+    );
+
+    if (cycle === 'yearly' || cycle === 'one_time') return base;
+    return base * 12;
+  };
 
   const displayedServices = useMemo(() => {
     const list = [...filteredServices];
@@ -291,11 +334,10 @@ export default function ManageServicesPage() {
       const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
       return Date.now() - createdTime <= SEVEN_DAYS_MS;
     };
-    const getPrice = (service) => (
-      typeof service.basePrice === 'number'
-        ? service.basePrice
-        : (typeof service.price === 'number' ? service.price : 0)
-    );
+    const getPrice = (service) => {
+      const annual = getServiceAnnualPrice(service);
+      return typeof annual === 'number' ? annual : 0;
+    };
 
     // Always keep newly added services at the top.
     list.sort((a, b) => Number(isNew(b)) - Number(isNew(a)));
@@ -330,12 +372,6 @@ export default function ManageServicesPage() {
       return getPrice(a) - getPrice(b);
     });
   }, [adminServices, filteredServices, priceFilter]);
-
-  const getServiceBasePrice = (service) => (
-    typeof service.basePrice === 'number'
-      ? service.basePrice
-      : (typeof service.price === 'number' ? service.price : null)
-  );
 
   const isNewCatalogService = (service) => {
     if (!service?.createdAt) {
@@ -394,11 +430,10 @@ export default function ManageServicesPage() {
   const sortedDisplayedServices = useMemo(() => {
     const list = [...displayedServices];
     const directionMultiplier = tableSort.direction === 'asc' ? 1 : -1;
-    const getPrice = (service) => (
-      typeof service.basePrice === 'number'
-        ? service.basePrice
-        : (typeof service.price === 'number' ? service.price : 0)
-    );
+    const getPrice = (service) => {
+      const annual = getServiceAnnualPrice(service);
+      return typeof annual === 'number' ? annual : 0;
+    };
     const getAddonCount = (service) => {
       const raw = Array.isArray(service?.addons)
         ? service.addons
@@ -493,6 +528,8 @@ export default function ManageServicesPage() {
       addonEntries: [createAddonDraft()],
     });
     setError('');
+    setSelectedCatalogServiceId('');
+    setIsPriceCustomized(true);
   };
 
   const closeAddModal = () => {
@@ -508,8 +545,8 @@ export default function ManageServicesPage() {
       const existingAddons = getServiceAddons(service);
       const serviceBillingCycle = normalizeBillingCycle(
         service.billingCycle ?? service.billing_cycle ?? service.billing?.cycle ?? service.billing,
-        'monthly',
-      ) || 'monthly';
+        'yearly',
+      ) || 'yearly';
       const addonEntries = existingAddons.length
         ? existingAddons.map((addon, index) => createAddonDraft({
             id: `addon-${service.id ?? 'service'}-${index}`,
@@ -525,10 +562,14 @@ export default function ManageServicesPage() {
         name: service.name ?? '',
         description: service.description ?? '',
         category: service.category ?? 'Domains',
-        price: String(service.basePrice ?? service.price ?? ''),
-        billingCycle: serviceBillingCycle,
+        price: String(getServiceAnnualPrice(service) ?? ''),
+        billingCycle: 'yearly',
         addonEntries,
       });
+      // Try to pre-select the matching catalog service for quick reuse
+      const matchedIndex = catalogServices.findIndex((s) => String(s.id) === String(service.id) || (s.name && s.name === service.name));
+      setSelectedCatalogServiceId(matchedIndex !== -1 ? String(matchedIndex) : '');
+      setIsPriceCustomized(true);
     } else {
       setEditingService(null);
       resetForm();
@@ -543,7 +584,7 @@ export default function ManageServicesPage() {
     setIsCreating(true);
 
     try {
-      const normalizedDefaultCycle = normalizeBillingCycle(form.billingCycle, 'monthly') || 'monthly';
+      const normalizedDefaultCycle = normalizeBillingCycle(form.billingCycle, 'yearly') || 'yearly';
       const addonPayload = form.addonEntries
         .map((addonEntry, index) => {
           if (isAddonDraftEmpty(addonEntry)) {
@@ -839,6 +880,41 @@ export default function ManageServicesPage() {
     });
   };
 
+  const selectCatalogByIndex = (idx) => {
+    const index = Number(idx);
+    if (!Number.isFinite(index) || index < 0) {
+      setSelectedCatalogServiceId('');
+      setIsPriceCustomized(true);
+      setForm((current) => ({ ...current, price: '' }));
+      return;
+    }
+
+    const svc = catalogServices[index];
+    if (!svc) {
+      setSelectedCatalogServiceId('');
+      setIsPriceCustomized(true);
+      return;
+    }
+
+    const price = getServiceAnnualPrice(svc);
+    const billingCycle = 'yearly';
+
+    setSelectedCatalogServiceId(String(index));
+    setForm((current) => ({
+      ...current,
+      name: svc.name ?? current.name,
+      price: price !== null && price !== undefined ? String(price) : '',
+      category: svc.category ?? current.category,
+      billingCycle,
+    }));
+    setIsPriceCustomized(false);
+  };
+
+  const handleSelectCatalogService = (event) => {
+    const idx = Number(event.target.value);
+    selectCatalogByIndex(Number.isFinite(idx) ? idx : -1);
+  };
+
   const handleToggleServiceStatus = async (service) => {
     const currentStatus = (service.status ?? '').toLowerCase();
     const nextStatus = currentStatus === 'active' ? 'Expired' : 'Active';
@@ -977,14 +1053,106 @@ export default function ManageServicesPage() {
             {error ? <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{error}</div> : null}
 
             <div className="mt-6 grid gap-x-4 gap-y-3 md:grid-cols-2 items-start">
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Choose from Catalog (optional)
+                <div className="relative mt-2">
+                  <button
+                    type="button"
+                    ref={catalogButtonRef}
+                    onClick={() => setIsCatalogMenuOpen((s) => !s)}
+                    aria-haspopup="menu"
+                    aria-expanded={isCatalogMenuOpen}
+                    className="input mt-0 w-full flex items-center justify-between"
+                  >
+                    <span className={selectedCatalogServiceId ? 'text-white' : 'text-slate-500'}>
+                      {selectedCatalogServiceId
+                        ? (catalogServices[Number(selectedCatalogServiceId)]?.name ?? 'Selected')
+                        : '— Select a catalog service to auto-fill —'}
+                    </span>
+                    <ChevronDown size={16} />
+                  </button>
+
+                  {isCatalogMenuOpen ? (
+                    <div ref={catalogMenuRef} className="absolute z-50 mt-2 w-full rounded-xl border border-white/10 bg-slate-900/95 shadow-lg max-h-60 overflow-auto">
+                      <ul className="divide-y divide-white/6">
+                        <li>
+                          <button
+                            type="button"
+                            onClick={() => { selectCatalogByIndex(-1); setIsCatalogMenuOpen(false); }}
+                            className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-white/5"
+                          >
+                            Clear selection
+                          </button>
+                        </li>
+                        {catalogServices.map((svc, idx) => (
+                          <li key={svc.id ?? `${svc.name}-${idx}`}>
+                            <button
+                              type="button"
+                              onClick={() => { selectCatalogByIndex(idx); setIsCatalogMenuOpen(false); }}
+                              className="w-full text-left px-3 py-3 hover:bg-white/5"
+                            >
+                              <div className="flex justify-between">
+                                <div className="text-sm text-white">{svc.name}{svc.category ? ` • ${svc.category}` : ''}</div>
+                                <div className="text-sm text-slate-400">{formatCurrency(getServiceAnnualPrice(svc) ?? 0)} <span className="text-[11px] text-slate-400">per annum</span></div>
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+
               <label className="block text-sm text-slate-300">
                 Service Name
-                <input className="input mt-2" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Enterprise Cloud VPS" required />
+                <input
+                  className="input mt-2"
+                  value={form.name}
+                  onChange={(event) => {
+                    setSelectedCatalogServiceId('');
+                    setIsPriceCustomized(true);
+                    setForm((current) => ({ ...current, name: event.target.value }));
+                  }}
+                  placeholder="e.g. Enterprise Cloud VPS"
+                  required
+                />
               </label>
 
               <label className="block text-sm text-slate-300">
                 Amount
-                <input type="number" min="0" step="0.01" className="input mt-2" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} placeholder="0.00" required />
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input flex-1"
+                    value={form.price}
+                    onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))}
+                    placeholder="0.00"
+                    required
+                    readOnly={!isPriceCustomized}
+                  />
+                  {!isPriceCustomized ? (
+                    <button type="button" onClick={() => setIsPriceCustomized(true)} className="btn-secondary px-3 py-2">
+                      Customize
+                    </button>
+                  ) : (selectedCatalogServiceId ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idx = Number(selectedCatalogServiceId);
+                        const svc = catalogServices[idx];
+                        const price = getServiceAnnualPrice(svc);
+                        setForm((current) => ({ ...current, price: price !== null && price !== undefined ? String(price) : '', billingCycle: 'yearly' }));
+                        setIsPriceCustomized(false);
+                      }}
+                      className="btn-secondary px-3 py-2"
+                    >
+                      Use Catalog Price
+                    </button>
+                  ) : null)}
+                </div>
               </label>
 
               <label className="block text-sm text-slate-300 md:col-span-2">
@@ -1452,12 +1620,7 @@ export default function ManageServicesPage() {
                       {renderTableSortIndicator('price')}
                     </button>
                   </th>
-                  <th className="px-5 py-4 text-center font-semibold text-white">
-                    <button type="button" onClick={() => handleTableSort('addons')} className="inline-flex items-center gap-1 hover:text-sky-200">
-                      <span>Add-ons</span>
-                      {renderTableSortIndicator('addons')}
-                    </button>
-                  </th>
+                  {/* Add-ons shown under Service Name; no separate column */}
                   <th className="px-5 py-4 text-center font-semibold text-white">
                     <button type="button" onClick={() => handleTableSort('migrations')} className="inline-flex items-center gap-1 hover:text-sky-200">
                       <span>Migration Paths</span>
@@ -1487,22 +1650,15 @@ export default function ManageServicesPage() {
                           {isNewCatalogService(service) ? <StatusBadge status="New" /> : null}
                         </div>
                         <p className="mt-1 text-sm text-slate-400">{service.category}</p>
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        {typeof getServiceBasePrice(service) === 'number' ? (
-                          <p className="font-semibold text-sky-300">{formatCurrency(getServiceBasePrice(service))} <span className="text-sm text-slate-400">/mo</span></p>
-                        ) : (
-                          <span className="text-sm text-slate-500">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 align-top">
-                        {addons.length ? (
+                        <div className="mt-2">
                           <div className="flex flex-wrap gap-2">
-                            {visibleAddons.map((addon, i) => (
+                            {addons.length ? visibleAddons.map((addon, i) => (
                               <span key={`addon-${service.id}-${i}`} title={`${addon.label}${typeof addon.price === 'number' ? ` • ${formatCurrency(addon.price)}` : ''}${addon.billingCycle ? ` • ${getBillingCycleLabel(addon.billingCycle)}` : ''}`} className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
                                 {addon.label.length > 28 ? `${addon.label.slice(0, 28)}...` : addon.label}
                               </span>
-                            ))}
+                            )) : (
+                              <span className="text-sm text-slate-500">—</span>
+                            )}
                             {remainingAddonCount > 0 ? (
                               <button
                                 type="button"
@@ -1513,6 +1669,11 @@ export default function ManageServicesPage() {
                               </button>
                             ) : null}
                           </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 align-top">
+                        {typeof getServiceAnnualPrice(service) === 'number' ? (
+                          <p className="font-semibold text-sky-300">{formatCurrency(getServiceAnnualPrice(service))} <span className="text-sm text-slate-400">per annum</span></p>
                         ) : (
                           <span className="text-sm text-slate-500">—</span>
                         )}
@@ -1584,7 +1745,7 @@ export default function ManageServicesPage() {
                     );
                   }) : (
                     <tr>
-                      <td colSpan={5} className="px-5 py-12 text-center text-slate-400">No services match your filters.</td>
+                      <td colSpan={4} className="px-5 py-12 text-center text-slate-400">No services match your filters.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1618,7 +1779,7 @@ export default function ManageServicesPage() {
                 </div>
 
                 <p className="mt-4 text-xl font-semibold text-sky-300">
-                  {typeof getServiceBasePrice(service) === 'number' ? `${formatCurrency(getServiceBasePrice(service))} /mo` : '—'}
+                  {typeof getServiceAnnualPrice(service) === 'number' ? `${formatCurrency(getServiceAnnualPrice(service))} per annum` : '—'}
                 </p>
 
                 <div className="mt-4">

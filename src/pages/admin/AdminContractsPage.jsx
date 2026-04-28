@@ -13,7 +13,7 @@ import { portalApi } from '../../services/portalApi';
 import { formatDateTime } from '../../utils/format';
 import { getContractVerificationStatus, hasSignedDocument, isContractVerified } from '../../utils/contracts';
 
-const CONTRACTS_PER_PAGE = 10;
+const CONTRACTS_PER_PAGE = 5;
 const filters = ['All', 'Pending Verification', 'Verified', 'Pending Review', 'Rejected', 'Missing Signed Copy'];
 const viewModes = [
   { id: 'table', label: 'Table List', icon: List },
@@ -864,7 +864,7 @@ export default function AdminContractsPage() {
     <div>
       <PageHeader
         eyebrow="Contracts / Agreements"
-        title="Verify agreement acceptance and store signed copies"
+        title="Verify Agreement and Store Signed Copies"
         belowDescription={feedback ? (
           <div className={`rounded-2xl border px-4 py-3 text-sm ${feedbackToneClasses[feedback.tone] ?? feedbackToneClasses.success}`}>
             {feedback.text}

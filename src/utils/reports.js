@@ -1,5 +1,7 @@
 import {
   collectPurchaseLineItems,
+  getBillingInCharge,
+  getDealOwner,
   getPurchaseClientEmail,
   getPurchaseClientName,
   getPurchaseDateValue,
@@ -28,6 +30,7 @@ export const REPORT_VISIBILITY_OPTIONS = [
 ];
 export const DEFAULT_REPORT_FILTERS = {
   reportFocus: 'all',
+  reportMonth: '',
   searchTerm: '',
   startDate: '',
   endDate: '',
@@ -95,6 +98,32 @@ const getNumber = (...values) => {
   }
 
   return 0;
+};
+
+const pickDisplayValue = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (typeof value === 'object') {
+      const nestedValue = pickDisplayValue(value.label, value.name, value.title, value.value);
+
+      if (nestedValue) {
+        return nestedValue;
+      }
+
+      continue;
+    }
+
+    const normalizedValue = String(value).trim();
+
+    if (normalizedValue) {
+      return normalizedValue;
+    }
+  }
+
+  return '';
 };
 
 const toDate = (value, fallback = null) => {
@@ -280,6 +309,37 @@ const createRowSearchText = (values = []) => values
   .filter(Boolean)
   .join(' ');
 
+const buildClientLookup = (clients = []) => clients.reduce((collection, client) => {
+  const emailKey = normalizeMatchText(client?.email);
+  const nameKey = normalizeMatchText(client?.name ?? client?.company);
+
+  if (emailKey && !collection.byEmail.has(emailKey)) {
+    collection.byEmail.set(emailKey, client);
+  }
+
+  if (nameKey && !collection.byName.has(nameKey)) {
+    collection.byName.set(nameKey, client);
+  }
+
+  return collection;
+}, { byEmail: new Map(), byName: new Map() });
+
+const findClientRecord = (purchase, clientLookup) => {
+  const emailKey = normalizeMatchText(
+    getPurchaseClientEmail(purchase)
+    ?? purchase?.email
+    ?? purchase?.customerEmail
+    ?? purchase?.customer_email,
+  );
+  const nameKey = normalizeMatchText(
+    getPurchaseClientName(purchase)
+    ?? purchase?.client
+    ?? purchase?.customer,
+  );
+
+  return clientLookup.byEmail.get(emailKey) ?? clientLookup.byName.get(nameKey) ?? null;
+};
+
 export const readReportTemplates = (storageKey = REPORT_TEMPLATE_STORAGE_KEY) => {
   try {
     const raw = window.localStorage.getItem(storageKey);
@@ -317,6 +377,38 @@ const getMonthLabel = (value) => {
   return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date);
 };
 
+const getMonthLabelFromKey = (monthKey) => {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey ?? ''))) {
+    return 'Unknown';
+  }
+
+  return getMonthLabel(`${monthKey}-01T00:00:00.000Z`);
+};
+
+const matchesMonthlyCollectionRow = (row, filters, reportMonthKey = filters.reportMonth) => {
+  if (reportMonthKey && row.collectionMonthKey !== reportMonthKey) {
+    return false;
+  }
+
+  if (!matchesDateRange(toDate(row.serviceInvoiceDate), filters)) {
+    return false;
+  }
+
+  if (!matchesAmountRange(row.amount, filters)) {
+    return false;
+  }
+
+  if (filters.productType && filters.productType !== 'All Products' && row.productCategory !== filters.productType) {
+    return false;
+  }
+
+  if (filters.dealType && filters.dealType !== 'All Deals' && row.dealType !== filters.dealType) {
+    return false;
+  }
+
+  return matchesSearch(row, filters);
+};
+
 const uniqueValues = (values = []) => [...new Set(values.filter(Boolean))];
 
 export const buildAdminReportDataset = ({
@@ -328,6 +420,7 @@ export const buildAdminReportDataset = ({
   now = new Date(),
 }) => {
   const nowDate = now instanceof Date ? now : new Date(now);
+  const clientLookup = buildClientLookup(clients);
   const sortedPurchases = [...purchases].sort((left, right) => {
     const leftTime = toDate(getPurchaseDateValue(left) ?? left?.createdAt ?? left?.updatedAt, new Date(0)).getTime();
     const rightTime = toDate(getPurchaseDateValue(right) ?? right?.createdAt ?? right?.updatedAt, new Date(0)).getTime();
@@ -434,6 +527,7 @@ export const buildAdminReportDataset = ({
 
     return row;
   }).sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+  const salesRowLookup = new Map(salesRows.map((row) => [row.id, row]));
 
   const filteredSalesRows = salesRows.filter((row) => {
     if (!matchesDateRange(toDate(row.date), filters)) {
@@ -524,6 +618,199 @@ export const buildAdminReportDataset = ({
   const upcomingRenewalRows = filteredServiceRows.filter((row) => row.isUpcomingRenewal);
 
   const paidSalesRows = filteredSalesRows.filter((row) => row.isPaid);
+  const collectionBaseRows = sortedPurchases.flatMap((purchase, purchaseIndex) => {
+    const salesRowId = String(purchase?.id ?? getPurchaseDisplayId(purchase) ?? purchaseIndex + 1);
+    const salesContext = salesRowLookup.get(salesRowId);
+
+    if (!salesContext?.isPaid) {
+      return [];
+    }
+
+    const clientRecord = findClientRecord(purchase, clientLookup);
+    const purchaseAmount = getNumber(
+      purchase?.totalAmount,
+      purchase?.total_amount,
+      purchase?.amount,
+      purchase?.price,
+      purchase?.total,
+      salesContext?.amount,
+    );
+    const lineItems = collectPurchaseLineItems(purchase);
+    const normalizedLineItems = lineItems.length ? lineItems : [null];
+
+    return normalizedLineItems.map((lineItem, lineIndex) => {
+      const productCategory = normalizeText(
+        lineItem?.category
+        ?? lineItem?.serviceCategory
+        ?? lineItem?.service_category
+        ?? salesContext?.productType,
+      ) || getProductType(purchase, catalogServices);
+      const productName = normalizeText(
+        lineItem?.serviceName
+        ?? lineItem?.service_name
+        ?? lineItem?.name
+        ?? lineItem?.title
+        ?? lineItem?.addon
+        ?? lineItem?.addonName
+        ?? lineItem?.addon_name
+        ?? salesContext?.productName,
+      ) || getProductName(purchase, catalogServices);
+      const lineAmount = getNumber(
+        lineItem?.amount,
+        lineItem?.price,
+        lineItem?.subtotal,
+        lineItem?.subTotal,
+        lineItem?.sub_total,
+        salesContext?.amount,
+        purchaseAmount,
+      );
+      const serviceInvoiceDate = toDate(
+        lineItem?.invoiceDate
+        ?? lineItem?.invoice_date
+        ?? purchase?.invoiceDate
+        ?? purchase?.invoice_date
+        ?? salesContext?.paidAt
+        ?? salesContext?.date,
+        toDate(salesContext?.paidAt ?? salesContext?.date, nowDate),
+      );
+      const collectionMonthKey = getMonthKey(serviceInvoiceDate);
+      const taxClassification = pickDisplayValue(
+        purchase?.taxClassification,
+        purchase?.tax_classification,
+        purchase?.vatType,
+        purchase?.vat_type,
+        clientRecord?.taxClassification,
+        clientRecord?.tax_classification,
+        clientRecord?.vatType,
+        clientRecord?.vat_type,
+      ) || (pickDisplayValue(clientRecord?.tin, purchase?.tin, purchase?.tinNumber) ? 'VAT' : 'Unclassified');
+
+      return {
+        id: `${salesRowId}-${lineIndex + 1}`,
+        orderLabel: salesContext?.orderLabel ?? (normalizeText(getPurchaseDisplayId(purchase) ?? purchase?.id) || `Order ${purchaseIndex + 1}`),
+        billingInCharge: getBillingInCharge(purchase, clientRecord),
+        dealOwner: getDealOwner(purchase, clientRecord),
+        clientName: salesContext?.clientName ?? (normalizeText(getPurchaseClientName(purchase) ?? purchase?.client ?? purchase?.customer) || 'Unknown Client'),
+        clientEmail: salesContext?.clientEmail ?? (normalizeText(getPurchaseClientEmail(purchase) ?? purchase?.email ?? purchase?.customerEmail ?? purchase?.customer_email) || '—'),
+        productCategory,
+        productName,
+        dealName: pickDisplayValue(
+          lineItem?.dealName,
+          lineItem?.deal_name,
+          lineItem?.name,
+          lineItem?.title,
+          lineItem?.serviceName,
+          lineItem?.service_name,
+          lineItem?.addon,
+          lineItem?.addonName,
+          lineItem?.addon_name,
+          productName,
+        ) || productName,
+        dealType: salesContext?.dealType ?? 'New Client',
+        dealSubType: salesContext?.dealSubType ?? 'New Service',
+        collectionAmount: purchaseAmount,
+        amount: lineAmount,
+        invoiceNumber: pickDisplayValue(
+          lineItem?.invoiceNumber,
+          lineItem?.invoice_number,
+          purchase?.serviceInvoiceNumber,
+          purchase?.service_invoice_number,
+          salesContext?.invoiceNumber,
+        ) || salesContext?.invoiceNumber,
+        serviceInvoiceDate: serviceInvoiceDate.toISOString(),
+        tinNumber: pickDisplayValue(
+          purchase?.tin,
+          purchase?.tinNumber,
+          purchase?.tin_number,
+          clientRecord?.tin,
+        ) || '—',
+        billingAddress: pickDisplayValue(
+          purchase?.billingAddress,
+          purchase?.billing_address,
+          purchase?.address,
+          clientRecord?.address,
+        ) || '—',
+        taxClassification,
+        collectionMonthKey,
+        searchText: createRowSearchText([
+          getBillingInCharge(purchase, clientRecord),
+          getDealOwner(purchase, clientRecord),
+          salesContext?.clientName,
+          salesContext?.clientEmail,
+          productCategory,
+          productName,
+          pickDisplayValue(
+            lineItem?.dealName,
+            lineItem?.deal_name,
+            lineItem?.name,
+            lineItem?.title,
+            lineItem?.serviceName,
+            lineItem?.service_name,
+            lineItem?.addon,
+            lineItem?.addonName,
+            lineItem?.addon_name,
+            productName,
+          ),
+          salesContext?.dealType,
+          salesContext?.dealSubType,
+          pickDisplayValue(
+            lineItem?.invoiceNumber,
+            lineItem?.invoice_number,
+            purchase?.serviceInvoiceNumber,
+            purchase?.service_invoice_number,
+            salesContext?.invoiceNumber,
+          ),
+          pickDisplayValue(
+            purchase?.tin,
+            purchase?.tinNumber,
+            purchase?.tin_number,
+            clientRecord?.tin,
+          ),
+          pickDisplayValue(
+            purchase?.billingAddress,
+            purchase?.billing_address,
+            purchase?.address,
+            clientRecord?.address,
+          ),
+          taxClassification,
+        ]),
+      };
+    });
+  });
+  const collectionMonthOptions = uniqueValues(collectionBaseRows.map((row) => row.collectionMonthKey))
+    .filter((monthKey) => monthKey !== 'Unknown')
+    .sort((left, right) => right.localeCompare(left))
+    .map((monthKey) => ({ value: monthKey, label: getMonthLabelFromKey(monthKey) }));
+  const selectedCollectionMonthKey = collectionMonthOptions.some((option) => option.value === filters.reportMonth)
+    ? filters.reportMonth
+    : (collectionMonthOptions[0]?.value ?? '');
+  const monthlyCollectionRows = collectionBaseRows
+    .filter((row) => matchesMonthlyCollectionRow(row, filters, selectedCollectionMonthKey))
+    .sort((left, right) => {
+      const rightTime = new Date(right.serviceInvoiceDate).getTime();
+      const leftTime = new Date(left.serviceInvoiceDate).getTime();
+
+      if (rightTime !== leftTime) {
+        return rightTime - leftTime;
+      }
+
+      return String(left.invoiceNumber ?? '').localeCompare(String(right.invoiceNumber ?? ''));
+    });
+  const uniqueCollectedInvoices = monthlyCollectionRows.reduce((collection, row) => {
+    const collectionKey = row.invoiceNumber || row.orderLabel || row.id;
+
+    if (!collection.has(collectionKey)) {
+      collection.set(collectionKey, row.collectionAmount);
+    }
+
+    return collection;
+  }, new Map());
+  const monthlyCollectionSummary = {
+    totalRecords: monthlyCollectionRows.length,
+    totalAmount: monthlyCollectionRows.reduce((sum, row) => sum + row.amount, 0),
+    totalAmountCollected: Array.from(uniqueCollectedInvoices.values()).reduce((sum, value) => sum + value, 0),
+    totalCollectionAmount: monthlyCollectionRows.reduce((sum, row) => sum + row.collectionAmount, 0),
+  };
   const taxRows = Array.from(
     paidSalesRows.reduce((collection, row) => {
       const key = getMonthKey(row.date);
@@ -572,6 +859,11 @@ export const buildAdminReportDataset = ({
     onTimePaymentRows,
     latePaymentRows,
     upcomingRenewalRows,
+    collectionMonthOptions,
+    selectedCollectionMonthKey,
+    selectedCollectionMonthLabel: getMonthLabelFromKey(selectedCollectionMonthKey),
+    monthlyCollectionRows,
+    monthlyCollectionSummary,
     taxRows,
     summary: {
       filteredRevenue,

@@ -184,6 +184,7 @@ const QUICK_RANGE_PRESETS = [
 ];
 const REPORT_TABLE_PAGE_SIZE = 10;
 const REPORT_COLUMN_VISIBILITY_STORAGE_KEYS = [
+  'admin-reports-collections-table',
   'admin-reports-sales-table',
   'admin-reports-services-table',
   'admin-reports-renewals-table',
@@ -191,6 +192,7 @@ const REPORT_COLUMN_VISIBILITY_STORAGE_KEYS = [
   'admin-reports-tax-table',
 ];
 const INITIAL_TABLE_PAGES = {
+  collections: 1,
   sales: 1,
   services: 1,
   renewals: 1,
@@ -547,13 +549,15 @@ const downloadBlob = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
-const buildFilterSummary = (filters, productTypeOptions, dealTypeOptions) => {
+const buildFilterSummary = (filters, productTypeOptions, dealTypeOptions, collectionMonthOptions = []) => {
   const focusLabel = REPORT_FOCUS_OPTIONS.find((option) => option.value === filters.reportFocus)?.label ?? 'All Reports';
   const productLabel = productTypeOptions.includes(filters.productType) ? filters.productType : 'All Products';
   const dealLabel = dealTypeOptions.includes(filters.dealType) ? filters.dealType : 'All Deals';
+  const collectionMonthLabel = collectionMonthOptions.find((option) => option.value === filters.reportMonth)?.label ?? 'Latest available month';
 
   return [
     ['Report', focusLabel],
+    ['Collection month', filters.reportMonth ? collectionMonthLabel : 'Latest available month'],
     ['Search', filters.searchTerm || 'All records'],
     ['Start date', filters.startDate || 'Any'],
     ['End date', filters.endDate || 'Any'],
@@ -703,6 +707,10 @@ const renderToneBadge = (value) => (
 const getTemplateSummary = (template) => {
   const details = [];
 
+  if (template.filters?.reportMonth) {
+    details.push(`Collection month: ${template.filters.reportMonth}`);
+  }
+
   if (template.filters?.searchTerm) {
     details.push(`Search: ${template.filters.searchTerm}`);
   }
@@ -808,8 +816,13 @@ export default function AdminReportsPage({ audience = 'admin' }) {
   }), [filters, reportClients, reportPurchases, reportServices, services]);
 
   const filterSummaryRows = useMemo(
-    () => buildFilterSummary(filters, reportData.productTypeOptions, reportData.dealTypeOptions),
-    [filters, reportData.productTypeOptions, reportData.dealTypeOptions],
+    () => buildFilterSummary(
+      filters,
+      reportData.productTypeOptions,
+      reportData.dealTypeOptions,
+      reportData.collectionMonthOptions,
+    ),
+    [filters, reportData.collectionMonthOptions, reportData.productTypeOptions, reportData.dealTypeOptions],
   );
 
   const summaryRows = useMemo(() => [
@@ -832,6 +845,45 @@ export default function AdminReportsPage({ audience = 'admin' }) {
 
   const exportSections = useMemo(() => {
     const sections = [];
+
+    if (!isCustomerAudience && reportData.selectedCollectionMonthKey) {
+      sections.push({
+        title: `${reportData.selectedCollectionMonthLabel} Collection Summary`,
+        description: `${reportData.monthlyCollectionRows.length} paid line-item record${reportData.monthlyCollectionRows.length === 1 ? '' : 's'} match the selected collection month.`,
+        columns: [
+          'Billing-In-Charge',
+          'Deal Owner',
+          'Client Name',
+          'Product Category',
+          'Deal Name',
+          'Deal Type',
+          'Deal Sub-Type',
+          'Collection Amount',
+          'Amount',
+          'Service Invoice Number',
+          'Service Invoice Date',
+          'TIN Number',
+          'Billing Address',
+          'Tax Classification',
+        ],
+        rows: reportData.monthlyCollectionRows.map((row) => [
+          row.billingInCharge || '—',
+          row.dealOwner || '—',
+          row.clientName,
+          row.productCategory,
+          row.dealName,
+          row.dealType,
+          row.dealSubType,
+          formatCurrency(row.collectionAmount),
+          formatCurrency(row.amount),
+          row.invoiceNumber || '—',
+          formatDate(row.serviceInvoiceDate),
+          row.tinNumber,
+          row.billingAddress,
+          row.taxClassification,
+        ]),
+      });
+    }
 
     if (filters.reportFocus === 'all' || filters.reportFocus === 'sales') {
       sections.push({
@@ -972,6 +1024,66 @@ export default function AdminReportsPage({ audience = 'admin' }) {
 
     return sections;
   }, [filters.reportFocus, isCustomerAudience, reportData]);
+
+  const collectionColumns = useMemo(() => [
+    { key: 'billingInCharge', label: 'Billing-In-Charge', sortable: true },
+    { key: 'dealOwner', label: 'Deal Owner', sortable: true },
+    {
+      key: 'clientName',
+      label: 'Client Name',
+      sortable: true,
+      render: (value, row) => (
+        <div>
+          <p className="font-medium text-white">{value}</p>
+          <p className="mt-1 text-xs text-slate-400">{row.clientEmail}</p>
+        </div>
+      ),
+    },
+    { key: 'productCategory', label: 'Product Category', sortable: true },
+    {
+      key: 'dealName',
+      label: 'Deal Name',
+      sortable: true,
+      render: (value, row) => (
+        <div>
+          <p className="font-medium text-white">{value}</p>
+          <p className="mt-1 text-xs text-slate-400">{row.productName}</p>
+        </div>
+      ),
+    },
+    { key: 'dealType', label: 'Deal Type', sortable: true },
+    { key: 'dealSubType', label: 'Deal Sub-Type', sortable: true },
+    {
+      key: 'collectionAmount',
+      label: 'Collection Amount',
+      sortable: true,
+      sortValue: (row) => row.collectionAmount,
+      render: (value) => formatCurrency(value),
+    },
+    {
+      key: 'amount',
+      label: 'Amount',
+      sortable: true,
+      sortValue: (row) => row.amount,
+      render: (value) => formatCurrency(value),
+    },
+    { key: 'invoiceNumber', label: 'Service Invoice Number', sortable: true },
+    {
+      key: 'serviceInvoiceDate',
+      label: 'Service Invoice Date',
+      sortable: true,
+      sortValue: (row) => new Date(row.serviceInvoiceDate).getTime(),
+      render: (value) => formatDate(value),
+    },
+    { key: 'tinNumber', label: 'TIN Number', sortable: true },
+    {
+      key: 'billingAddress',
+      label: 'Billing Address',
+      sortable: true,
+      render: (value) => <div className="max-w-[260px] whitespace-normal leading-6 text-slate-200">{value}</div>,
+    },
+    { key: 'taxClassification', label: 'Tax Classification', sortable: true },
+  ], []);
 
   const salesColumns = useMemo(() => [
     { key: 'orderLabel', label: 'Order', sortable: true },
@@ -1148,15 +1260,17 @@ export default function AdminReportsPage({ audience = 'admin' }) {
 
   useEffect(() => {
     setTablePages(INITIAL_TABLE_PAGES);
-  }, [filters.searchTerm, filters.startDate, filters.endDate, filters.minAmount, filters.maxAmount, filters.productType, filters.dealType, filters.reportFocus]);
+  }, [filters.searchTerm, filters.reportMonth, filters.startDate, filters.endDate, filters.minAmount, filters.maxAmount, filters.productType, filters.dealType, filters.reportFocus]);
 
   const tableTotalPages = useMemo(() => ({
+    collections: Math.max(1, Math.ceil(reportData.monthlyCollectionRows.length / REPORT_TABLE_PAGE_SIZE)),
     sales: Math.max(1, Math.ceil(reportData.filteredSalesRows.length / REPORT_TABLE_PAGE_SIZE)),
     services: Math.max(1, Math.ceil(reportData.filteredServiceRows.length / REPORT_TABLE_PAGE_SIZE)),
     renewals: Math.max(1, Math.ceil(reportData.upcomingRenewalRows.length / REPORT_TABLE_PAGE_SIZE)),
     receivables: Math.max(1, Math.ceil(reportData.filteredSalesRows.length / REPORT_TABLE_PAGE_SIZE)),
     tax: Math.max(1, Math.ceil(reportData.taxRows.length / REPORT_TABLE_PAGE_SIZE)),
   }), [
+    reportData.monthlyCollectionRows.length,
     reportData.filteredSalesRows.length,
     reportData.filteredServiceRows.length,
     reportData.upcomingRenewalRows.length,
@@ -1165,6 +1279,7 @@ export default function AdminReportsPage({ audience = 'admin' }) {
 
   useEffect(() => {
     setTablePages((current) => ({
+      collections: Math.min(Math.max(current.collections, 1), tableTotalPages.collections),
       sales: Math.min(Math.max(current.sales, 1), tableTotalPages.sales),
       services: Math.min(Math.max(current.services, 1), tableTotalPages.services),
       renewals: Math.min(Math.max(current.renewals, 1), tableTotalPages.renewals),
@@ -1550,6 +1665,14 @@ export default function AdminReportsPage({ audience = 'admin' }) {
       items.push({ key: 'reportFocus', label: 'Report', value: selectedFocusLabel });
     }
 
+    if (filters.reportMonth) {
+      items.push({
+        key: 'reportMonth',
+        label: 'Collection Month',
+        value: reportData.collectionMonthOptions.find((option) => option.value === filters.reportMonth)?.label ?? filters.reportMonth,
+      });
+    }
+
     if (filters.searchTerm.trim()) {
       items.push({ key: 'searchTerm', label: 'Search', value: filters.searchTerm.trim() });
     }
@@ -1579,7 +1702,7 @@ export default function AdminReportsPage({ audience = 'admin' }) {
     }
 
     return items;
-  }, [filters, selectedFocusLabel]);
+  }, [filters, reportData.collectionMonthOptions, selectedFocusLabel]);
 
   const focusCards = useMemo(() => [
     {
@@ -1786,6 +1909,37 @@ export default function AdminReportsPage({ audience = 'admin' }) {
     return null;
   };
 
+  const collectionSectionAction = !isCustomerAudience ? (
+    <div className="flex flex-wrap items-end gap-3">
+      <label className="block min-w-[220px] text-left text-sm text-slate-300">
+        <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Collection Month</span>
+        <input
+          type="month"
+          value={filters.reportMonth}
+          onChange={(event) => setFilter('reportMonth', event.target.value)}
+          className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-slate-200 outline-none"
+        />
+        <p className="mt-2 text-xs text-slate-500">
+          {filters.reportMonth
+            ? 'Using the selected month for the admin collection summary.'
+            : `Showing the latest paid month: ${reportData.selectedCollectionMonthLabel}.`}
+        </p>
+      </label>
+
+      {filters.reportMonth ? (
+        <button
+          type="button"
+          onClick={() => setFilter('reportMonth', '')}
+          className="btn-secondary inline-flex items-center gap-2 px-4 py-2"
+        >
+          <CalendarRange size={16} />
+          Use Latest Month
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+
+  const showCollections = !isCustomerAudience && filters.reportFocus !== 'services';
   const showSales = filters.reportFocus === 'all' || filters.reportFocus === 'sales';
   const showServices = filters.reportFocus === 'all' || filters.reportFocus === 'services';
   const showReceivables = filters.reportFocus === 'all' || filters.reportFocus === 'receivables';
@@ -1963,6 +2117,19 @@ export default function AdminReportsPage({ audience = 'admin' }) {
                   ))}
                 </select>
               </label>
+
+              {!isCustomerAudience ? (
+                <label className="block text-sm text-slate-300">
+                  <span className="mb-2 block">Collection Month</span>
+                  <input
+                    type="month"
+                    value={filters.reportMonth}
+                    onChange={(event) => setFilter('reportMonth', event.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-slate-200 outline-none"
+                  />
+                  <p className="mt-2 text-xs text-slate-500">Leave blank to keep the collection summary on the latest paid month.</p>
+                </label>
+              ) : null}
 
               <label className="block text-sm text-slate-300">
                 <span className="mb-2 block">Start Date</span>
@@ -2180,6 +2347,55 @@ export default function AdminReportsPage({ audience = 'admin' }) {
           axisLabel={reportGraph.axisLabel}
         />
       </div>
+
+      {showCollections ? (
+        <ReportSection
+          icon={CalendarRange}
+          title={reportData.selectedCollectionMonthKey ? `${reportData.selectedCollectionMonthLabel} Collection Summary` : 'Monthly Collection Summary'}
+          description="Generate a month-ledger view for collected admin orders with billing owner, invoice, TIN, billing address, and tax classification details aligned with the finance reporting layout."
+          hideMetricCard
+          metricLabel="Total Records"
+          metricValue={String(reportData.monthlyCollectionSummary.totalRecords)}
+          metricHelper="Paid line-item rows in the selected collection month"
+          miniStats={[
+            { label: 'Total Records', value: formatCompactNumber(reportData.monthlyCollectionSummary.totalRecords), helper: 'Paid line-item rows in scope.', tone: 'sky' },
+            { label: 'Sum of Amount', value: formatCurrency(reportData.monthlyCollectionSummary.totalAmount), helper: 'Line-item amount total.', tone: 'emerald' },
+            { label: 'Sum of Total Amount Collected', value: formatCurrency(reportData.monthlyCollectionSummary.totalAmountCollected), helper: 'Distinct invoice totals for the month.', tone: 'amber' },
+            { label: 'Sum of Collection Amount', value: formatCurrency(reportData.monthlyCollectionSummary.totalCollectionAmount), helper: 'Repeated order totals across the detail rows.', tone: 'slate' },
+          ]}
+          action={collectionSectionAction}
+        >
+          <PaginatedReportTable
+            columns={collectionColumns}
+            rows={reportData.monthlyCollectionRows}
+            emptyMessage={reportData.collectionMonthOptions.length
+              ? 'No paid collection rows match the selected collection month and current filters.'
+              : 'No paid collection activity is available yet for admin reporting.'}
+            currentPage={tablePages.collections}
+            onPageChange={(page) => setReportTablePage('collections', page)}
+            itemLabel="collection rows"
+            enableAdminColumnVisibility
+            columnVisibilityStorageKey="admin-reports-collections-table"
+            compactColumnKeys={[
+              'billingInCharge',
+              'dealOwner',
+              'clientName',
+              'productCategory',
+              'dealName',
+              'dealType',
+              'dealSubType',
+              'collectionAmount',
+              'amount',
+              'invoiceNumber',
+              'serviceInvoiceDate',
+              'tinNumber',
+              'billingAddress',
+              'taxClassification',
+            ]}
+            columnVisibilitySyncKey={columnVisibilitySyncKey}
+          />
+        </ReportSection>
+      ) : null}
 
       {showSales ? (
         <ReportSection

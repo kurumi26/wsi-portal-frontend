@@ -22,7 +22,6 @@ const adminNav = [
   { label: 'Clients', to: '/admin/clients', icon: Users },
   { label: 'Users', to: '/admin/users', icon: Settings },
   { label: 'Approvals', to: '/admin/approvals', icon: ClipboardList },
-  { label: 'Client Services', to: '/admin/client-services', icon: ShieldCheck },
   { label: 'Manage Service', to: '/admin/services', icon: ShieldAlert },
   { label: 'Contracts', to: '/admin/contracts', icon: FileSignature },
   { label: 'Purchases', to: '/admin/purchases', icon: ReceiptText },

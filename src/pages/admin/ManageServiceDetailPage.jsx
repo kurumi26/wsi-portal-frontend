@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
+import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
@@ -19,6 +20,7 @@ import { formatCurrency, formatDate } from '../../utils/format';
 import { getAdminServiceExpirationMeta, getServiceDisplayStatus } from '../../utils/services';
 
 const getBillingCycleLabel = (value) => getAddonBillingCycleLabel(value, 'Recurring');
+const DEALS_PER_PAGE = 5;
 
 export default function ManageServiceDetailPage() {
   const { serviceId } = useParams();
@@ -61,6 +63,23 @@ export default function ManageServiceDetailPage() {
       catalogServices: services,
     });
   }, [adminPurchases, adminServices, catalogService, clients, services]);
+
+  const [dealsPage, setDealsPage] = useState(1);
+  const totalDealPages = Math.max(1, Math.ceil(dealRows.length / DEALS_PER_PAGE));
+  const paginatedDealRows = useMemo(
+    () => dealRows.slice((dealsPage - 1) * DEALS_PER_PAGE, dealsPage * DEALS_PER_PAGE),
+    [dealsPage, dealRows],
+  );
+
+  useEffect(() => {
+    setDealsPage(1);
+  }, [catalogService]);
+
+  useEffect(() => {
+    if (dealsPage > totalDealPages) {
+      setDealsPage(totalDealPages);
+    }
+  }, [dealsPage, totalDealPages]);
 
   const serviceInstanceRows = useMemo(() => {
     if (!catalogService) {
@@ -173,6 +192,7 @@ export default function ManageServiceDetailPage() {
           </div>
 
           {dealRows.length ? (
+            <>
             <div className="overflow-x-auto xl:overflow-visible">
               <table className="min-w-full table-auto divide-y divide-white/10 text-left text-sm">
                 <thead className="bg-white/5 text-slate-400">
@@ -190,7 +210,7 @@ export default function ManageServiceDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/6">
-                  {dealRows.map((row) => (
+                  {paginatedDealRows.map((row) => (
                     <tr key={row.dealId} className="table-row-hoverable">
                       <td className="px-4 py-5 align-middle text-center text-slate-200">
                         <p className="text-sm font-medium text-white">{row.billingInCharge}</p>
@@ -251,6 +271,11 @@ export default function ManageServiceDetailPage() {
                 </tbody>
               </table>
             </div>
+
+            <div className="px-6 py-4">
+              <Pagination currentPage={dealsPage} totalPages={totalDealPages} onPageChange={setDealsPage} />
+            </div>
+            </>
           ) : (
             <div className="px-6 py-12 text-sm text-slate-400">
               No deals are currently linked to this catalog service.

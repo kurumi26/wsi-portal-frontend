@@ -220,6 +220,23 @@ body.theme-dark .text-slate-300 {
   color: #94A3B8 !important;
 }
 
+body.theme-dark .admin-dashboard-page .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+body.theme-dark .admin-dashboard-page .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+
+body.theme-dark .admin-dashboard-page .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+body.theme-dark .admin-dashboard-page .text-slate-600,
+body.theme-dark .admin-dashboard-page .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
 /* Enforce the dark base color across common dark-mode backgrounds */
 body.theme-dark .panel,
 body.theme-dark .panel-muted,
