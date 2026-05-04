@@ -313,13 +313,9 @@ export default function CustomerDashboardPage() {
   const bannerIsApproved = Boolean(
     bannerSvc && orders.some((o) => /approved/i.test(String(o.status)) && ((o.serviceId && String(o.serviceId) === String(bannerSvc.id)) || (o.serviceName && o.serviceName === bannerSvc.name))),
   );
-  // Treat orders marked as paid as approved as well (backend uses 'paid' after admin approval)
-  const bannerIsPaid = Boolean(
-    bannerSvc && orders.some((o) => (o.statusKey === 'paid' || /paid/i.test(String(o.status))) && ((o.serviceId && String(o.serviceId) === String(bannerSvc.id)) || (o.serviceName && o.serviceName === bannerSvc.name))),
-  );
   // Compute a stable key for the currently visible banner so users can dismiss it
   const currentBannerKey = bannerSvc
-    ? (bannerIsApproved || bannerIsPaid)
+    ? bannerIsApproved
       ? `approved-${bannerSvc.id ?? bannerSvc.name}`
       : (unpaidNamesFinal.length || nearExpiredServices.length)
       ? `critical-${bannerSvc.id ?? bannerSvc.name}`
@@ -608,7 +604,7 @@ export default function CustomerDashboardPage() {
 
       <div className="mt-6 space-y-6">
         <div className="space-y-3">
-          {(bannerIsApproved || bannerIsPaid) && dismissedBannerKey !== currentBannerKey ? (
+          {bannerIsApproved && dismissedBannerKey !== currentBannerKey ? (
             <div className="rounded-3xl border border-emerald-300/40 bg-emerald-300/10 px-4 py-4 shadow-sm shadow-emerald-900/10">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-3">
@@ -617,7 +613,7 @@ export default function CustomerDashboardPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-emerald-700">Order approved</p>
-                    <p className="text-sm text-emerald-800">An approved order exists for the service shown. Provisioning will begin shortly.</p>
+                    <p className="text-sm text-emerald-800">An approved order exists for the service shown. Provisioning can proceed because billing and approval checks are complete.</p>
                   </div>
                 </div>
 
@@ -650,7 +646,7 @@ export default function CustomerDashboardPage() {
                         <p className="truncate">Expiring soon: {nearExpiredServices.map((s) => `${s.name} (${formatTimeRemaining(s.renewsOn)})`).slice(0,3).join(', ')}{nearExpiredServices.length > 3 ? ` +${nearExpiredServices.length - 3} more` : ''}</p>
                       ) : null}
                       {approvalPendingServicesFiltered.length ? (
-                        <p className="truncate">Payment received (awaiting admin approval): {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}</p>
+                        <p className="truncate">Orders awaiting billing and admin approval: {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}</p>
                       ) : null}
                     </div>
                   </div>
@@ -778,7 +774,7 @@ export default function CustomerDashboardPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-amber-700">Payment pending admin approval</p>
-                    <p className="text-sm text-amber-800">We received payment for {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}. Admin review is pending; provisioning will begin after approval.</p>
+                    <p className="text-sm text-amber-800">We received your order for {approvalPendingServicesFiltered.slice(0,3).join(', ')}{approvalPendingServicesFiltered.length > 3 ? ` +${approvalPendingServicesFiltered.length - 3} more` : ''}. Billing verification and admin approval are still pending; provisioning begins only after both are complete.</p>
                   </div>
                 </div>
                 <button type="button" onClick={() => openOrdersModal('pending')} className="btn-secondary whitespace-nowrap px-5 py-2">View Orders</button>

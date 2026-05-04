@@ -26,6 +26,7 @@ import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
+import { clientMatchesRecord, getClientDisplayName } from '../../utils/clients';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import { getDesiredDomainValue } from '../../utils/orders';
 
@@ -122,6 +123,19 @@ const isAddonDraftEmpty = (addonDraft) => {
   return !label && !price;
 };
 
+const getNextRenewalDate = (billingCycle) => {
+  const renewalDate = new Date();
+  const normalizedBillingCycle = normalizeBillingCycle(billingCycle, 'yearly') || 'yearly';
+
+  if (normalizedBillingCycle === 'monthly') {
+    renewalDate.setMonth(renewalDate.getMonth() + 1);
+    return renewalDate.toISOString();
+  }
+
+  renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+  return renewalDate.toISOString();
+};
+
 export default function ManageServicesPage() {
   const {
     services,
@@ -129,6 +143,7 @@ export default function ManageServicesPage() {
     adminPurchases,
     clients,
     createCatalogService,
+    createAdminService,
     updateCatalogService,
     updateServiceStatus,
     requestServiceCancellation,
@@ -177,6 +192,7 @@ export default function ManageServicesPage() {
   const [editingService, setEditingService] = useState(null);
   const [localCatalogServices, setLocalCatalogServices] = useState([]);
   const [form, setForm] = useState({
+    clientId: '',
     name: '',
     description: '',
     category: 'Domains',
@@ -239,9 +255,9 @@ export default function ManageServicesPage() {
     }
 
     const relatedServices = adminServices.filter(
-      (service) => service.clientEmail === selectedClient.email || service.client === selectedClient.name,
+      (service) => clientMatchesRecord(selectedClient, service.client, service.clientEmail),
     );
-    const relatedPurchases = adminPurchases.filter((purchase) => purchase.client === selectedClient.name);
+    const relatedPurchases = adminPurchases.filter((purchase) => clientMatchesRecord(selectedClient, purchase.client, purchase.clientEmail));
 
     return {
       relatedServices,
@@ -509,17 +525,18 @@ export default function ManageServicesPage() {
   }, [hasManageServicesModalOpen]);
 
   const pendingOrders = useMemo(
-    () => adminPurchases.filter((purchase) => purchase.status === 'Pending Review' && (!selectedClient || purchase.client === selectedClient.name)),
+    () => adminPurchases.filter((purchase) => purchase.status === 'Pending Review' && (!selectedClient || clientMatchesRecord(selectedClient, purchase.client, purchase.clientEmail))),
     [adminPurchases, selectedClient],
   );
 
   const pendingCancellationServices = useMemo(
-    () => adminServices.filter((service) => service.cancellationRequest?.statusKey === 'pending' && (!selectedClient || service.clientEmail === selectedClient.email || service.client === selectedClient.name)),
+    () => adminServices.filter((service) => service.cancellationRequest?.statusKey === 'pending' && (!selectedClient || clientMatchesRecord(selectedClient, service.client, service.clientEmail))),
     [adminServices, selectedClient],
   );
 
   const resetForm = () => {
     setForm({
+      clientId: '',
       name: '',
       description: '',
       category: 'Domains',
@@ -559,6 +576,7 @@ export default function ManageServicesPage() {
 
       setEditingService(service);
       setForm({
+        clientId: '',
         name: service.name ?? '',
         description: service.description ?? '',
         category: service.category ?? 'Domains',
@@ -584,6 +602,12 @@ export default function ManageServicesPage() {
     setIsCreating(true);
 
     try {
+      const linkedClient = eligibleClients.find((client) => String(client.id) === String(form.clientId)) ?? null;
+
+      if (!editingService && !linkedClient) {
+        throw new Error('Select a client company before adding a new service.');
+      }
+
       const normalizedDefaultCycle = normalizeBillingCycle(form.billingCycle, 'yearly') || 'yearly';
       const addonPayload = form.addonEntries
         .map((addonEntry, index) => {
@@ -636,12 +660,55 @@ export default function ManageServicesPage() {
         price: Number(form.price),
         billingCycle: normalizedDefaultCycle,
         billing_cycle: normalizedDefaultCycle,
-        addons: addonPayload,
-        add_ons: addonPayload,
+        ...(addonPayload.length ? {
+          addons: addonPayload,
+          add_ons: addonPayload,
+        } : {}),
       };
       const response = editingService
         ? await updateCatalogService(editingService.id, payload)
         : await createCatalogService(payload);
+      const createdCatalogServiceId = response?.service?.id ?? response?.serviceId ?? response?.service_id ?? response?.id ?? null;
+      let postSaveWarning = '';
+      let successMessage = response?.message ?? (editingService ? 'Service updated successfully.' : 'Service created successfully.');
+
+      if (!editingService && linkedClient) {
+        if (createdCatalogServiceId === null || createdCatalogServiceId === undefined || createdCatalogServiceId === '') {
+          postSaveWarning = `Catalog service saved, but it could not be linked to ${getClientDisplayName(linkedClient)} because the new service ID was missing from the response.`;
+        } else {
+          const renewalDate = getNextRenewalDate(normalizedDefaultCycle);
+          const clientLabel = getClientDisplayName(linkedClient);
+          const linkedServiceStatus = 'undergoing_provisioning';
+
+          try {
+            await createAdminService({
+              userId: linkedClient.id,
+              user_id: linkedClient.id,
+              serviceId: createdCatalogServiceId,
+              service_id: createdCatalogServiceId,
+              name: payload.name,
+              category: payload.category,
+              plan: payload.name,
+              status: linkedServiceStatus,
+              renewsOn: renewalDate,
+              renews_on: renewalDate,
+              billing: normalizedDefaultCycle,
+              billingCycle: normalizedDefaultCycle,
+              billing_cycle: normalizedDefaultCycle,
+              client: clientLabel,
+              clientName: clientLabel,
+              customer: clientLabel,
+              company: linkedClient.company ?? clientLabel,
+              clientEmail: linkedClient.email ?? '',
+              customerEmail: linkedClient.email ?? '',
+              email: linkedClient.email ?? '',
+            });
+            successMessage = `${successMessage} Linked to ${clientLabel}.`;
+          } catch (linkError) {
+            postSaveWarning = `Catalog service saved, but linking it to ${clientLabel} failed: ${linkError.message}`;
+          }
+        }
+      }
 
       // Ensure immediate visibility in the table while backend list sync catches up.
       if (editingService) {
@@ -682,8 +749,13 @@ export default function ManageServicesPage() {
         setLocalCatalogServices((current) => [createdService, ...current]);
       }
 
-      setMessage(response.message);
       closeAddModal();
+
+      if (postSaveWarning) {
+        setError(postSaveWarning);
+      } else {
+        setMessage(successMessage);
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -898,14 +970,26 @@ export default function ManageServicesPage() {
 
     const price = getServiceAnnualPrice(svc);
     const billingCycle = 'yearly';
+    const serviceAddons = getServiceAddons(svc);
+    const addonEntries = serviceAddons.length
+      ? serviceAddons.map((addon, addonIndex) => createAddonDraft({
+          id: `catalog-addon-${svc.id ?? 'service'}-${addonIndex}`,
+          persistedId: addon.persistedId,
+          label: addon.label,
+          price: typeof addon.price === 'number' ? String(addon.price) : '',
+          billingCycle: addon.billingCycle ?? billingCycle,
+        }))
+      : [createAddonDraft({ billingCycle })];
 
     setSelectedCatalogServiceId(String(index));
     setForm((current) => ({
       ...current,
       name: svc.name ?? current.name,
+      description: svc.description ?? current.description,
       price: price !== null && price !== undefined ? String(price) : '',
       category: svc.category ?? current.category,
       billingCycle,
+      addonEntries,
     }));
     setIsPriceCustomized(false);
   };
@@ -1045,7 +1129,7 @@ export default function ManageServicesPage() {
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Service Management</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">{editingService ? 'Edit Service' : 'Add New Service'}</h2>
-                <p className="mt-2 text-sm text-slate-400">{editingService ? 'Update service details and add-ons.' : 'Create a new service offering for the portal catalog.'}</p>
+                <p className="mt-2 text-sm text-slate-400">{editingService ? 'Update service details and add-ons.' : 'Create a new service offering and link it to a client company.'}</p>
               </div>
               <button type="button" onClick={closeAddModal} className="btn-secondary px-4">Close</button>
             </div>
@@ -1103,6 +1187,27 @@ export default function ManageServicesPage() {
                   ) : null}
                 </div>
               </label>
+
+              {!editingService ? (
+                <label className="block text-sm text-slate-300 md:col-span-2">
+                  Client Name
+                  <select
+                    className="input mt-2"
+                    value={form.clientId}
+                    onChange={(event) => setForm((current) => ({ ...current, clientId: event.target.value }))}
+                    required
+                    disabled={!eligibleClients.length}
+                  >
+                    <option value="">{eligibleClients.length ? 'Select the company account for this service' : 'No approved clients available'}</option>
+                    {eligibleClients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {getClientDisplayName(client)}{client.email ? ` • ${client.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">Services are linked to the client company selected here.</p>
+                </label>
+              ) : null}
 
               <label className="block text-sm text-slate-300">
                 Service Name

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, Check, ChevronDown, Download, FileSignature, LayoutGrid, List, Search, Upload, XCircle } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Download, Eye, FileSignature, LayoutGrid, List, Search, Upload, X, XCircle } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
@@ -102,6 +102,7 @@ export default function ContractsPage() {
   const [uploadingContractId, setUploadingContractId] = useState('');
   const [downloadingContractId, setDownloadingContractId] = useState('');
   const [downloadingSignedContractId, setDownloadingSignedContractId] = useState('');
+  const [selectedContractId, setSelectedContractId] = useState(location.state?.focusContractId ?? '');
   const [feedback, setFeedback] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterTriggerRef = useRef(null);
@@ -211,6 +212,63 @@ export default function ContractsPage() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    if (!selectedContractId) {
+      return;
+    }
+
+    const stillExists = allContracts.some((contract) => contract.id === selectedContractId);
+
+    if (!stillExists) {
+      setSelectedContractId('');
+    }
+  }, [allContracts, selectedContractId]);
+
+  useEffect(() => {
+    if (!selectedContractId) {
+      document.body.style.overflow = '';
+      return undefined;
+    }
+
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedContractId]);
+
+  useEffect(() => {
+    if (!selectedContractId) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSelectedContractId('');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedContractId]);
+
+  const selectedContract = useMemo(
+    () => allContracts.find((contract) => contract.id === selectedContractId) ?? null,
+    [allContracts, selectedContractId],
+  );
+
+  const closeReviewModal = () => {
+    setSelectedContractId('');
+  };
+
+  const handleReviewContract = (contractId) => {
+    if (!contractId) {
+      return;
+    }
+
+    setSelectedContractId(contractId);
+  };
 
   const summaryCards = [
     {
@@ -352,6 +410,16 @@ export default function ContractsPage() {
 
     return (
       <div className={isTable ? 'flex flex-wrap gap-2' : 'flex flex-wrap gap-3'}>
+        <button
+          type="button"
+          onClick={() => handleReviewContract(contract.id)}
+          className={buttonBase}
+          title="Review agreement"
+          aria-label={`Review agreement ${contract.title}`}
+        >
+          <Eye size={14} />
+        </button>
+
         <button
           type="button"
           disabled={isWorking || contract.status === 'Accepted'}
@@ -625,6 +693,10 @@ export default function ContractsPage() {
 
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge status={checkoutAgreementRecord.status} />
+              <button type="button" onClick={() => handleReviewContract(checkoutAgreementRecord.id)} className="btn-secondary gap-2">
+                <Eye size={16} />
+                Review Agreement
+              </button>
               {returnToCheckout && checkoutAgreementRecord.status === 'Accepted' ? (
                 <button type="button" onClick={() => navigate('/checkout')} className="btn-primary gap-2">
                   Continue Checkout
@@ -659,7 +731,13 @@ export default function ContractsPage() {
                           </span>
                         ) : null}
                       </div>
-                      <h2 className="mt-3 text-xl font-semibold text-white">{contract.title}</h2>
+                      <button
+                        type="button"
+                        onClick={() => handleReviewContract(contract.id)}
+                        className="mt-3 text-left text-xl font-semibold text-white transition hover:text-sky-200"
+                      >
+                        {contract.title}
+                      </button>
                       <p className="mt-2 text-sm leading-6 text-slate-300">{contract.description}</p>
                     </div>
                     <StatusBadge status={contract.status} />
@@ -733,6 +811,171 @@ export default function ContractsPage() {
       )}
 
       <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+
+      {selectedContract ? createPortal(
+        <div
+          className="fixed inset-0 z-[80] flex min-h-screen items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="customer-contract-review-modal-title"
+          onClick={closeReviewModal}
+        >
+          <div
+            className="panel flex max-h-[min(90vh,820px)] w-full max-w-5xl flex-col overflow-hidden p-0"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-300/80">Agreement Review</p>
+                <h2 id="customer-contract-review-modal-title" className="mt-2 text-2xl font-semibold text-white">
+                  {selectedContract.title}
+                </h2>
+                <p className="mt-2 text-sm text-slate-300">{selectedContract.description}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={selectedContract.status} />
+                <button type="button" onClick={closeReviewModal} className="btn-secondary px-4">
+                  <X size={16} />
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="space-y-6 pr-1">
+                {feedback ? (
+                  <div className={`rounded-2xl border px-4 py-3 text-sm ${feedbackToneClasses[feedback.tone] ?? feedbackToneClasses.success}`}>
+                    {feedback.text}
+                  </div>
+                ) : null}
+
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-sm leading-7 text-slate-300">
+                    Review the agreement pack below, then accept it here so your order can continue without leaving the contracts screen.
+                  </p>
+                  {returnToCheckout && checkoutAgreementRecord?.id === selectedContract.id ? (
+                    <p className="mt-2 text-xs leading-6 text-sky-200">This agreement is linked to your current checkout session.</p>
+                  ) : null}
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                    <tbody className="divide-y divide-white/6">
+                      {buildContractDetailRows(selectedContract).map((row) => (
+                        <tr key={`${selectedContract.id}-${row.id}`}>
+                          <th className="w-[240px] px-4 py-4 align-top text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                            {row.label}
+                          </th>
+                          <td className="px-4 py-4 text-slate-200">
+                            <p className="font-medium text-white">{row.value}</p>
+                            <p className="mt-1 text-xs text-slate-500">{row.helper}</p>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Included Documents</p>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                      <thead className="text-slate-400">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">Document</th>
+                          <th className="px-4 py-3 font-medium">Purpose</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/6">
+                        {buildDocumentRows(selectedContract).map((row) => (
+                          <tr key={`${selectedContract.id}-${row.id}`}>
+                            <td className="px-4 py-4 text-sm font-medium text-white">{row.title}</td>
+                            <td className="px-4 py-4 text-sm leading-6 text-slate-400">{row.description}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3 border-t border-white/10 px-6 py-5">
+              <button
+                type="button"
+                disabled={workingContractId === selectedContract.id || selectedContract.status === 'Accepted'}
+                onClick={() => handleDecision(selectedContract.id, 'accept')}
+                className="btn-primary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Check size={16} strokeWidth={3} />
+                {workingContractId === selectedContract.id && selectedContract.status !== 'Accepted' ? 'Saving...' : 'Accept & Agree Pack'}
+              </button>
+
+              <button
+                type="button"
+                disabled={workingContractId === selectedContract.id || selectedContract.status === 'Rejected'}
+                onClick={() => handleDecision(selectedContract.id, 'reject')}
+                className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <XCircle size={16} />
+                Reject
+              </button>
+
+              {selectedContract.downloadUrl ? (
+                <button
+                  type="button"
+                  onClick={() => handleDownload(selectedContract)}
+                  disabled={downloadingContractId === selectedContract.id}
+                  className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Download size={16} />
+                  {downloadingContractId === selectedContract.id ? 'Downloading...' : 'Download Agreement'}
+                </button>
+              ) : null}
+
+              <label className="btn-secondary gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
+                <Upload size={16} />
+                {uploadingContractId === selectedContract.id ? 'Uploading...' : 'Upload Signed Copy'}
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  disabled={uploadingContractId === selectedContract.id}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    void handleUpload(selectedContract.id, file);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+
+              {selectedContract.signedDocumentUrl ? (
+                <button
+                  type="button"
+                  onClick={() => handleSignedDownload(selectedContract)}
+                  disabled={downloadingSignedContractId === selectedContract.id}
+                  className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FileSignature size={16} />
+                  {downloadingSignedContractId === selectedContract.id ? 'Downloading signed copy...' : 'Download Signed Copy'}
+                </button>
+              ) : null}
+
+              {returnToCheckout && checkoutAgreementRecord?.id === selectedContract.id && selectedContract.status === 'Accepted' ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/checkout')}
+                  className="btn-primary gap-2"
+                >
+                  <ArrowRight size={16} />
+                  Continue Checkout
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }

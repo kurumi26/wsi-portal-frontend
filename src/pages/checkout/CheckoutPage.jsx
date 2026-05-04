@@ -14,12 +14,14 @@ export default function CheckoutPage() {
   const { cart, services, paymentState, placeOrder, removeFromCart, retryPayment, updateCartItem, checkoutAgreementRecord } = usePortal();
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasAcknowledgedAgreement, setHasAcknowledgedAgreement] = useState(false);
 
   const total = cart.reduce((sum, item) => sum + item.price, 0);
   const missingDesiredDomainItems = cart.filter((item) => requiresDesiredDomain(item) && !getDesiredDomainValue(item));
   const hasMissingDesiredDomains = missingDesiredDomainItems.length > 0;
   const checkoutAgreementAccepted = checkoutAgreementRecord ? checkoutAgreementRecord.status === 'Accepted' : cart.length === 0;
   const checkoutAgreementRejected = checkoutAgreementRecord?.status === 'Rejected';
+  const checkoutAgreementConfirmed = checkoutAgreementAccepted && hasAcknowledgedAgreement;
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,13 +35,17 @@ export default function CheckoutPage() {
     return () => document.body.classList.remove(cls);
   }, [paymentState.status]);
 
+  useEffect(() => {
+    setHasAcknowledgedAgreement(false);
+  }, [checkoutAgreementRecord?.id, checkoutAgreementRecord?.status, cart.length]);
+
   const handleCheckout = async () => {
-    if (hasMissingDesiredDomains) {
+    if (hasMissingDesiredDomains || !cart.length || !checkoutAgreementConfirmed) {
       return;
     }
 
     setIsSubmitting(true);
-    await placeOrder({ paymentMethod, agreementAccepted: checkoutAgreementAccepted });
+    await placeOrder({ paymentMethod, agreementAccepted: checkoutAgreementConfirmed });
     setIsSubmitting(false);
   };
 
@@ -128,7 +134,7 @@ export default function CheckoutPage() {
       <PageHeader
         eyebrow="Order & Checkout"
         title="Review order summary"
-        description="Complete payment with agreement capture, policy acknowledgement, and method selection before provisioning starts."
+        description="Submit the order with agreement capture and policy acknowledgement so billing can verify the invoice before admin approval and provisioning."
       />
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
@@ -228,10 +234,10 @@ export default function CheckoutPage() {
 
                 <p className="mt-4 text-sm leading-6 text-slate-300">
                   {checkoutAgreementAccepted
-                    ? `Agreement accepted ${formatDateTime(checkoutAgreementRecord.acceptedAt)}. Payment can proceed.`
+                    ? `Agreement accepted ${formatDateTime(checkoutAgreementRecord.acceptedAt)}. Tick the checkbox below before completing payment.`
                     : checkoutAgreementRejected
                       ? 'The agreement pack was rejected. Review it in Contracts and accept it before continuing.'
-                      : 'Review and accept the active agreement pack in Contracts before payment can continue.'}
+                      : 'Review and accept the active agreement pack in Contracts, then confirm it here before payment can continue.'}
                 </p>
 
                 {checkoutAgreementRecord.requiresSignedDocument ? (
@@ -246,6 +252,28 @@ export default function CheckoutPage() {
                   >
                     {checkoutAgreementAccepted ? 'Review Accepted Agreement' : 'Review in Contracts'}
                   </Link>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <label className={`flex items-start gap-3 ${checkoutAgreementAccepted ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                    <input
+                      type="checkbox"
+                      checked={hasAcknowledgedAgreement}
+                      onChange={(event) => setHasAcknowledgedAgreement(event.target.checked)}
+                      disabled={!checkoutAgreementAccepted || !cart.length}
+                      className="mt-1 h-4 w-4 rounded border-white/20 accent-sky-400 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-sm leading-6 text-slate-300">
+                      I have reviewed and agree to the Purchase Agreement, Terms & Conditions, and Privacy Policy for this order.
+                    </span>
+                  </label>
+                  <p className="mt-2 pl-7 text-xs leading-5 text-slate-500">
+                    {!cart.length
+                      ? 'Add items to the cart to generate the agreement pack first.'
+                      : !checkoutAgreementAccepted
+                        ? 'The checkbox unlocks after the agreement pack is accepted in Contracts.'
+                        : 'This confirmation is required before payment can continue.'}
+                  </p>
                 </div>
               </div>
             ) : (
@@ -273,8 +301,8 @@ export default function CheckoutPage() {
             </div>
             <button
               type="button"
-              disabled={isSubmitting || !checkoutAgreementAccepted || hasMissingDesiredDomains || !cart.length}
-              aria-disabled={isSubmitting || !checkoutAgreementAccepted || hasMissingDesiredDomains || !cart.length}
+              disabled={isSubmitting || !checkoutAgreementConfirmed || hasMissingDesiredDomains || !cart.length}
+              aria-disabled={isSubmitting || !checkoutAgreementConfirmed || hasMissingDesiredDomains || !cart.length}
               title={
                 !cart.length
                   ? 'Your cart is empty'
@@ -282,6 +310,8 @@ export default function CheckoutPage() {
                     ? 'Add the desired domain for each domain order to complete payment'
                     : !checkoutAgreementAccepted
                       ? 'Please review and accept the agreement in Contracts before completing payment'
+                      : !hasAcknowledgedAgreement
+                        ? 'Tick the purchase agreement checkbox before completing payment'
                       : undefined
               }
               className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60"
@@ -295,13 +325,15 @@ export default function CheckoutPage() {
               <p className="mt-2 text-sm text-slate-400">{desiredDomainRequiredMessage}</p>
             ) : !checkoutAgreementAccepted ? (
               <p className="mt-2 text-sm text-slate-400">Please review and accept the Purchase Agreement, Terms, and Privacy Policy in Contracts to continue.</p>
+            ) : !hasAcknowledgedAgreement ? (
+              <p className="mt-2 text-sm text-slate-400">Tick the purchase agreement checkbox to confirm you agree before continuing.</p>
             ) : null}
             {paymentState.status !== 'idle' ? (
               <div>
                 <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium text-white">Payment result</p>
-                    <StatusBadge status={paymentState.status === 'success' ? 'Paid' : 'Pending'} />
+                    <p className="font-medium text-white">Checkout result</p>
+                    <StatusBadge status={paymentState.status === 'success' ? 'Pending Review' : 'Pending'} />
                   </div>
                   <p className="text-sm text-slate-400">{paymentState.message}</p>
                   {paymentState.status === 'failed' ? (
@@ -320,9 +352,10 @@ export default function CheckoutPage() {
             <h2 className="text-xl font-semibold text-white">What happens next?</h2>
             <ul className="mt-4 space-y-3 text-sm leading-7 text-slate-400">
               <li>• Order ID is generated instantly.</li>
-              <li>• Customer account record is updated.</li>
-              <li>• Admin purchase logs are refreshed.</li>
-              <li>• Service provisioning begins automatically.</li>
+              <li>• Customer and admin purchase records are updated.</li>
+              <li>• Billing issues or confirms the linked invoice.</li>
+              <li>• Admin must verify the invoice as paid before approving provisioning.</li>
+              <li>• Provisioning starts only after billing review and admin approval are complete.</li>
             </ul>
           </div>
         </aside>
@@ -332,8 +365,8 @@ export default function CheckoutPage() {
           <div className="panel w-full max-w-md p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">{paymentState.status === 'success' ? 'Payment Successful' : 'Payment Result'}</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">{paymentState.status === 'success' ? 'Payment completed' : 'Payment failed'}</h2>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">{paymentState.status === 'success' ? 'Order Submitted' : 'Payment Result'}</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{paymentState.status === 'success' ? 'Checkout submitted' : 'Payment failed'}</h2>
               </div>
               <button type="button" onClick={() => retryPayment()} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:border-sky-300/30 hover:bg-sky-300/10" aria-label="Close payment result modal">
                 <X size={18} />
@@ -345,7 +378,7 @@ export default function CheckoutPage() {
                 {paymentState.status === 'success' ? <CheckCircle size={28} className="text-emerald-400" /> : <XCircle size={28} className="text-rose-400" />}
                 <div>
                   <p className="font-medium text-white">{paymentState.message}</p>
-                  <p className="text-sm text-slate-400 mt-1">{paymentState.status === 'success' ? 'Your order will be provisioned shortly.' : 'Please try again or contact support.'}</p>
+                  <p className="text-sm text-slate-400 mt-1">{paymentState.status === 'success' ? 'Billing review and admin approval must finish before provisioning begins.' : 'Please try again or contact support.'}</p>
                 </div>
               </div>
             </div>

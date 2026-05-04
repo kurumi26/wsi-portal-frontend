@@ -5,6 +5,7 @@ import {
   extractAddonEntries,
   matchCatalogService,
 } from './addons';
+import { getClientDisplayName } from './clients';
 import { getDesiredDomainValue } from './orders';
 
 export const PURCHASE_LINE_ITEM_KEYS = ['orderItems', 'order_items', 'orderItem', 'order_item', 'lineItems', 'line_items', 'lineItem', 'line_item', 'cart', 'cartItems', 'cart_items', 'items', 'item'];
@@ -757,7 +758,7 @@ export const buildCatalogServiceDealRows = ({
       purchase?.service_name,
       catalogService?.name,
     );
-    const clientName = clientRecord?.name ?? getPurchaseClientName(purchase);
+    const clientName = clientRecord ? getClientDisplayName(clientRecord) : getPurchaseClientName(purchase);
     const clientEmail = clientRecord?.email ?? getPurchaseClientEmail(purchase) ?? '—';
     const currentPurchaseTime = getPurchaseRecordTime(purchase);
     const clientPurchaseHistory = adminPurchases.filter((candidatePurchase) => {

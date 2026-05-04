@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, CreditCard, Eye, FileDown, FileText, Grid2x2, Headphones, List, Percent, Search, ShieldCheck, X, Calendar, ChevronDown } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
+import { useTheme } from '../../context/ThemeContext';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { portalApi } from '../../services/portalApi';
+import { getInvoiceDocumentUrl, getInvoiceDueDateValue, getInvoiceNumber, getInvoiceStatusHelperText, getInvoiceStatusKey, getInvoiceStatusLabel, hasInvoiceRecord } from '../../utils/invoices';
 
 const DISCOUNT_CODES = {
   PROMO20: 20,
@@ -17,8 +18,8 @@ const DISCOUNT_CODES = {
 const BILLING_ITEMS_PER_PAGE = 5;
 
 export default function BillingPage() {
-  const navigate = useNavigate();
-  const { orders, startInvoicePayment } = usePortal();
+  const { orders, refreshPortalData } = usePortal();
+  const { isDarkMode } = useTheme();
   const [selectedCharge, setSelectedCharge] = useState(null);
   const [inlineAlert, setInlineAlert] = useState(null);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
@@ -38,23 +39,39 @@ export default function BillingPage() {
   const [sortDir, setSortDir] = useState('asc');
   const [showPaymentPolicies, setShowPaymentPolicies] = useState(false);
 
-  const invoiceRows = useMemo(
-    () =>
-      orders.map((order, index) => ({
-        ...order,
-        invoiceNumber: `CH-2026-${String(index + 1001)}`,
-        dueDate: new Date(order.date).toLocaleDateString('en-CA'),
-        originalAmount: order.amount,
-        discountPercent: appliedDiscounts[order.id] ?? 0,
-        amount:
-          appliedDiscounts[order.id] != null
-            ? Number((order.amount * (1 - appliedDiscounts[order.id] / 100)).toFixed(2))
-            : order.amount,
-      })),
-    [orders, appliedDiscounts],
-  );
-
   const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/api\/?$/i, '');
+  const invoiceSyncBannerClasses = isDarkMode
+    ? 'border border-amber-300/30 bg-amber-300/10 text-amber-100'
+    : 'border border-amber-200 bg-amber-50 text-amber-800';
+  const pendingStateBadgeClasses = isDarkMode
+    ? 'border border-amber-300/30 bg-amber-300/10 text-amber-100'
+    : 'border border-amber-200 bg-amber-50 text-amber-700';
+  const pendingActionButtonClasses = isDarkMode
+    ? 'border border-amber-300/20 bg-amber-300/10 text-amber-100 hover:bg-amber-300/15'
+    : 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100';
+
+  const buildInvoiceRow = (order) => ({
+    ...order,
+    invoiceNumberRaw: getInvoiceNumber(order),
+    invoiceNumber: getInvoiceNumber(order) || 'Pending backend sync',
+    dueDateValue: getInvoiceDueDateValue(order),
+    dueDate: getInvoiceDueDateValue(order) ? formatDate(getInvoiceDueDateValue(order)) : 'Pending backend sync',
+    originalAmount: Number(order.originalAmount ?? order.original_amount ?? order.amount ?? 0),
+    discountPercent: Number(order.discountPercent ?? order.discount_percent ?? 0),
+    amount: Number(order.amount ?? 0),
+    hasInvoiceRecord: hasInvoiceRecord(order),
+    invoiceStatusKey: getInvoiceStatusKey(order),
+    invoiceStatusLabel: getInvoiceStatusLabel(order),
+    invoiceStatusHelper: getInvoiceStatusHelperText(order),
+    invoiceDocumentUrl: getInvoiceDocumentUrl(order, BACKEND_ORIGIN),
+    statusKey: getInvoiceStatusKey(order),
+    status: getInvoiceStatusLabel(order),
+  });
+
+  const invoiceRows = useMemo(
+    () => orders.map((order) => buildInvoiceRow(order)),
+    [orders],
+  );
 
   const downloadChargeReceipt = (order) => {
     const printWindow = window.open('', '_blank', 'width=900,height=700');
@@ -228,18 +245,8 @@ export default function BillingPage() {
   };
 
   const handlePayInvoice = (order) => {
-    (async () => {
-      try {
-        await startInvoicePayment(order);
-        setSelectedCharge(null);
-        navigate('/checkout');
-      } catch (err) {
-        setInlineAlert(err.message || 'Unable to prepare invoice payment.');
-      }
-    })();
+    setInlineAlert(order.invoiceStatusHelper || 'This invoice must be marked paid by an admin before provisioning can continue.');
   };
-
-  const { refreshPortalData } = usePortal();
 
   const handleUploadProof = async (order, file) => {
     if (!file) return;
@@ -260,10 +267,10 @@ export default function BillingPage() {
 
       const updated = freshOrders.find((o) => o.id === (order.id || order.orderNumber || order.order_number));
       if (updated) {
-        setSelectedCharge(updated);
+        setSelectedCharge(buildInvoiceRow(updated));
       } else {
         // if we couldn't find an updated order, keep the currently selected charge
-        setSelectedCharge((current) => ({ ...(current || {}), ...order }));
+        setSelectedCharge((current) => buildInvoiceRow({ ...(current || {}), ...order }));
       }
 
       // Inline confirmation
@@ -290,7 +297,7 @@ export default function BillingPage() {
     [invoiceRows],
   );
 
-  const filters = ['All', 'Paid', 'Failed', 'Pending Review'];
+  const filters = ['All', 'Paid', 'Pending Review', 'Unpaid', 'Overdue'];
 
   const filteredInvoiceRows = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -298,8 +305,8 @@ export default function BillingPage() {
     return invoiceRows.filter((order) => {
       const matchesFilter = statusFilter === 'All' ? true : order.status === statusFilter;
       const matchesSearch = normalizedSearch
-        ? [order.invoiceNumber, order.id, order.serviceName, order.paymentMethod].some((value) =>
-            value.toLowerCase().includes(normalizedSearch),
+        ? [order.invoiceNumber, order.id, order.serviceName, order.paymentMethod, order.invoiceStatusHelper].some((value) =>
+            String(value).toLowerCase().includes(normalizedSearch),
           )
         : true;
 
@@ -407,6 +414,11 @@ export default function BillingPage() {
       return [...new Set([...current, ...visibleIds])];
     });
   };
+
+  const invoiceSyncIssuesCount = useMemo(
+    () => invoiceRows.filter((order) => !order.hasInvoiceRecord || order.invoiceStatusKey === 'missing').length,
+    [invoiceRows],
+  );
 
   const handlePaySelected = () => {
     if (!selectedInvoices.length) {
@@ -600,6 +612,12 @@ export default function BillingPage() {
       />
 
       <div className="space-y-6">
+        {invoiceSyncIssuesCount ? (
+          <div className={`rounded-3xl px-5 py-4 text-sm ${invoiceSyncBannerClasses}`}>
+            {invoiceSyncIssuesCount} billing {invoiceSyncIssuesCount === 1 ? 'record is' : 'records are'} missing invoice metadata from the API. Client-side payment actions stay disabled until billing data is synced and marked paid.
+          </div>
+        ) : null}
+
         <div className="panel p-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -623,9 +641,10 @@ export default function BillingPage() {
           {showPaymentPolicies ? (
             <ul id="payment-policies-content" className="mt-6 space-y-3 text-sm leading-7 text-slate-400">
               <li>• Purchase Agreement and Terms are captured during checkout.</li>
-              <li>• Privacy Policy acknowledgement is required before payment processing.</li>
-              <li>• Failed payments can be retried directly from the checkout flow.</li>
-              <li>• Successful transactions trigger order IDs and provisioning actions.</li>
+              <li>• Privacy Policy acknowledgement is required before order submission.</li>
+              <li>• Clients can upload payment proof, but only admins can mark invoices as paid.</li>
+              <li>• Provisioning stays blocked until the linked invoice is marked paid and the order is approved.</li>
+              <li>• Missing invoice metadata is treated as a billing sync issue, not as an approved invoice.</li>
             </ul>
           ) : null}
         </div>
@@ -656,17 +675,7 @@ export default function BillingPage() {
               </colgroup>
                   <thead className="bg-white/5 text-slate-400">
                     <tr>
-                      <th className="px-6 py-5">
-                    <label className="flex items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={allPayableSelected}
-                        onChange={toggleSelectAllInvoices}
-                        className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
-                        aria-label="Select all unpaid invoices"
-                      />
-                    </label>
-                      </th>
+                      <th className="px-6 py-5 font-medium text-center">State</th>
                       <th
                         className="px-6 py-5 font-medium cursor-pointer select-none"
                     onClick={() => {
@@ -737,7 +746,7 @@ export default function BillingPage() {
               <tbody className="divide-y divide-white/8">
                 {paginatedInvoiceRows.map((order) => {
                   const isPaid = order.status === 'Paid';
-                  const isSelected = selectedInvoiceIds.includes(order.id);
+                  const isPendingReview = order.status === 'Pending Review';
 
                   return (
                     <tr key={order.id} className="table-row-hoverable">
@@ -748,13 +757,9 @@ export default function BillingPage() {
                               <CheckCircle2 size={14} />
                             </span>
                           ) : (
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleInvoiceSelection(order.id)}
-                              className="h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
-                              aria-label={`Select invoice ${order.invoiceNumber}`}
-                            />
+                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${pendingStateBadgeClasses}`}>
+                              <CreditCard size={14} />
+                            </span>
                           )}
                         </div>
                       </td>
@@ -765,7 +770,10 @@ export default function BillingPage() {
                         </div>
                       </td>
                       <td className="px-6 py-5 align-middle text-slate-300">
-                        <span className="whitespace-nowrap">{order.dueDate}</span>
+                        <div>
+                          <span className="whitespace-nowrap">{order.dueDate}</span>
+                          <p className="mt-1 text-xs text-slate-500">{order.invoiceStatusHelper}</p>
+                        </div>
                       </td>
                       <td className="px-6 py-5 align-middle">
                         <div className="min-w-0">
@@ -795,22 +803,20 @@ export default function BillingPage() {
                                       Receipt
                                     </button>
                                   ) : (
-                                    order.status === 'Pending Review' ? null : (
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePayInvoice(order)}
-                                        className={`inline-flex h-9 min-w-[88px] items-center justify-center rounded-full px-4 text-xs font-semibold text-white transition bg-blue-600 hover:bg-blue-500`}
-                                      >
-                                        Pay Now
-                                      </button>
-                                    )
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePayInvoice(order)}
+                                      className={`inline-flex h-9 min-w-[148px] items-center justify-center rounded-full px-4 text-xs font-semibold transition ${pendingActionButtonClasses}`}
+                                      title={order.invoiceStatusHelper}
+                                    >
+                                      {isPendingReview ? 'Billing Review Required' : 'Awaiting Admin Payment'}
+                                    </button>
                                   )}
                           <button
                             type="button"
-                            onClick={() => openDiscountModal(order)}
-                            disabled={isPaid}
+                            disabled
                             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Apply discount"
+                            title="Discount changes require billing support"
                             aria-label={`Apply discount for ${order.invoiceNumber}`}
                           >
                             <Percent size={16} />
@@ -857,7 +863,7 @@ export default function BillingPage() {
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {paginatedInvoiceRows.map((order) => {
                 const isPaid = order.status === 'Paid';
-                const isSelected = selectedInvoiceIds.includes(order.id);
+                const isPendingReview = order.status === 'Pending Review';
 
                 return (
                   <div key={order.id} className="panel-muted flex h-full flex-col gap-5 rounded-3xl p-5">
@@ -868,13 +874,9 @@ export default function BillingPage() {
                             <CheckCircle2 size={14} />
                           </span>
                         ) : (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleInvoiceSelection(order.id)}
-                            className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 accent-blue-500"
-                            aria-label={`Select invoice ${order.invoiceNumber}`}
-                          />
+                          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${pendingStateBadgeClasses}`}>
+                            <CreditCard size={14} />
+                          </span>
                         )}
                         <div>
                           <p className="font-semibold text-white">{order.invoiceNumber}</p>
@@ -888,6 +890,7 @@ export default function BillingPage() {
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Due Date</p>
                         <p className="mt-2 text-sm font-medium text-slate-200">{order.dueDate}</p>
+                        <p className="mt-1 text-xs text-slate-500">{order.invoiceStatusHelper}</p>
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Amount</p>
@@ -912,22 +915,20 @@ export default function BillingPage() {
                           Receipt
                         </button>
                       ) : (
-                        order.status === 'Pending Review' ? null : (
-                          <button
-                            type="button"
-                            onClick={() => handlePayInvoice(order)}
-                            className={`inline-flex h-9 min-w-[88px] items-center justify-center rounded-full px-4 text-xs font-semibold text-white transition bg-blue-600 hover:bg-blue-500`}
-                          >
-                            Pay Now
-                          </button>
-                        )
+                        <button
+                          type="button"
+                          onClick={() => handlePayInvoice(order)}
+                          className={`inline-flex h-9 min-w-[148px] items-center justify-center rounded-full px-4 text-xs font-semibold transition ${pendingActionButtonClasses}`}
+                          title={order.invoiceStatusHelper}
+                        >
+                          {isPendingReview ? 'Billing Review Required' : 'Awaiting Admin Payment'}
+                        </button>
                       )}
                       <button
                         type="button"
-                        onClick={() => openDiscountModal(order)}
-                        disabled={isPaid}
+                        disabled
                         className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-                        title="Apply discount"
+                        title="Discount changes require billing support"
                         aria-label={`Apply discount for ${order.invoiceNumber}`}
                       >
                         <Percent size={16} />
@@ -985,28 +986,6 @@ export default function BillingPage() {
           </p>
         </div> */}
 
-        {selectedInvoices.length ? (
-          <div className="sticky bottom-4 z-20 flex justify-center px-2">
-            <div className="flex w-full max-w-xl items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/95 px-5 py-4 shadow-2xl shadow-slate-950/40 backdrop-blur">
-              <div className="flex items-center gap-4 text-sm">
-                <p className="text-slate-300">
-                  Selected: <span className="ml-2 text-lg md:text-xl font-semibold text-sky-300">{selectedInvoices.length}</span>
-                </p>
-                <div className="h-8 w-px bg-white/10" />
-                <p className="text-slate-300">
-                  Total: <span className="ml-2 text-lg md:text-xl font-semibold text-sky-300">{formatCurrency(selectedInvoicesTotal)}</span>
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handlePaySelected}
-                className="inline-flex h-9 min-w-[140px] items-center justify-center rounded-full px-4 text-xs font-semibold !text-white transition bg-emerald-500 hover:bg-emerald-400"
-              >
-                Pay Selected
-              </button>
-            </div>
-          </div>
-        ) : null}
       </div>
 
       {selectedCharge
@@ -1017,7 +996,7 @@ export default function BillingPage() {
                   <div>
                     <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Invoice Details</p>
                     <h2 className="mt-2 text-2xl font-semibold text-white">{selectedCharge.invoiceNumber}</h2>
-                    <p className="mt-2 text-sm text-slate-400">Billing summary for this recent charge entry.</p>
+                    <p className="mt-2 text-sm text-slate-400">{selectedCharge.hasInvoiceRecord ? 'Billing summary for this linked invoice record.' : 'Billing metadata for this order is still pending backend sync.'}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <button type="button" onClick={() => setSelectedCharge(null)} className="btn-secondary px-4">
@@ -1038,6 +1017,7 @@ export default function BillingPage() {
                   <div className="panel-muted p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Due Date</p>
                     <p className="mt-2 text-lg font-medium text-white">{selectedCharge.dueDate}</p>
+                    <p className="mt-2 text-sm text-slate-400">{selectedCharge.invoiceStatusHelper}</p>
                   </div>
                   <div className="panel-muted p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Service</p>
@@ -1085,6 +1065,14 @@ export default function BillingPage() {
                       );
                     })()
                   ) : null}
+                  {selectedCharge.invoiceDocumentUrl ? (
+                    <div className="panel-muted p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Invoice Document</p>
+                      <a href={selectedCharge.invoiceDocumentUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-200 hover:bg-white/[0.06]">
+                        Open invoice file
+                      </a>
+                    </div>
+                  ) : null}
                   <div className="panel-muted p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Recorded Date</p>
                     <p className="mt-2 text-lg font-medium text-white">{formatDate(selectedCharge.date)}</p>
@@ -1108,23 +1096,10 @@ export default function BillingPage() {
                         );
                       }
 
-                      if (isPendingReview) {
-                        return (
-                          <button type="button" disabled className="btn-secondary inline-flex items-center gap-2 opacity-60 cursor-not-allowed">
-                            <FileText size={16} />
-                            Awaiting admin review
-                          </button>
-                        );
-                      }
-
                       return (
-                        <button
-                          type="button"
-                          onClick={() => handlePayInvoice(selectedCharge)}
-                          className="btn-primary inline-flex items-center gap-2"
-                        >
+                        <button type="button" disabled className="btn-secondary inline-flex items-center gap-2 opacity-60 cursor-not-allowed" title={selectedCharge.invoiceStatusHelper}>
                           <CreditCard size={16} />
-                          Proceed to payment
+                          {isPendingReview ? 'Awaiting billing review' : 'Awaiting admin payment'}
                         </button>
                       );
                     })()}
@@ -1139,11 +1114,11 @@ export default function BillingPage() {
                     {selectedCharge.status !== 'Paid' ? (
                       <button
                         type="button"
-                        onClick={() => openDiscountModal(selectedCharge)}
-                        className="btn-secondary inline-flex items-center gap-2"
+                        disabled
+                        className="btn-secondary inline-flex items-center gap-2 opacity-60 cursor-not-allowed"
                       >
                         <Percent size={16} />
-                        Apply discount
+                        Discounts via billing
                       </button>
                     ) : null}
                     <button

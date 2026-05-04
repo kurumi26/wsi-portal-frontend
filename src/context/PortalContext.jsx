@@ -156,6 +156,8 @@ export function PortalProvider({ children }) {
       || message.includes('failed to fetch');
   };
 
+  const isLocalCheckoutContract = (contractId) => String(contractId ?? '').trim().toLowerCase().startsWith('checkout-');
+
   const getContractMatchKey = (contract) => String(
     contract?.id
     ?? contract?.contractId
@@ -869,6 +871,17 @@ export function PortalProvider({ children }) {
       privacyAccepted: normalizedDecision === 'accept',
     });
 
+    if (isLocalCheckoutContract(contractId)) {
+      return {
+        success: true,
+        status,
+        persistedLocally: false,
+        message: normalizedDecision === 'accept'
+          ? 'Checkout agreement accepted. Payment can continue.'
+          : 'Checkout agreement rejected.',
+      };
+    }
+
     try {
       const result = await portalApi.recordContractDecision(contractId, {
         decision: normalizedDecision,
@@ -940,6 +953,14 @@ export function PortalProvider({ children }) {
       signedDocumentName: file.name,
       signedDocumentUploadedAt: timestamp,
     });
+
+    if (isLocalCheckoutContract(contractId)) {
+      return {
+        success: true,
+        persistedLocally: true,
+        message: 'Signed document metadata was saved locally for this checkout agreement. The file will need a backend contract record before it can be stored remotely.',
+      };
+    }
 
     try {
       const result = await portalApi.uploadSignedContract(contractId, file);
@@ -1191,6 +1212,12 @@ export function PortalProvider({ children }) {
     return result;
   };
 
+  const markAdminPurchasePaid = async (orderId, payload = {}) => {
+    const result = await portalApi.markAdminPurchasePaid(orderId, payload);
+    await refreshPortalData();
+    return result;
+  };
+
   const updateClientBilling = async (userId, payload) => {
     const result = await portalApi.updateClientBilling(userId, payload);
     await refreshPortalData();
@@ -1266,6 +1293,7 @@ export function PortalProvider({ children }) {
       uploadAdminSignedContract,
       updateServiceStatus,
       approveAdminOrder,
+      markAdminPurchasePaid,
       updateClientBilling,
       updateClientAccount,
       updateClientAccountStatus,

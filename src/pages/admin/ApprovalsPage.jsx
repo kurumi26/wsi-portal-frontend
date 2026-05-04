@@ -5,7 +5,10 @@ import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
+import { useTheme } from '../../context/ThemeContext';
+import { clientMatchesRecord, findClientByRecord } from '../../utils/clients';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
+import { canApproveOrderProvisioning, getInvoiceApprovalBlockReason, getInvoiceDueDateValue, getInvoiceNumber, getInvoiceStatusLabel, hasInvoiceRecord } from '../../utils/invoices';
 import { getCancellationReasonValue, getCustomerCommentValue, getDesiredDomainValue, isDomainOrder } from '../../utils/orders';
 import { getAdminServiceExpirationMeta } from '../../utils/services';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -549,6 +552,7 @@ const ExpirationMetaCell = ({ expirationMeta }) => (
 
 export default function ApprovalsPage() {
   const { adminPurchases, approveAdminOrder, clients, adminServices, approveServiceCancellation, rejectServiceCancellation, updateServiceStatus, requestServiceCancellation } = usePortal();
+  const { isDarkMode } = useTheme();
   const [processingOrderId, setProcessingOrderId] = useState('');
   const [selectedOrderForReview, setSelectedOrderForReview] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -605,21 +609,30 @@ export default function ApprovalsPage() {
     });
   }, [clientSearch, eligibleClients]);
 
+  const selectedClientRecord = useMemo(
+    () => eligibleClients.find((client) => client.id === selectedClientId) ?? null,
+    [eligibleClients, selectedClientId],
+  );
+
 
 
   const pendingOrders = useMemo(
-    () => adminPurchases.filter((p) => p.status === 'Pending Review' && (!selectedClientId || p.client === eligibleClients.find((c) => c.id === selectedClientId)?.name)),
-    [adminPurchases, selectedClientId, eligibleClients],
+    () => adminPurchases.filter((purchase) => purchase.status === 'Pending Review' && (!selectedClientRecord || clientMatchesRecord(selectedClientRecord, purchase.client, purchase.clientEmail))),
+    [adminPurchases, selectedClientRecord],
   );
 
   const pendingCancellationServices = useMemo(
-    () => adminServices.filter((service) => service.cancellationRequest?.statusKey === 'pending' && (!selectedClientId || service.clientEmail === eligibleClients.find((c) => c.id === selectedClientId)?.email || service.client === eligibleClients.find((c) => c.id === selectedClientId)?.name)),
-    [adminServices, selectedClientId, eligibleClients],
+    () => adminServices.filter((service) => service.cancellationRequest?.statusKey === 'pending' && (!selectedClientRecord || clientMatchesRecord(selectedClientRecord, service.client, service.clientEmail))),
+    [adminServices, selectedClientRecord],
   );
 
   const combinedPending = useMemo(() => {
     const orders = pendingOrders.map((o) => {
       const customerNote = getDesiredDomainValue(o);
+      const invoiceNumber = getInvoiceNumber(o);
+      const invoiceStatus = getInvoiceStatusLabel(o);
+      const invoiceDueDate = getInvoiceDueDateValue(o);
+      const approvalBlockReason = getInvoiceApprovalBlockReason(o);
 
       return {
         id: `order-${o.id}`,
@@ -631,6 +644,12 @@ export default function ApprovalsPage() {
         status: o.status,
         raw: o,
         customerNote,
+        invoiceNumber,
+        invoiceStatus,
+        invoiceDueDate,
+        hasInvoiceRecord: hasInvoiceRecord(o),
+        canApproveProvisioning: canApproveOrderProvisioning(o),
+        approvalBlockReason,
         meta: { date: o.date, paymentMethod: o.paymentMethod },
       };
     });
@@ -655,14 +674,11 @@ export default function ApprovalsPage() {
 
   const filteredServices = useMemo(() => {
     return adminServices.filter((service) => {
-      if (!selectedClientId) return true;
+      if (!selectedClientRecord) return true;
 
-      const client = eligibleClients.find((c) => c.id === selectedClientId);
-      if (!client) return true;
-
-      return service.clientEmail === client.email || service.client === client.name;
+      return clientMatchesRecord(selectedClientRecord, service.client, service.clientEmail);
     });
-  }, [adminServices, selectedClientId, eligibleClients]);
+  }, [adminServices, selectedClientRecord]);
 
   // All services search/filter logic
   const filteredServicesForPanel = useMemo(() => {
@@ -813,6 +829,16 @@ export default function ApprovalsPage() {
   }, [filteredCombinedPending, pendingTableSort]);
 
   const selectedOrderReviewNote = getDesiredDomainValue(selectedOrderForReview);
+  const selectedOrderInvoiceNumber = getInvoiceNumber(selectedOrderForReview);
+  const selectedOrderInvoiceStatus = getInvoiceStatusLabel(selectedOrderForReview);
+  const selectedOrderInvoiceDueDate = getInvoiceDueDateValue(selectedOrderForReview);
+  const selectedOrderApprovalBlockReason = getInvoiceApprovalBlockReason(selectedOrderForReview);
+  const canApproveSelectedOrder = canApproveOrderProvisioning(selectedOrderForReview);
+  const blockedApprovalMessageClasses = isDarkMode ? 'text-amber-200' : 'text-amber-700';
+  const readyApprovalMessageClasses = isDarkMode ? 'text-emerald-200' : 'text-emerald-700';
+  const blockedApprovalButtonClasses = isDarkMode
+    ? 'border border-amber-300/30 bg-amber-300/10 text-amber-100'
+    : 'border border-amber-200 bg-amber-50 text-amber-700';
   const selectedOrderActionNote = getCustomerCommentValue(selectedOrderForNote);
   const shouldShowCommentAction = (row) => {
     if (row.type === 'order') {
@@ -824,7 +850,7 @@ export default function ApprovalsPage() {
   const selectedOrderForNoteTitle = selectedOrderForNote?.serviceName ?? selectedOrderForNote?.name ?? 'Customer Comment';
   const selectedOrderForNoteIsCancellation = Boolean(selectedOrderForNote?.cancellationRequest);
 
-  const findClientForService = (service) => clients.find((client) => client.email === service.clientEmail || client.name === service.client) ?? null;
+  const findClientForService = (service) => findClientByRecord(clients, service.client, service.clientEmail);
 
   const handleViewClientFromService = (service) => {
     const client = findClientForService(service);
@@ -944,15 +970,25 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleApproveOrder = async (orderId) => {
+  const handleApproveOrder = async (order) => {
+    const orderId = order?.id ?? order;
+    const approvalBlockReason = order && typeof order === 'object' ? getInvoiceApprovalBlockReason(order) : '';
+
+    if (approvalBlockReason) {
+      setError(approvalBlockReason);
+      return false;
+    }
+
     setProcessingOrderId(orderId);
     setError('');
 
     try {
       const response = await approveAdminOrder(orderId);
       setMessage(response.message);
+      return true;
     } catch (requestError) {
       setError(requestError.message);
+      return false;
     } finally {
       setProcessingOrderId('');
     }
@@ -1297,6 +1333,7 @@ export default function ApprovalsPage() {
                         {renderPendingSortIndicator('amount')}
                       </button>
                     </th>
+                    <th className="px-5 py-4 font-semibold text-white">Invoice</th>
                     <th className="px-5 py-4 font-semibold text-white">
                       <button type="button" onClick={() => handlePendingTableSort('status')} className="inline-flex items-center gap-1 hover:text-sky-200">
                         <span>Status</span>
@@ -1320,6 +1357,19 @@ export default function ApprovalsPage() {
                       <td className="px-5 py-4 align-middler">
                         {row.amount != null ? <p className="font-semibold text-sky-300">{formatCurrency(row.amount)}</p> : <span className="text-sm text-slate-500">—</span>}
                       </td>
+                      <td className="px-5 py-4 align-middle">
+                        {row.type === 'order' ? (
+                          <div>
+                            <p className="font-medium text-white">{row.invoiceNumber || 'Pending backend sync'}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <StatusBadge status={row.invoiceStatus} />
+                            </div>
+                            <p className="mt-2 text-xs text-slate-400">{row.invoiceDueDate ? `Due ${formatDate(row.invoiceDueDate)}` : row.approvalBlockReason}</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-500">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
                       <td className="px-5 py-4 align-middle">
                         <div className="ml-auto grid w-fit grid-cols-[44px_minmax(96px,auto)_minmax(156px,auto)] items-center justify-end gap-3">
@@ -1337,8 +1387,8 @@ export default function ApprovalsPage() {
                                 </button>
                               ) : <span className="h-11 w-11" aria-hidden="true" />}
                               <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center">View</button>
-                              <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-emerald-500">
-                                <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}
+                              <button type="button" onClick={() => handleApproveOrder(row.raw)} disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning} title={row.approvalBlockReason || 'Approve order'} className={`inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl px-4 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}>
+                                <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}
                               </button>
                             </>
                           ) : (
@@ -1367,7 +1417,7 @@ export default function ApprovalsPage() {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={5} className="px-5 py-12 text-center text-slate-400">No pending items match the current filters.</td>
+                      <td colSpan={6} className="px-5 py-12 text-center text-slate-400">No pending items match the current filters.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1388,6 +1438,16 @@ export default function ApprovalsPage() {
                     <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{row.type === 'order' ? 'Amount' : 'Requested'}</p>
                     <p className="mt-2 text-sm text-sky-200">{row.type === 'order' ? formatCurrency(row.amount) : (row.meta.requestedAt ? formatDateTime(row.meta.requestedAt) : '—')}</p>
                   </div>
+                  {row.type === 'order' ? (
+                    <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Invoice</p>
+                      <p className="mt-2 text-sm font-medium text-white">{row.invoiceNumber || 'Pending backend sync'}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <StatusBadge status={row.invoiceStatus} />
+                      </div>
+                      <p className="mt-3 text-xs text-slate-400">{row.invoiceDueDate ? `Due ${formatDate(row.invoiceDueDate)}` : row.approvalBlockReason}</p>
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-right">
                     {row.type === 'order' ? (
@@ -1404,7 +1464,7 @@ export default function ApprovalsPage() {
                           </button>
                         ) : null}
                         <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center px-3">View</button>
-                        <button type="button" onClick={() => handleApproveOrder(row.raw.id)} disabled={processingOrderId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingOrderId === row.raw.id ? 'Approving...' : 'Approve'}</button>
+                        <button type="button" onClick={() => handleApproveOrder(row.raw)} disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning} title={row.approvalBlockReason || 'Approve order'} className={`inline-flex min-w-[140px] items-center justify-center gap-2 rounded-2xl px-3 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}>{processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}</button>
                       </>
                     ) : (
                       <>
@@ -1627,8 +1687,8 @@ export default function ApprovalsPage() {
         const client = clients.find((c) => c.id === selectedClientId);
         if (!client) return null;
 
-        const relatedServices = adminServices.filter((s) => s.clientEmail === client.email || s.client === client.name);
-        const relatedPurchases = adminPurchases.filter((p) => p.client === client.name);
+        const relatedServices = adminServices.filter((service) => clientMatchesRecord(client, service.client, service.clientEmail));
+        const relatedPurchases = adminPurchases.filter((purchase) => clientMatchesRecord(client, purchase.client, purchase.clientEmail));
         const totalSpent = relatedPurchases.reduce((sum, p) => sum + (p.amount || 0), 0);
 
         return createPortal(
@@ -1838,7 +1898,7 @@ export default function ApprovalsPage() {
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Order Review</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">{selectedOrderForReview.serviceName}</h2>
-                <p className="mt-2 text-sm text-slate-400">Review order details and uploaded proof before approving.</p>
+                <p className="mt-2 text-sm text-slate-400">Review order details, billing state, and proof status before approving provisioning.</p>
               </div>
               <button type="button" onClick={closeOrderModal} className="btn-secondary px-4">Close</button>
             </div>
@@ -1858,8 +1918,17 @@ export default function ApprovalsPage() {
               </div>
 
               <div className="panel-muted p-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Payment proof</p>
-                <p className="mt-2 text-sm text-slate-400">Open external proof links from the orders list to review uploaded files.</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Linked Invoice</p>
+                <p className="mt-2 text-lg font-medium text-white">{selectedOrderInvoiceNumber || 'Pending backend sync'}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={selectedOrderInvoiceStatus} />
+                </div>
+                <p className="mt-3 text-sm text-slate-300">{selectedOrderInvoiceDueDate ? `Due ${formatDate(selectedOrderInvoiceDueDate)}` : 'Due date unavailable from API.'}</p>
+                {!canApproveSelectedOrder ? (
+                  <p className={`mt-3 text-sm ${blockedApprovalMessageClasses}`}>{selectedOrderApprovalBlockReason}</p>
+                ) : (
+                  <p className={`mt-3 text-sm ${readyApprovalMessageClasses}`}>Invoice is marked paid and ready for approval.</p>
+                )}
               </div>
             </div>
 
@@ -1871,8 +1940,8 @@ export default function ApprovalsPage() {
             ) : null}
 
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={async () => { await handleApproveOrder(selectedOrderForReview.id); closeOrderModal(); }} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 hover:bg-emerald-500">
-                <ShieldCheck size={16} /> Approve Order
+              <button type="button" onClick={async () => { const approved = await handleApproveOrder(selectedOrderForReview); if (approved) closeOrderModal(); }} disabled={processingOrderId === selectedOrderForReview.id || !canApproveSelectedOrder} title={selectedOrderApprovalBlockReason || 'Approve order'} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 ${canApproveSelectedOrder ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}>
+                <ShieldCheck size={16} /> {processingOrderId === selectedOrderForReview.id ? 'Approving...' : (canApproveSelectedOrder ? 'Approve Order' : 'Invoice Pending')}
               </button>
             </div>
           </div>

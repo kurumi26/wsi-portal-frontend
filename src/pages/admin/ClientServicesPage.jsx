@@ -6,6 +6,7 @@ import Pagination from '../../components/common/Pagination';
 import UserAvatar from '../../components/common/UserAvatar';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
+import { clientMatchesRecord, findClientByRecord } from '../../utils/clients';
 import { formatCurrency, formatDateTime } from '../../utils/format';
 import { getAddonBillingCycle, getAddonBillingCycleLabel, getAddonExpirationMeta } from '../../utils/addons';
 import { getCancellationReasonValue } from '../../utils/orders';
@@ -880,7 +881,7 @@ export default function ClientServicesPage() {
     setServicesPage(1);
   }, [servicesSearchQuery, servicesStatusFilter, servicesViewMode, attentionFilter, visibleServicesForPanel.length]);
 
-  const findClientForService = (service) => clients.find((client) => client.email === service.clientEmail || client.name === service.client) ?? null;
+  const findClientForService = (service) => findClientByRecord(clients, service.client, service.clientEmail);
 
   const handleViewClientFromService = (service) => {
     const client = findClientForService(service);
@@ -1461,8 +1462,8 @@ export default function ClientServicesPage() {
           return null;
         }
 
-        const relatedServices = adminServices.filter((service) => service.clientEmail === client.email || service.client === client.name);
-        const relatedPurchases = adminPurchases.filter((purchase) => purchase.client === client.name);
+        const relatedServices = adminServices.filter((service) => clientMatchesRecord(client, service.client, service.clientEmail));
+        const relatedPurchases = adminPurchases.filter((purchase) => clientMatchesRecord(client, purchase.client, purchase.clientEmail));
         const totalSpent = relatedPurchases.reduce((sum, purchase) => sum + (purchase.amount || 0), 0);
 
         return createPortal(

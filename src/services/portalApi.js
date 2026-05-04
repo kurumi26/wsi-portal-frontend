@@ -526,6 +526,13 @@ export const portalApi = {
     });
   },
 
+  async markAdminPurchasePaid(orderId, payload = {}) {
+    return apiRequest(`/admin/purchases/${orderId}/mark-paid`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async getAdminServices() {
     return apiRequest('/admin/customer-services');
   },

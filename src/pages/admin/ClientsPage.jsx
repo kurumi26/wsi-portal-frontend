@@ -6,6 +6,7 @@ import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
+import { clientMatchesRecord } from '../../utils/clients';
 import { formatCurrency, formatDate } from '../../utils/format';
 
 export default function ClientsPage() {
@@ -31,9 +32,9 @@ export default function ClientsPage() {
   const [clientsView, setClientsView] = useState('list');
 
   const buildAuditTrailLines = (client) => {
-    const relatedPurchases = adminPurchases.filter((purchase) => purchase.client === client.name);
+    const relatedPurchases = adminPurchases.filter((purchase) => clientMatchesRecord(client, purchase.client, purchase.clientEmail));
     const relatedServices = adminServices.filter(
-      (service) => service.client === client.name || service.clientEmail === client.email,
+      (service) => clientMatchesRecord(client, service.client, service.clientEmail),
     );
 
     return [
@@ -76,9 +77,9 @@ export default function ClientsPage() {
   };
 
   const buildAuditTrailData = (client) => {
-    const relatedPurchases = adminPurchases.filter((purchase) => purchase.client === client.name);
+    const relatedPurchases = adminPurchases.filter((purchase) => clientMatchesRecord(client, purchase.client, purchase.clientEmail));
     const relatedServices = adminServices.filter(
-      (service) => service.client === client.name || service.clientEmail === client.email,
+      (service) => clientMatchesRecord(client, service.client, service.clientEmail),
     );
 
     return {
