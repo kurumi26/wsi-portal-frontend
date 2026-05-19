@@ -152,6 +152,323 @@ function createPdfFromText(text, fileName) {
   return pdf.output('blob');
 }
 
+function createStyledContractPdf(templateDocument, fileName) {
+  if (!templateDocument || typeof templateDocument !== 'object') {
+    return createPdfFromText(templateDocument, fileName);
+  }
+
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+  const margin = 48;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - (margin * 2);
+  const pageBottom = pageHeight - margin;
+  const title = String(templateDocument.title || stripFileExtension(fileName) || 'Agreement Copy').trim();
+  const subtitle = String(templateDocument.subtitle || '').trim();
+  const badge = String(templateDocument.badge || '').trim();
+  const overview = String(templateDocument.overview || '').trim();
+  const note = String(templateDocument.note || '').trim();
+  const metadata = Array.isArray(templateDocument.metadata)
+    ? templateDocument.metadata.filter((item) => item?.label || item?.value)
+    : [];
+  const sections = Array.isArray(templateDocument.sections)
+    ? templateDocument.sections.filter((section) => section?.title || section?.body)
+    : [];
+  const documents = Array.isArray(templateDocument.documents)
+    ? templateDocument.documents.filter((document) => document?.title || document?.description)
+    : [];
+  const signatories = Array.isArray(templateDocument.signatories)
+    ? templateDocument.signatories.filter((signatory) => signatory?.title)
+    : [];
+  let cursorY = margin;
+
+  const ensureSpace = (height = 48) => {
+    if (cursorY + height <= pageBottom) {
+      return;
+    }
+
+    pdf.addPage();
+    cursorY = margin;
+  };
+
+  const wrapText = (text, width, fontSize = 11) => {
+    const normalized = String(text || '').trim();
+
+    if (!normalized) {
+      return [];
+    }
+
+    pdf.setFontSize(fontSize);
+    return pdf.splitTextToSize(normalized, width).filter(Boolean);
+  };
+
+  const drawWrappedLines = (lines, options = {}) => {
+    const {
+      x = margin,
+      y = cursorY,
+      lineHeight = 16,
+      fontSize = 11,
+      fontStyle = 'normal',
+      color = [15, 23, 42],
+    } = options;
+    let localY = y;
+
+    pdf.setFont('helvetica', fontStyle);
+    pdf.setFontSize(fontSize);
+    pdf.setTextColor(...color);
+
+    lines.forEach((line) => {
+      pdf.text(line, x, localY);
+      localY += lineHeight;
+    });
+
+    return localY - y;
+  };
+
+  const drawSectionLabel = (label) => {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.setTextColor(71, 85, 105);
+    pdf.text(label.toUpperCase(), margin, cursorY);
+    cursorY += 18;
+  };
+
+  const titleLines = wrapText(title, maxWidth - 40, 22);
+  const subtitleLines = subtitle ? wrapText(subtitle, maxWidth - 40, 11) : [];
+  const headerHeight = Math.max(110, 24 + (badge ? 26 : 0) + (titleLines.length * 24) + (subtitleLines.length * 14) + 18);
+  ensureSpace(headerHeight);
+
+  pdf.setFillColor(15, 23, 42);
+  pdf.roundedRect(margin, cursorY, maxWidth, headerHeight, 24, 24, 'F');
+
+  let headerY = cursorY + 24;
+
+  if (badge) {
+    const badgeWidth = Math.min(200, Math.max(120, (badge.length * 5.6) + 24));
+
+    pdf.setFillColor(14, 165, 233);
+    pdf.roundedRect(margin + 18, headerY - 4, badgeWidth, 22, 11, 11, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(badge.toUpperCase(), margin + 30, headerY + 10);
+    headerY += 30;
+  }
+
+  drawWrappedLines(titleLines, {
+    x: margin + 20,
+    y: headerY,
+    lineHeight: 24,
+    fontSize: 22,
+    fontStyle: 'bold',
+    color: [255, 255, 255],
+  });
+  headerY += titleLines.length * 24;
+
+  if (subtitleLines.length) {
+    headerY += 4;
+    drawWrappedLines(subtitleLines, {
+      x: margin + 20,
+      y: headerY,
+      lineHeight: 14,
+      fontSize: 11,
+      color: [191, 219, 254],
+    });
+  }
+
+  cursorY += headerHeight + 22;
+
+  if (metadata.length) {
+    const columnCount = 2;
+    const gutter = 16;
+    const innerPadding = 16;
+    const rowHeight = 52;
+    const rows = Math.ceil(metadata.length / columnCount);
+    const cardHeight = 20 + (rows * rowHeight) + 12;
+    const columnWidth = (maxWidth - (innerPadding * 2) - gutter) / columnCount;
+
+    ensureSpace(cardHeight);
+    pdf.setDrawColor(226, 232, 240);
+    pdf.setFillColor(248, 250, 252);
+    pdf.roundedRect(margin, cursorY, maxWidth, cardHeight, 18, 18, 'FD');
+
+    metadata.forEach((item, index) => {
+      const row = Math.floor(index / columnCount);
+      const column = index % columnCount;
+      const itemX = margin + innerPadding + (column * (columnWidth + gutter));
+      const itemY = cursorY + 24 + (row * rowHeight);
+      const valueLines = wrapText(item.value, columnWidth, 11).slice(0, 2);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(String(item.label || '').toUpperCase(), itemX, itemY);
+      drawWrappedLines(valueLines, {
+        x: itemX,
+        y: itemY + 16,
+        lineHeight: 14,
+        fontSize: 11,
+        fontStyle: 'bold',
+        color: [15, 23, 42],
+      });
+    });
+
+    cursorY += cardHeight + 22;
+  }
+
+  if (overview) {
+    const overviewLines = wrapText(overview, maxWidth, 11);
+    ensureSpace(28 + (overviewLines.length * 16));
+    drawSectionLabel('Agreement Summary');
+    cursorY += drawWrappedLines(overviewLines, {
+      y: cursorY,
+      lineHeight: 16,
+      fontSize: 11,
+      color: [51, 65, 85],
+    });
+    cursorY += 16;
+  }
+
+  sections.forEach((section, index) => {
+    const heading = `${index + 1}. ${String(section.title || '').trim()}`;
+    const bodyLines = wrapText(section.body, maxWidth, 11);
+    const blockHeight = 20 + (bodyLines.length * 16) + 12;
+
+    ensureSpace(blockHeight);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.setTextColor(15, 23, 42);
+    pdf.text(heading, margin, cursorY);
+    cursorY += 20;
+    cursorY += drawWrappedLines(bodyLines, {
+      y: cursorY,
+      lineHeight: 16,
+      fontSize: 11,
+      color: [51, 65, 85],
+    });
+    cursorY += 12;
+  });
+
+  if (documents.length) {
+    drawSectionLabel('Included Documents');
+
+    documents.forEach((document, index) => {
+      const itemTitle = `${index + 1}. ${String(document.title || '').trim()}`;
+      const itemDescription = String(document.description || '').trim();
+      const titleLines = wrapText(itemTitle, maxWidth, 11);
+      const descriptionLines = itemDescription ? wrapText(itemDescription, maxWidth - 18, 10) : [];
+      const itemHeight = (titleLines.length * 14) + (descriptionLines.length * 13) + 12;
+
+      ensureSpace(itemHeight);
+      cursorY += drawWrappedLines(titleLines, {
+        y: cursorY,
+        lineHeight: 14,
+        fontSize: 11,
+        fontStyle: 'bold',
+        color: [15, 23, 42],
+      });
+
+      if (descriptionLines.length) {
+        cursorY += drawWrappedLines(descriptionLines, {
+          x: margin + 14,
+          y: cursorY + 2,
+          lineHeight: 13,
+          fontSize: 10,
+          color: [71, 85, 105],
+        });
+      }
+
+      cursorY += 10;
+    });
+  }
+
+  if (signatories.length) {
+    drawSectionLabel('Signature Blocks');
+
+    signatories.forEach((signatory) => {
+      const fields = Array.isArray(signatory.fields) && signatory.fields.length
+        ? signatory.fields
+        : ['Printed Name', 'Signature', 'Date'];
+      const helperLines = signatory.helper ? wrapText(signatory.helper, maxWidth - 36, 10) : [];
+      const cardHeight = 72 + (helperLines.length * 12) + (fields.length * 22);
+      const cardX = margin;
+      const cardWidth = maxWidth;
+      const lineStartX = cardX + 18;
+      const lineEndX = cardX + cardWidth - 18;
+
+      ensureSpace(cardHeight);
+      pdf.setDrawColor(226, 232, 240);
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(cardX, cursorY, cardWidth, cardHeight, 18, 18, 'FD');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(signatory.title, lineStartX, cursorY + 24);
+
+      let helperStartY = cursorY + 40;
+
+      if (helperLines.length) {
+        drawWrappedLines(helperLines, {
+          x: lineStartX,
+          y: helperStartY,
+          lineHeight: 12,
+          fontSize: 10,
+          color: [71, 85, 105],
+        });
+        helperStartY += helperLines.length * 12;
+      }
+
+      fields.forEach((label, index) => {
+        const labelY = helperStartY + 16 + (index * 22);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(label, lineStartX, labelY);
+        pdf.setDrawColor(148, 163, 184);
+        pdf.line(lineStartX, labelY + 10, lineEndX, labelY + 10);
+      });
+
+      cursorY += cardHeight + 14;
+    });
+  }
+
+  if (note) {
+    const noteLines = wrapText(note, maxWidth - 32, 10);
+    const noteHeight = 28 + (noteLines.length * 14) + 10;
+
+    ensureSpace(noteHeight);
+    pdf.setDrawColor(186, 230, 253);
+    pdf.setFillColor(240, 249, 255);
+    pdf.roundedRect(margin, cursorY, maxWidth, noteHeight, 18, 18, 'FD');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(10);
+    pdf.setTextColor(12, 74, 110);
+    pdf.text('Additional Notes', margin + 16, cursorY + 20);
+    drawWrappedLines(noteLines, {
+      x: margin + 16,
+      y: cursorY + 36,
+      lineHeight: 14,
+      fontSize: 10,
+      color: [12, 74, 110],
+    });
+    cursorY += noteHeight;
+  }
+
+  const pageCount = pdf.getNumberOfPages();
+
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+    pdf.setPage(pageNumber);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text(`Generated by WSI Portal`, margin, pageHeight - 20);
+    pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
+  }
+
+  return pdf.output('blob');
+}
+
 function getHeaders(customHeaders = {}) {
   const headers = {
     'Accept': 'application/json',
@@ -226,6 +543,34 @@ export const portalApi = {
 
   clearAuthToken() {
     this.setAuthToken(null);
+  },
+
+  downloadTextAsPdf(text, fallbackFileName = 'agreement-copy.pdf') {
+    const normalizedText = String(text ?? '').replace(/^\uFEFF/, '').trim();
+
+    if (!normalizedText) {
+      throw new Error('Agreement template is empty.');
+    }
+
+    const fileName = ensurePdfFileName(fallbackFileName);
+    const pdfBlob = createPdfFromText(normalizedText, fileName);
+    downloadBlob(pdfBlob, fileName);
+
+    return {
+      fileName,
+      generatedFromText: true,
+    };
+  },
+
+  downloadContractPdf(templateDocument, fallbackFileName = 'agreement-copy.pdf') {
+    const fileName = ensurePdfFileName(fallbackFileName);
+    const pdfBlob = createStyledContractPdf(templateDocument, fileName);
+    downloadBlob(pdfBlob, fileName);
+
+    return {
+      fileName,
+      generatedFromTemplate: true,
+    };
   },
 
   async downloadFile(fileUrl, fallbackFileName = 'agreement-copy.pdf', options = {}) {

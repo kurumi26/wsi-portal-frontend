@@ -203,6 +203,164 @@ const normalizeDocumentSections = (sections, serviceName) => {
   return items.length ? items : getAgreementSections(serviceName);
 };
 
+const formatContractTemplateDate = (value) => {
+  const normalizedValue = normalizeText(value);
+
+  if (!normalizedValue) {
+    return 'To be completed at signing';
+  }
+
+  const parsedDate = new Date(normalizedValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return normalizedValue;
+  }
+
+  return parsedDate.toLocaleDateString('en-PH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
+const getContractTemplateData = (contract) => {
+  const serviceName = normalizeText(pickFirstValue(contract?.serviceName, contract?.title)) || 'Managed Service';
+  const contractTitle = normalizeText(pickFirstValue(contract?.title, `${serviceName} Agreement`)) || 'Service Agreement';
+  const providerName = normalizeText(pickFirstValue(contract?.providerName, contract?.companyName, contract?.vendorName)) || 'WSI Portal Services';
+  const customerName = normalizeText(pickFirstValue(contract?.clientName, contract?.customerName, contract?.customer)) || 'Customer';
+  const reference = normalizeText(pickFirstValue(contract?.auditReference, contract?.orderNumber, contract?.orderId, contract?.id)) || 'Pending reference';
+  const version = normalizeText(contract?.version) || 'v1.0';
+  const effectiveDate = formatContractTemplateDate(pickFirstValue(contract?.issuedAt, contract?.acceptedAt, new Date().toISOString()));
+  const scopeLabel = contract?.scope === 'checkout'
+    ? 'checkout order review and approval'
+    : contract?.scope === 'service'
+      ? 'ongoing subscribed services'
+      : 'ordered services and related deliverables';
+  const documentSections = normalizeDocumentSections(contract?.documentSections, serviceName);
+
+  return {
+    contractTitle,
+    providerName,
+    customerName,
+    serviceName,
+    reference,
+    version,
+    effectiveDate,
+    scopeLabel,
+    documentSections,
+  };
+};
+
+export const buildContractTemplateDocument = (contract) => {
+  const template = getContractTemplateData(contract);
+  const agreementTitle = /agreement/i.test(template.contractTitle)
+    ? template.contractTitle
+    : `${template.serviceName} Service Agreement`;
+
+  return {
+    badge: 'WSI service agreement',
+    title: agreementTitle,
+    subtitle: `${template.customerName} | ${template.serviceName} | Ref ${template.reference}`,
+    metadata: [
+      { label: 'Provider', value: template.providerName },
+      { label: 'Customer', value: template.customerName },
+      { label: 'Service', value: template.serviceName },
+      { label: 'Reference', value: template.reference },
+      { label: 'Version', value: template.version },
+      { label: 'Effective Date', value: template.effectiveDate },
+    ],
+    overview: `This Service Agreement is made between ${template.providerName} and ${template.customerName} for ${template.scopeLabel} associated with ${template.serviceName}. By signing this document, both parties confirm the commercial, operational, and compliance terms recorded for the service order or service record.`,
+    sections: [
+      {
+        title: 'Parties and Order Scope',
+        body: `This Agreement governs the delivery of ${template.serviceName}, together with any approved order form, onboarding requirements, support commitments, renewal instructions, and service records maintained in the WSI Portal.`,
+      },
+      {
+        title: 'Service Delivery',
+        body: `${template.providerName} will provision, maintain, and support ${template.serviceName} in accordance with the approved order, accepted configuration, implementation notes, and applicable service policies.`,
+      },
+      {
+        title: 'Fees and Billing',
+        body: 'Recurring charges, one-time fees, renewal schedules, taxes, and approved add-ons will follow the commercial terms stated in the portal, quotation, invoice, or service order accepted by the customer.',
+      },
+      {
+        title: 'Customer Obligations',
+        body: `${template.customerName} will provide accurate account information, timely approvals, requested technical details, and reasonable cooperation needed to provision, secure, and maintain the subscribed service.`,
+      },
+      {
+        title: 'Provider Obligations',
+        body: `${template.providerName} will use commercially reasonable efforts to operate, support, and administer the subscribed service in accordance with documented service policies, internal controls, and applicable law.`,
+      },
+      {
+        title: 'Confidentiality and Data Protection',
+        body: 'Each party will protect confidential information and process account, operational, and personal data only for legitimate service delivery, billing, support, compliance, and legal purposes consistent with applicable privacy obligations.',
+      },
+      {
+        title: 'Term, Suspension, and Termination',
+        body: 'This Agreement takes effect on the effective date or activation date, whichever occurs first, and remains in force until the service expires, is terminated, is suspended under applicable policies, or is superseded by a newer signed agreement.',
+      },
+      {
+        title: 'Execution',
+        body: 'By signing below, the parties confirm that they are authorized to bind their respective organizations, that they reviewed the incorporated service documents, and that this signed copy may be stored in the WSI Portal as the official contract record.',
+      },
+    ],
+    documents: template.documentSections.map((section) => ({
+      title: section.title,
+      description: section.description || 'Included in the agreement bundle.',
+    })),
+    signatories: [
+      {
+        title: 'Customer / Client Representative',
+        helper: 'Sign on behalf of the customer or buying entity.',
+        fields: ['Printed Name', 'Title / Role', 'Signature', 'Date'],
+      },
+      {
+        title: `${template.providerName} Authorized Representative`,
+        helper: 'Sign on behalf of the service provider.',
+        fields: ['Printed Name', 'Title / Role', 'Signature', 'Date'],
+      },
+    ],
+    note: 'Service-specific schedules, statements of work, SLAs, implementation milestones, compliance appendices, or approval notes may be attached to the fully signed copy and retained with this agreement record.',
+  };
+};
+
+export const buildContractTemplateText = (contract) => {
+  const template = buildContractTemplateDocument(contract);
+  const sectionLines = template.sections.flatMap((section, index) => [
+    `${index + 1}. ${section.title}`,
+    section.body,
+    '',
+  ]);
+  const documentLines = template.documents.map((document, index) => (
+    `${index + 1}. ${document.title}${document.description ? ` - ${document.description}` : ''}`
+  ));
+  const signatoryLines = template.signatories.flatMap((signatory) => [
+    signatory.title,
+    ...(Array.isArray(signatory.fields) && signatory.fields.length ? signatory.fields : ['Printed Name', 'Signature', 'Date']).map(
+      (field) => `${field}: ______________________________`,
+    ),
+    '',
+  ]);
+
+  return [
+    template.title.toUpperCase(),
+    '',
+    ...template.metadata.map((item) => `${item.label}: ${item.value}`),
+    '',
+    'Agreement Summary',
+    template.overview,
+    '',
+    ...sectionLines,
+    'Included Documents',
+    ...documentLines,
+    '',
+    'Signature Blocks',
+    ...signatoryLines,
+    'Additional Notes',
+    template.note,
+  ].join('\n').replace(/\n{3,}/g, '\n\n');
+};
+
 const getSignedDocumentSources = (...records) => {
   const sources = [];
   const pushSource = (value, nested = false) => {

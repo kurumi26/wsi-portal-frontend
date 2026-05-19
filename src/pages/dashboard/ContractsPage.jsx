@@ -11,7 +11,7 @@ import { usePortal } from '../../context/PortalContext';
 import usePageTitle from '../../hooks/usePageTitle';
 import { portalApi } from '../../services/portalApi';
 import { formatDateTime } from '../../utils/format';
-import { hasSignedDocument } from '../../utils/contracts';
+import { buildContractTemplateDocument, hasSignedDocument } from '../../utils/contracts';
 
 const filters = ['All', 'Pending Review', 'Accepted', 'Rejected'];
 const CONTRACTS_PER_PAGE = 5;
@@ -25,6 +25,29 @@ const feedbackToneClasses = {
   warning: 'border-orange-400/20 bg-orange-400/10 text-orange-100',
   error: 'border-rose-400/20 bg-rose-400/10 text-rose-100',
 };
+
+const standardTemplateDownloadMessage = 'Downloaded a ready-to-sign agreement PDF. Have both parties sign it, then upload the executed copy to the portal.';
+const fallbackTemplateDownloadMessage = 'The stored agreement copy was unavailable, so the portal downloaded a ready-to-sign PDF instead. Have both parties sign it, then upload the executed copy to the portal.';
+const signingWorkflowSteps = [
+  {
+    id: 'download',
+    title: 'Download Signable PDF',
+    description: 'Use the stored agreement copy when available. If not, the portal generates a ready-to-sign PDF for this contract.',
+    icon: Download,
+  },
+  {
+    id: 'sign',
+    title: 'Review and Sign',
+    description: 'Have the customer and the WSI representative sign the same copy when a signed agreement is required for the service.',
+    icon: FileSignature,
+  },
+  {
+    id: 'upload',
+    title: 'Upload Signed Copy',
+    description: 'Attach the executed file back to the portal so billing, support, and compliance all reference one agreement record.',
+    icon: Upload,
+  },
+];
 
 const getContractScopeLabel = (contract) => {
   if (contract.scope === 'checkout') {
@@ -81,6 +104,28 @@ const buildDocumentRows = (contract) => contract.documentSections.map((section) 
   description: section.description || 'Included in this agreement bundle.',
 }));
 
+const GENERAL_TEMPLATE_CONTRACT = {
+  id: 'general-contract-template',
+  title: 'General Contract Signing Template',
+  serviceName: 'WSI Portal Services',
+  clientName: 'Customer',
+  providerName: 'WSI Portal Services',
+  auditReference: 'GENERAL-CONTRACT',
+  version: 'v1.0',
+  scope: 'order',
+};
+
+const getQuickActionContractLabel = (contract) => {
+  const title = contract?.title || contract?.serviceName || 'Agreement record';
+  const reference = contract?.auditReference || contract?.orderNumber || contract?.id;
+
+  if (!reference) {
+    return title;
+  }
+
+  return `${title} - ${reference}`;
+};
+
 export default function ContractsPage() {
   usePageTitle('Contracts & Agreements');
 
@@ -103,6 +148,7 @@ export default function ContractsPage() {
   const [downloadingContractId, setDownloadingContractId] = useState('');
   const [downloadingSignedContractId, setDownloadingSignedContractId] = useState('');
   const [selectedContractId, setSelectedContractId] = useState(location.state?.focusContractId ?? '');
+  const [quickActionContractId, setQuickActionContractId] = useState(location.state?.focusContractId ?? '');
   const [feedback, setFeedback] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterTriggerRef = useRef(null);
@@ -169,6 +215,36 @@ export default function ContractsPage() {
 
     return [checkoutAgreementRecord, ...historyContracts.filter((contract) => contract.id !== checkoutAgreementRecord.id)];
   }, [checkoutAgreementRecord, contractRecords]);
+
+  useEffect(() => {
+    if (!allContracts.length) {
+      if (quickActionContractId) {
+        setQuickActionContractId('');
+      }
+
+      return;
+    }
+
+    const currentExists = allContracts.some((contract) => contract.id === quickActionContractId);
+
+    if (currentExists) {
+      return;
+    }
+
+    const preferredContractId = selectedContractId || checkoutAgreementRecord?.id || allContracts[0]?.id || '';
+
+    if (preferredContractId && preferredContractId !== quickActionContractId) {
+      setQuickActionContractId(preferredContractId);
+    }
+  }, [allContracts, checkoutAgreementRecord?.id, quickActionContractId, selectedContractId]);
+
+  const quickActionContract = useMemo(
+    () => allContracts.find((contract) => contract.id === quickActionContractId) ?? null,
+    [allContracts, quickActionContractId],
+  );
+  const quickActionTemplateId = quickActionContract?.id || GENERAL_TEMPLATE_CONTRACT.id;
+  const isQuickActionDownloading = downloadingContractId === quickActionTemplateId;
+  const isQuickActionUploading = Boolean(quickActionContract) && uploadingContractId === quickActionContract.id;
 
   const visibleContracts = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -347,20 +423,74 @@ export default function ContractsPage() {
     }
   };
 
-  const handleDownload = async (contract) => {
-    if (!contract?.downloadUrl) {
+  const downloadAgreementCopy = async (contract, options = {}) => {
+    if (!contract) {
       return;
     }
+
+    const {
+      allowRemoteDownload = true,
+      fileName: overrideFileName,
+    } = options;
+    const fileName = overrideFileName || `${contract.title || 'agreement-copy'}.pdf`;
+    const downloadStandardTemplate = () => portalApi.downloadContractPdf(buildContractTemplateDocument(contract), fileName);
 
     setDownloadingContractId(contract.id);
     setFeedback(null);
 
     try {
-      await portalApi.downloadFile(contract.downloadUrl, `${contract.title || 'agreement-copy'}.pdf`);
+      if (allowRemoteDownload && contract.downloadUrl) {
+        try {
+          await portalApi.downloadFile(contract.downloadUrl, fileName);
+          return;
+        } catch {
+          await downloadStandardTemplate();
+          setFeedback({
+            tone: 'warning',
+            text: fallbackTemplateDownloadMessage,
+          });
+          return;
+        }
+      }
+
+      await downloadStandardTemplate();
+      setFeedback({
+        tone: 'success',
+        text: standardTemplateDownloadMessage,
+      });
     } catch (error) {
       setFeedback({
         tone: 'error',
         text: error.message || 'Unable to download the agreement copy right now.',
+      });
+    } finally {
+      setDownloadingContractId('');
+    }
+  };
+
+  const handleDownload = async (contract) => {
+    await downloadAgreementCopy(contract);
+  };
+
+  const handleQuickTemplateDownload = async () => {
+    const templateContract = quickActionContract || GENERAL_TEMPLATE_CONTRACT;
+    const fileName = quickActionContract
+      ? `${quickActionContract.title || 'agreement-copy'}-signing-template.pdf`
+      : 'general-contract-signing-template.pdf';
+
+    setDownloadingContractId(templateContract.id);
+    setFeedback(null);
+
+    try {
+      await portalApi.downloadContractPdf(buildContractTemplateDocument(templateContract), fileName);
+      setFeedback({
+        tone: 'success',
+        text: standardTemplateDownloadMessage,
+      });
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        text: error.message || 'Unable to download the signing template right now.',
       });
     } finally {
       setDownloadingContractId('');
@@ -442,18 +572,16 @@ export default function ContractsPage() {
           <XCircle size={14} />
         </button>
 
-        {contract.downloadUrl ? (
-          <button
-            type="button"
-            onClick={() => handleDownload(contract)}
-            disabled={isDownloading}
-            className={buttonBase}
-            title={isDownloading ? 'Downloading agreement copy' : 'Download agreement copy'}
-            aria-label={`Download agreement copy ${contract.title}`}
-          >
-            <Download size={14} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => handleDownload(contract)}
+          disabled={isDownloading}
+          className={buttonBase}
+          title={isDownloading ? 'Downloading signable agreement PDF' : 'Download signable agreement PDF'}
+          aria-label={`Download signable agreement PDF ${contract.title}`}
+        >
+          <Download size={14} />
+        </button>
 
         <label className={uploadBase} title="Upload signed copy" aria-label={`Upload signed copy ${contract.title}`}>
           <Upload size={14} />
@@ -662,6 +790,79 @@ export default function ContractsPage() {
           }
       />
 
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">Signing Template</p>
+            <h2 className="mt-1 text-base font-semibold text-white">Download the formal contract template, then upload the signed copy.</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-400">
+              The template uses the selected contract details and includes formal signature blocks for both parties.
+            </p>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[42rem] lg:items-end">
+            <div className="flex w-full flex-col gap-3 md:flex-row md:items-end md:justify-end">
+              <div className="min-w-0 md:w-[20rem]">
+                <label htmlFor="quick-contract-target" className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                  Upload Signed Copy To
+                </label>
+                <select
+                  id="quick-contract-target"
+                  value={quickActionContractId}
+                  onChange={(event) => setQuickActionContractId(event.target.value)}
+                  disabled={!allContracts.length}
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/40 px-4 py-2.5 text-sm text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {allContracts.length ? allContracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {getQuickActionContractLabel(contract)}
+                    </option>
+                  )) : (
+                    <option value="">No contract records available</option>
+                  )}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleQuickTemplateDownload()}
+                disabled={isQuickActionDownloading}
+                className="btn-primary gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Download size={16} />
+                {isQuickActionDownloading ? 'Downloading...' : 'Download Signing Template'}
+              </button>
+
+              <label className={`btn-secondary gap-2 whitespace-nowrap ${quickActionContract ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                <Upload size={16} />
+                {isQuickActionUploading ? 'Uploading...' : 'Upload Signed Contract'}
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  disabled={!quickActionContract || isQuickActionUploading}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+
+                    if (quickActionContract) {
+                      void handleUpload(quickActionContract.id, file);
+                    }
+
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+
+            <p className="text-xs leading-5 text-slate-400 lg:text-right">
+              {quickActionContract
+                ? `Signed uploads will attach to ${getQuickActionContractLabel(quickActionContract)}.`
+                : 'Template download is available now. Upload unlocks once a contract record is available.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (
           <StatCard
@@ -858,6 +1059,45 @@ export default function ContractsPage() {
                   ) : null}
                 </div>
 
+                <div className="rounded-3xl border border-sky-400/20 bg-sky-400/[0.08] p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="max-w-2xl">
+                      <p className="text-xs uppercase tracking-[0.18em] text-sky-100/75">Signing Flow</p>
+                      <h3 className="mt-2 text-lg font-semibold text-white">Download a ready-to-sign agreement in one step</h3>
+                      <p className="mt-2 text-sm leading-7 text-slate-300">
+                        If a stored agreement copy is not available, the portal will generate a designed PDF with signature blocks for both parties.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(selectedContract)}
+                      disabled={downloadingContractId === selectedContract.id}
+                      className="btn-primary gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download size={16} />
+                      {downloadingContractId === selectedContract.id ? 'Downloading...' : 'Download Signable Agreement PDF'}
+                    </button>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 md:grid-cols-3">
+                    {signingWorkflowSteps.map(({ id, title, description, icon: Icon }, index) => (
+                      <div key={id} className="rounded-2xl border border-white/10 bg-slate-950/30 p-4">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white">
+                            <Icon size={18} />
+                          </span>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-sky-100/70">Step {index + 1}</p>
+                            <p className="text-sm font-semibold text-white">{title}</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-slate-300">{description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="rounded-3xl border border-white/10 bg-white/[0.03] overflow-x-auto">
                   <table className="min-w-full divide-y divide-white/10 text-left text-sm">
                     <tbody className="divide-y divide-white/6">
@@ -921,17 +1161,15 @@ export default function ContractsPage() {
                 Reject
               </button>
 
-              {selectedContract.downloadUrl ? (
-                <button
-                  type="button"
-                  onClick={() => handleDownload(selectedContract)}
-                  disabled={downloadingContractId === selectedContract.id}
-                  className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Download size={16} />
-                  {downloadingContractId === selectedContract.id ? 'Downloading...' : 'Download Agreement'}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => handleDownload(selectedContract)}
+                disabled={downloadingContractId === selectedContract.id}
+                className="btn-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Download size={16} />
+                {downloadingContractId === selectedContract.id ? 'Downloading...' : 'Download Signable Agreement PDF'}
+              </button>
 
               <label className="btn-secondary gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                 <Upload size={16} />
