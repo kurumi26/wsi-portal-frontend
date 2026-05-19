@@ -113,7 +113,7 @@ export default function PortalLayout() {
             navigate(maybeTarget);
           }
         } else if (typeof maybeTarget === 'object' && maybeTarget.path) {
-          navigate(maybeTarget.path);
+          navigate(maybeTarget.path, maybeTarget.state ? { state: maybeTarget.state } : undefined);
         } else {
           handleOpenNotificationsPage();
         }

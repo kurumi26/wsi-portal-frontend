@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Download, Eye, FileSignature, LayoutGrid, List, Search, Upload } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Check, ChevronDown, Download, Eye, FileSignature, LayoutGrid, List, PenLine, Search, Upload } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import DataTable from '../../components/common/DataTable';
+import ESignatureModal from '../../components/common/ESignatureModal';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatCard from '../../components/common/StatCard';
@@ -229,19 +230,23 @@ const buildAdminGridRows = (contract) => [
 
 export default function AdminContractsPage() {
   usePageTitle('Admin Contracts & Agreements');
+  const location = useLocation();
 
   const {
     adminContractRecords,
     isLoadingPortal,
     verifyContractAcceptance,
     uploadAdminSignedContract,
+    pushPortalNotification,
   } = usePortal();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [viewMode, setViewMode] = useState('table');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedContractId, setSelectedContractId] = useState('');
-  const [quickActionContractId, setQuickActionContractId] = useState('');
+  const [selectedContractId, setSelectedContractId] = useState(location.state?.focusContractId ?? '');
+  const [quickActionContractId, setQuickActionContractId] = useState(location.state?.focusContractId ?? '');
+  const [eSignContractId, setESignContractId] = useState(null);
+  const [isESignSubmitting, setIsESignSubmitting] = useState(false);
   const [workingContractId, setWorkingContractId] = useState('');
   const [uploadingContractId, setUploadingContractId] = useState('');
   const [downloadingContractId, setDownloadingContractId] = useState('');
@@ -251,6 +256,35 @@ export default function AdminContractsPage() {
   const filterTriggerRef = useRef(null);
   const filterMenuRef = useRef(null);
   const [filterMenuStyle, setFilterMenuStyle] = useState(null);
+
+  const notifyCustomerContractUpdate = (contract, { mode = 'upload', isFullySigned = false, timestamp = new Date().toISOString() } = {}) => {
+    if (!contract) {
+      return;
+    }
+
+    const actorLabel = 'WSI Portal Services';
+    const reference = contract.auditReference || contract.orderNumber;
+    const actionLabel = mode === 'esign'
+      ? (isFullySigned ? 'completed the final portal signature for' : 'electronically signed')
+      : 'uploaded a signed copy for';
+
+    pushPortalNotification({
+      id: `synth-contract-customer-${mode}-${contract.id}-${Date.now()}`,
+      audience: 'customer',
+      type: 'success',
+      title: mode === 'esign' ? `WSI signed ${contract.title}` : `WSI uploaded ${contract.title}`,
+      message: `${actorLabel} ${actionLabel} ${contract.title}${reference ? ` (${reference})` : ''}.${isFullySigned ? ' The agreement now shows both party signatures in the portal.' : ' Open Contracts to review the updated agreement record.'}`,
+      createdAt: timestamp,
+      target: {
+        path: '/contracts',
+        state: { focusContractId: contract.id },
+      },
+      data: {
+        contractId: contract.id,
+        focusContractId: contract.id,
+      },
+    });
+  };
 
   useEffect(() => {
     const onDocClick = (ev) => {
@@ -473,14 +507,17 @@ export default function AdminContractsPage() {
       return;
     }
 
+    const contract = adminContractRecords.find((item) => item.id === contractId) ?? null;
+
     setUploadingContractId(contractId);
     setFeedback(null);
 
     try {
       const result = await uploadAdminSignedContract(contractId, file);
+      notifyCustomerContractUpdate(contract, { mode: 'upload' });
       setFeedback({
         tone: result?.persistedLocally ? 'warning' : 'success',
-        text: result?.message || 'Signed agreement uploaded successfully.',
+        text: result?.message || 'Signed agreement uploaded successfully. The customer has been notified in Notifications.',
       });
     } catch (error) {
       setFeedback({
@@ -566,6 +603,54 @@ export default function AdminContractsPage() {
     }
   };
 
+  const handleESign = async (contract, signerData) => {
+    if (!contract || !signerData) {
+      return;
+    }
+
+    setIsESignSubmitting(true);
+    setFeedback(null);
+
+    try {
+      const templateDocument = buildContractTemplateDocument(contract);
+      // Admin signs the second block (WSI Authorized Representative, index 1)
+      const eSignOptions = { signatoryIndex: 1 };
+      const signedTemplateDocument = portalApi.buildESignedContractDocument(templateDocument, signerData, eSignOptions);
+      const hasCustomerSignature = signedTemplateDocument.signatories.some((signatory, index) => index !== eSignOptions.signatoryIndex && signatory?.eSignedAt);
+      const blob = await portalApi.generateESignedContractBlob(templateDocument, signerData, eSignOptions);
+      const fileName = `${contract.title || 'signed-agreement'}-esigned.pdf`;
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      const result = await uploadAdminSignedContract(contract.id, file, {
+        contractKeys: [contract.id, contract.externalKey].filter(Boolean),
+        sharedContractPatch: {
+          eSignatureSignatories: signedTemplateDocument.signatories,
+          eSignatureUpdatedAt: signerData.signedAt,
+        },
+      });
+
+      notifyCustomerContractUpdate(contract, {
+        mode: 'esign',
+        isFullySigned: hasCustomerSignature,
+        timestamp: signerData.signedAt,
+      });
+
+      void portalApi.downloadESignedContractPdf(templateDocument, signerData, fileName, eSignOptions);
+
+      setESignContractId(null);
+      setFeedback({
+        tone: result?.persistedLocally ? 'warning' : 'success',
+        text: result?.message || 'Contract signed electronically. The signed PDF has been attached to the record and the customer has been notified.',
+      });
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        text: error.message || 'Unable to complete the electronic signature right now.',
+      });
+    } finally {
+      setIsESignSubmitting(false);
+    }
+  };
+
   const handleSignedDownload = async (contract) => {
     if (!contract?.signedDocumentUrl) {
       return;
@@ -601,7 +686,6 @@ export default function AdminContractsPage() {
     const isTable = layout === 'table';
     const defaultButtonClass = isTable ? tableActionButtonClass : gridActionButtonClass;
     const verifyButtonClass = isTable ? successActionButtonClass : successGridActionButtonClass;
-    const uploadButtonClass = isTable ? tableActionButtonClass : `${gridActionButtonClass} cursor-pointer`;
 
     return (
       <div className="flex flex-wrap gap-2">
@@ -634,34 +718,16 @@ export default function AdminContractsPage() {
         >
           <Download size={16} />
         </button>
-        {!isTable ? (
-          <label className={uploadButtonClass} title="Upload signed agreement" aria-label={`Upload signed agreement ${contract.title}`}>
-            <Upload size={16} />
-            <input
-              type="file"
-              className="hidden"
-              accept=".pdf,.png,.jpg,.jpeg"
-              disabled={uploadingContractId === contract.id}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                void handleUpload(contract.id, file);
-                event.target.value = '';
-              }}
-            />
-          </label>
-        ) : null}
-        {contract.signedDocumentUrl ? (
-          <button
-            type="button"
-            onClick={() => handleSignedDownload(contract)}
-            disabled={downloadingSignedContractId === contract.id}
-            className={defaultButtonClass}
-            title={downloadingSignedContractId === contract.id ? 'Downloading signed copy' : 'Download signed copy'}
-            aria-label={`Download signed copy ${contract.title}`}
-          >
-            <FileSignature size={16} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setESignContractId(contract.id)}
+          disabled={isESignSubmitting && eSignContractId === contract.id}
+          className={defaultButtonClass}
+          title="Sign electronically"
+          aria-label={`Sign contract electronically ${contract.title}`}
+        >
+          <PenLine size={16} />
+        </button>
       </div>
     );
   };
@@ -1084,7 +1150,17 @@ export default function AdminContractsPage() {
                 className="btn-primary gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Download size={16} />
-                {isQuickActionDownloading ? 'Downloading...' : 'Download Signing Template'}
+                {isQuickActionDownloading ? 'Downloading...' : 'Download Signing'}
+              </button>
+
+              <button
+                type="button"
+                disabled={!quickActionContract || isESignSubmitting}
+                onClick={() => quickActionContract && setESignContractId(quickActionContract.id)}
+                className="btn-secondary gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <PenLine size={16} />
+                Sign Electronically
               </button>
 
               <label className={`btn-secondary gap-2 whitespace-nowrap ${quickActionContract ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
@@ -1110,7 +1186,7 @@ export default function AdminContractsPage() {
 
             <p className="text-xs leading-5 text-slate-400 lg:text-right">
               {quickActionContract
-                ? `Signed uploads will attach to ${getQuickActionContractLabel(quickActionContract)}.`
+                ? `Signed uploads will attach to ${getQuickActionContractLabel(quickActionContract)} and notify the customer.`
                 : 'Template download is available now. Upload unlocks once a contract record is available.'}
             </p>
           </div>
@@ -1235,8 +1311,20 @@ export default function AdminContractsPage() {
     </div>
   );
 
+  const eSignTargetContract = eSignContractId
+    ? (adminContractRecords.find((c) => c.id === eSignContractId) ?? null)
+    : null;
+
   return (
     <>
+      {eSignTargetContract && (
+        <ESignatureModal
+          contract={eSignTargetContract}
+          signatoryIndex={1}
+          onClose={() => setESignContractId(null)}
+          onSign={(signerData) => handleESign(eSignTargetContract, signerData)}
+        />
+      )}
       {content}
       {reviewModal}
     </>

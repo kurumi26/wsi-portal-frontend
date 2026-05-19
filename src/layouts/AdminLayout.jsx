@@ -94,6 +94,30 @@ export default function AdminLayout() {
       await updateNotificationStatus(notification.id, true);
     }
 
+    const maybeTarget =
+      notification.link ||
+      notification.url ||
+      notification.target ||
+      (notification.data && (notification.data.link || notification.data.url || notification.data.path)) ||
+      (notification.meta && (notification.meta.link || notification.meta.path));
+
+    if (maybeTarget) {
+      if (typeof maybeTarget === 'string') {
+        if (maybeTarget.startsWith('http://') || maybeTarget.startsWith('https://')) {
+          window.location.href = maybeTarget;
+          return;
+        }
+
+        navigate(maybeTarget);
+        return;
+      }
+
+      if (typeof maybeTarget === 'object' && maybeTarget.path) {
+        navigate(maybeTarget.path, maybeTarget.state ? { state: maybeTarget.state } : undefined);
+        return;
+      }
+    }
+
     handleOpenNotificationsPage();
   };
 

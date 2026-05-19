@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { BellRing, CheckCheck, MailOpen, Trash2, ChevronDown, Search, Info, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { LayoutGrid, List } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -12,6 +13,7 @@ const NOTIFICATIONS_PER_PAGE = 5;
 
 export default function AdminNotificationsPage() {
   const { notifications, updateNotificationStatus, markAllNotificationsRead, dismissNotification } = usePortal();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -407,11 +409,10 @@ export default function AdminNotificationsPage() {
                       if (t.startsWith('http://') || t.startsWith('https://')) {
                         window.open(t, '_blank');
                       } else {
-                        // internal route
-                        window.location.href = t;
+                        navigate(t);
                       }
                     } else if (t && t.path) {
-                      window.location.href = t.path;
+                      navigate(t.path, t.state ? { state: t.state } : undefined);
                     }
                   }}
                   className="btn-primary"

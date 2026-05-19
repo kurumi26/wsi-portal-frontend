@@ -5,8 +5,10 @@ const TOKEN_STORAGE_KEY = 'wsi-auth-token';
 const CONTENT_DISPOSITION_FILENAME_STAR_PATTERN = /filename\*=(?:UTF-8'')?([^;]+)/i;
 const CONTENT_DISPOSITION_FILENAME_PATTERN = /filename="?([^";]+)"?/i;
 const PDF_SIGNATURE = '%PDF-';
+const LOGO_WATERMARK_PATH = '/logo-light.png';
 
 let authToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+let logoAssetPromise = null;
 
 function sanitizeFileName(value, fallback = 'download') {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -152,318 +154,530 @@ function createPdfFromText(text, fileName) {
   return pdf.output('blob');
 }
 
-function createStyledContractPdf(templateDocument, fileName) {
+function loadImageAsset(src) {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('Window is unavailable.'));
+      return;
+    }
+
+    const image = new Image();
+
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Unable to load image: ${src}`));
+    image.src = src;
+  });
+}
+
+function createImageDataUrl(image, opacity = 1) {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    return null;
+  }
+
+  canvas.width = image.naturalWidth || image.width || 1;
+  canvas.height = image.naturalHeight || image.height || 1;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.globalAlpha = opacity;
+  context.drawImage(image, 0, 0);
+
+  return canvas.toDataURL('image/png');
+}
+
+async function loadLogoAsset() {
+  if (logoAssetPromise) {
+    return logoAssetPromise;
+  }
+
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return null;
+  }
+
+  logoAssetPromise = (async () => {
+    try {
+      const image = await loadImageAsset(LOGO_WATERMARK_PATH);
+      const dataUrl = createImageDataUrl(image, 1);
+      const watermarkDataUrl = createImageDataUrl(image, 0.08);
+
+      if (!dataUrl) {
+        return null;
+      }
+
+      return {
+        dataUrl,
+        watermarkDataUrl: watermarkDataUrl || dataUrl,
+        width: image.naturalWidth || image.width || 1,
+        height: image.naturalHeight || image.height || 1,
+      };
+    } catch {
+      return null;
+    }
+  })();
+
+  return logoAssetPromise;
+}
+
+async function createStyledContractPdf(templateDocument, fileName) {
   if (!templateDocument || typeof templateDocument !== 'object') {
     return createPdfFromText(templateDocument, fileName);
   }
 
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-  const margin = 48;
+
+  // ── Layout constants ──────────────────────────────────────────
+  const margin = 52;
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const maxWidth = pageWidth - (margin * 2);
-  const pageBottom = pageHeight - margin;
+  const contentWidth = pageWidth - margin * 2;
+  const headerBarH = 22;
+  const contentTop = 90;
+  const pageBottom = pageHeight - 50;
+
+  // ── Template fields ───────────────────────────────────────────
   const title = String(templateDocument.title || stripFileExtension(fileName) || 'Agreement Copy').trim();
   const subtitle = String(templateDocument.subtitle || '').trim();
   const badge = String(templateDocument.badge || '').trim();
   const overview = String(templateDocument.overview || '').trim();
   const note = String(templateDocument.note || '').trim();
+  const signatureStatement = String(templateDocument.signatureStatement || '').trim();
   const metadata = Array.isArray(templateDocument.metadata)
     ? templateDocument.metadata.filter((item) => item?.label || item?.value)
     : [];
   const sections = Array.isArray(templateDocument.sections)
-    ? templateDocument.sections.filter((section) => section?.title || section?.body)
+    ? templateDocument.sections.filter((s) => s?.title || s?.body)
     : [];
   const documents = Array.isArray(templateDocument.documents)
-    ? templateDocument.documents.filter((document) => document?.title || document?.description)
+    ? templateDocument.documents.filter((d) => d?.title || d?.description)
     : [];
   const signatories = Array.isArray(templateDocument.signatories)
-    ? templateDocument.signatories.filter((signatory) => signatory?.title)
+    ? templateDocument.signatories.filter((s) => s?.title)
     : [];
-  let cursorY = margin;
 
-  const ensureSpace = (height = 48) => {
-    if (cursorY + height <= pageBottom) {
+  const logoAsset = await loadLogoAsset();
+  let cursorY = contentTop;
+
+  // ── Primitive helpers ─────────────────────────────────────────
+  const addImageSafe = (dataUrl, x, y, w, h) => {
+    if (!dataUrl) {
       return;
     }
 
-    pdf.addPage();
-    cursorY = margin;
+    try {
+      pdf.addImage(dataUrl, 'PNG', x, y, w, h);
+    } catch {
+      // Branding image failures must not stop contract generation.
+    }
   };
 
-  const wrapText = (text, width, fontSize = 11) => {
+  const txt = (text, x, y, opts = {}) => {
+    const {
+      size = 10,
+      family = 'helvetica',
+      style = 'normal',
+      color = [30, 41, 59],
+      align,
+    } = opts;
+    pdf.setFont(family, style);
+    pdf.setFontSize(size);
+    pdf.setTextColor(...color);
+    pdf.text(String(text ?? ''), x, y, align ? { align } : undefined);
+  };
+
+  const wrap = (text, width, opts = {}) => {
+    const { size = 10, family = 'helvetica', style = 'normal' } = opts;
     const normalized = String(text || '').trim();
 
     if (!normalized) {
       return [];
     }
 
-    pdf.setFontSize(fontSize);
+    pdf.setFont(family, style);
+    pdf.setFontSize(size);
     return pdf.splitTextToSize(normalized, width).filter(Boolean);
   };
 
-  const drawWrappedLines = (lines, options = {}) => {
-    const {
-      x = margin,
-      y = cursorY,
-      lineHeight = 16,
-      fontSize = 11,
-      fontStyle = 'normal',
-      color = [15, 23, 42],
-    } = options;
-    let localY = y;
-
-    pdf.setFont('helvetica', fontStyle);
-    pdf.setFontSize(fontSize);
+  const drawLines = (lines, x, startY, lh, opts = {}) => {
+    const { size = 10, family = 'helvetica', style = 'normal', color = [30, 41, 59] } = opts;
+    pdf.setFont(family, style);
+    pdf.setFontSize(size);
     pdf.setTextColor(...color);
+    lines.forEach((line, i) => pdf.text(line, x, startY + i * lh));
 
-    lines.forEach((line) => {
-      pdf.text(line, x, localY);
-      localY += lineHeight;
+    return lines.length * lh;
+  };
+
+  const ensureSpace = (height) => {
+    if (cursorY + height <= pageBottom) {
+      return;
+    }
+
+    pdf.addPage();
+    cursorY = contentTop;
+    drawPageHeader();
+  };
+
+  // ── Page header (called once per page) ───────────────────────
+  const drawPageHeader = () => {
+    // Navy top bar
+    pdf.setFillColor(15, 23, 42);
+    pdf.rect(0, 0, pageWidth, headerBarH, 'F');
+
+    // Logo on left of top bar
+    if (logoAsset?.dataUrl) {
+      const lw = 88;
+      const lh = lw * (logoAsset.height / logoAsset.width);
+      addImageSafe(logoAsset.dataUrl, margin, headerBarH + 6, lw, lh);
+    }
+
+    // Right-side label
+    txt('WSI PORTAL — SERVICE AGREEMENT', pageWidth - margin, headerBarH + 14, {
+      size: 7.5,
+      style: 'bold',
+      color: [100, 116, 139],
+      align: 'right',
+    });
+    txt(stripFileExtension(fileName), pageWidth - margin, headerBarH + 26, {
+      size: 7.5,
+      color: [148, 163, 184],
+      align: 'right',
     });
 
-    return localY - y;
+    // Separator
+    pdf.setDrawColor(226, 232, 240);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, contentTop - 8, pageWidth - margin, contentTop - 8);
+
+    // Full-page faint watermark
+    if (logoAsset?.watermarkDataUrl) {
+      const ww = Math.min(contentWidth * 0.52, 260);
+      const wh = ww * (logoAsset.height / logoAsset.width);
+      addImageSafe(logoAsset.watermarkDataUrl, (pageWidth - ww) / 2, (pageHeight - wh) / 2 - 20, ww, wh);
+    }
   };
 
-  const drawSectionLabel = (label) => {
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10);
-    pdf.setTextColor(71, 85, 105);
-    pdf.text(label.toUpperCase(), margin, cursorY);
-    cursorY += 18;
-  };
+  drawPageHeader();
 
-  const titleLines = wrapText(title, maxWidth - 40, 22);
-  const subtitleLines = subtitle ? wrapText(subtitle, maxWidth - 40, 11) : [];
-  const headerHeight = Math.max(110, 24 + (badge ? 26 : 0) + (titleLines.length * 24) + (subtitleLines.length * 14) + 18);
-  ensureSpace(headerHeight);
+  // ── COVER TITLE CARD ─────────────────────────────────────────
+  const titleLines = wrap(title, contentWidth - 32, { size: 22, family: 'times', style: 'bold' });
+  const subtitleLines = subtitle ? wrap(subtitle, contentWidth - 32, { size: 9.5 }) : [];
+  const coverH = Math.max(108, 20 + (badge ? 22 : 0) + titleLines.length * 28 + (subtitleLines.length ? 10 + subtitleLines.length * 13 : 0) + 22);
 
+  ensureSpace(coverH);
+
+  // Dark navy card
   pdf.setFillColor(15, 23, 42);
-  pdf.roundedRect(margin, cursorY, maxWidth, headerHeight, 24, 24, 'F');
+  pdf.roundedRect(margin, cursorY, contentWidth, coverH, 12, 12, 'F');
 
-  let headerY = cursorY + 24;
+  // Orange left accent strip
+  pdf.setFillColor(249, 115, 22);
+  pdf.roundedRect(margin, cursorY, 5, coverH, 4, 4, 'F');
+  pdf.rect(margin + 2, cursorY, 3, coverH, 'F');
+
+  let cy = cursorY + 20;
 
   if (badge) {
-    const badgeWidth = Math.min(200, Math.max(120, (badge.length * 5.6) + 24));
-
-    pdf.setFillColor(14, 165, 233);
-    pdf.roundedRect(margin + 18, headerY - 4, badgeWidth, 22, 11, 11, 'F');
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(9);
-    pdf.setTextColor(255, 255, 255);
-    pdf.text(badge.toUpperCase(), margin + 30, headerY + 10);
-    headerY += 30;
+    const bw = Math.min(260, Math.max(160, badge.length * 6 + 26));
+    pdf.setFillColor(249, 115, 22);
+    pdf.roundedRect(margin + 16, cy - 4, bw, 16, 8, 8, 'F');
+    txt(badge.toUpperCase(), margin + 26, cy + 7, { size: 7, style: 'bold', color: [255, 255, 255] });
+    cy += 23;
   }
 
-  drawWrappedLines(titleLines, {
-    x: margin + 20,
-    y: headerY,
-    lineHeight: 24,
-    fontSize: 22,
-    fontStyle: 'bold',
+  drawLines(titleLines, margin + 16, cy, 28, {
+    size: 22,
+    family: 'times',
+    style: 'bold',
     color: [255, 255, 255],
   });
-  headerY += titleLines.length * 24;
+  cy += titleLines.length * 28;
 
   if (subtitleLines.length) {
-    headerY += 4;
-    drawWrappedLines(subtitleLines, {
-      x: margin + 20,
-      y: headerY,
-      lineHeight: 14,
-      fontSize: 11,
-      color: [191, 219, 254],
-    });
+    cy += 8;
+    drawLines(subtitleLines, margin + 16, cy, 13, { size: 9.5, color: [148, 163, 184] });
   }
 
-  cursorY += headerHeight + 22;
+  cursorY += coverH + 22;
 
+  // ── METADATA GRID ─────────────────────────────────────────────
   if (metadata.length) {
-    const columnCount = 2;
-    const gutter = 16;
-    const innerPadding = 16;
-    const rowHeight = 52;
-    const rows = Math.ceil(metadata.length / columnCount);
-    const cardHeight = 20 + (rows * rowHeight) + 12;
-    const columnWidth = (maxWidth - (innerPadding * 2) - gutter) / columnCount;
+    const cols = 2;
+    const colGap = 16;
+    const pad = 18;
+    const colW = (contentWidth - pad * 2 - colGap) / cols;
+    const rowH = 40;
+    const rows = Math.ceil(metadata.length / cols);
+    const tableH = pad + rows * rowH + pad * 0.6;
 
-    ensureSpace(cardHeight);
+    ensureSpace(tableH);
     pdf.setDrawColor(226, 232, 240);
-    pdf.setFillColor(248, 250, 252);
-    pdf.roundedRect(margin, cursorY, maxWidth, cardHeight, 18, 18, 'FD');
+    pdf.setFillColor(249, 250, 251);
+    pdf.roundedRect(margin, cursorY, contentWidth, tableH, 10, 10, 'FD');
 
-    metadata.forEach((item, index) => {
-      const row = Math.floor(index / columnCount);
-      const column = index % columnCount;
-      const itemX = margin + innerPadding + (column * (columnWidth + gutter));
-      const itemY = cursorY + 24 + (row * rowHeight);
-      const valueLines = wrapText(item.value, columnWidth, 11).slice(0, 2);
+    // Column divider line
+    pdf.setDrawColor(226, 232, 240);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin + pad + colW + colGap / 2, cursorY + 10, margin + pad + colW + colGap / 2, cursorY + tableH - 10);
 
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8);
-      pdf.setTextColor(100, 116, 139);
-      pdf.text(String(item.label || '').toUpperCase(), itemX, itemY);
-      drawWrappedLines(valueLines, {
-        x: itemX,
-        y: itemY + 16,
-        lineHeight: 14,
-        fontSize: 11,
-        fontStyle: 'bold',
-        color: [15, 23, 42],
+    metadata.forEach((item, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const ix = margin + pad + col * (colW + colGap);
+      const iy = cursorY + pad + row * rowH;
+
+      txt(String(item.label || '').toUpperCase(), ix, iy, {
+        size: 7,
+        style: 'bold',
+        color: [148, 163, 184],
       });
+
+      const valLines = wrap(String(item.value || '—'), colW, { size: 10, style: 'bold' }).slice(0, 2);
+      drawLines(valLines, ix, iy + 12, 13, { size: 10, style: 'bold', color: [15, 23, 42] });
     });
 
-    cursorY += cardHeight + 22;
+    cursorY += tableH + 20;
   }
 
+  // ── STATEMENT OF AGREEMENT (overview) ────────────────────────
   if (overview) {
-    const overviewLines = wrapText(overview, maxWidth, 11);
-    ensureSpace(28 + (overviewLines.length * 16));
-    drawSectionLabel('Agreement Summary');
-    cursorY += drawWrappedLines(overviewLines, {
-      y: cursorY,
-      lineHeight: 16,
-      fontSize: 11,
-      color: [51, 65, 85],
+    const ovLines = wrap(overview, contentWidth - 42, { size: 10.5 });
+    const ovH = 14 + ovLines.length * 15 + 14;
+
+    ensureSpace(ovH);
+
+    // Warm amber-tinted background
+    pdf.setFillColor(255, 247, 237);
+    pdf.roundedRect(margin, cursorY, contentWidth, ovH, 8, 8, 'F');
+
+    // Orange left bar
+    pdf.setFillColor(249, 115, 22);
+    pdf.roundedRect(margin, cursorY, 4, ovH, 4, 4, 'F');
+    pdf.rect(margin + 2, cursorY, 2, ovH, 'F');
+
+    txt('STATEMENT OF AGREEMENT', margin + 14, cursorY + 12, {
+      size: 7,
+      style: 'bold',
+      color: [194, 65, 12],
     });
-    cursorY += 16;
+
+    drawLines(ovLines, margin + 14, cursorY + 26, 15, { size: 10.5, color: [67, 56, 46] });
+
+    cursorY += ovH + 20;
   }
+
+  // ── Section divider helper ────────────────────────────────────
+  const drawSectionDivider = (label) => {
+    ensureSpace(28);
+    pdf.setFillColor(248, 250, 252);
+    pdf.setDrawColor(226, 232, 240);
+    pdf.roundedRect(margin, cursorY, contentWidth, 22, 6, 6, 'FD');
+    pdf.setFillColor(249, 115, 22);
+    pdf.roundedRect(margin, cursorY, 4, 22, 3, 3, 'F');
+    pdf.rect(margin + 2, cursorY, 2, 22, 'F');
+    txt(label.toUpperCase(), margin + 14, cursorY + 14.5, {
+      size: 8,
+      style: 'bold',
+      color: [71, 85, 105],
+    });
+    cursorY += 28;
+  };
+
+  // ── CORE TERMS ────────────────────────────────────────────────
+  drawSectionDivider('Core Terms');
 
   sections.forEach((section, index) => {
-    const heading = `${index + 1}. ${String(section.title || '').trim()}`;
-    const bodyLines = wrapText(section.body, maxWidth, 11);
-    const blockHeight = 20 + (bodyLines.length * 16) + 12;
+    const heading = `${index + 1}.  ${String(section.title || '').trim()}`;
+    const bodyLines = wrap(section.body, contentWidth - 18, { size: 10.5 });
+    const blockH = 20 + bodyLines.length * 15 + 12;
 
-    ensureSpace(blockHeight);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(13);
-    pdf.setTextColor(15, 23, 42);
-    pdf.text(heading, margin, cursorY);
-    cursorY += 20;
-    cursorY += drawWrappedLines(bodyLines, {
-      y: cursorY,
-      lineHeight: 16,
-      fontSize: 11,
-      color: [51, 65, 85],
-    });
+    ensureSpace(blockH);
+    txt(heading, margin, cursorY, { size: 11, family: 'times', style: 'bold', color: [15, 23, 42] });
+    cursorY += 17;
+    cursorY += drawLines(bodyLines, margin + 16, cursorY, 15, { size: 10.5, color: [51, 65, 85] });
     cursorY += 12;
   });
 
+  // ── SCHEDULES ─────────────────────────────────────────────────
   if (documents.length) {
-    drawSectionLabel('Included Documents');
+    drawSectionDivider('Schedules and Incorporated Documents');
 
-    documents.forEach((document, index) => {
-      const itemTitle = `${index + 1}. ${String(document.title || '').trim()}`;
-      const itemDescription = String(document.description || '').trim();
-      const titleLines = wrapText(itemTitle, maxWidth, 11);
-      const descriptionLines = itemDescription ? wrapText(itemDescription, maxWidth - 18, 10) : [];
-      const itemHeight = (titleLines.length * 14) + (descriptionLines.length * 13) + 12;
+    documents.forEach((doc, index) => {
+      const docTitle = `${index + 1}.  ${String(doc.title || '').trim()}`;
+      const descLines = doc.description ? wrap(doc.description, contentWidth - 26, { size: 9.5 }) : [];
+      const itemH = 17 + descLines.length * 13 + 8;
 
-      ensureSpace(itemHeight);
-      cursorY += drawWrappedLines(titleLines, {
-        y: cursorY,
-        lineHeight: 14,
-        fontSize: 11,
-        fontStyle: 'bold',
-        color: [15, 23, 42],
-      });
+      ensureSpace(itemH);
+      txt(docTitle, margin, cursorY, { size: 10.5, style: 'bold', color: [15, 23, 42] });
+      cursorY += 15;
 
-      if (descriptionLines.length) {
-        cursorY += drawWrappedLines(descriptionLines, {
-          x: margin + 14,
-          y: cursorY + 2,
-          lineHeight: 13,
-          fontSize: 10,
-          color: [71, 85, 105],
-        });
+      if (descLines.length) {
+        cursorY += drawLines(descLines, margin + 16, cursorY, 13, { size: 9.5, color: [100, 116, 139] });
       }
 
-      cursorY += 10;
+      cursorY += 8;
     });
   }
 
+  // ── SIGNATURE BLOCKS ─────────────────────────────────────────
   if (signatories.length) {
-    drawSectionLabel('Signature Blocks');
+    drawSectionDivider('Execution and Signatures');
 
-    signatories.forEach((signatory) => {
-      const fields = Array.isArray(signatory.fields) && signatory.fields.length
-        ? signatory.fields
-        : ['Printed Name', 'Signature', 'Date'];
-      const helperLines = signatory.helper ? wrapText(signatory.helper, maxWidth - 36, 10) : [];
-      const cardHeight = 72 + (helperLines.length * 12) + (fields.length * 22);
-      const cardX = margin;
-      const cardWidth = maxWidth;
-      const lineStartX = cardX + 18;
-      const lineEndX = cardX + cardWidth - 18;
+    if (signatureStatement) {
+      const stLines = wrap(signatureStatement, contentWidth, { size: 10.5, family: 'times', style: 'italic' });
+      ensureSpace(stLines.length * 15 + 16);
+      cursorY += drawLines(stLines, margin, cursorY, 15, {
+        size: 10.5,
+        family: 'times',
+        style: 'italic',
+        color: [71, 85, 105],
+      });
+      cursorY += 16;
+    }
 
-      ensureSpace(cardHeight);
-      pdf.setDrawColor(226, 232, 240);
-      pdf.setFillColor(255, 255, 255);
-      pdf.roundedRect(cardX, cursorY, cardWidth, cardHeight, 18, 18, 'FD');
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(12);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text(signatory.title, lineStartX, cursorY + 24);
+    const sigCols = 2;
+    const sigGap = 16;
+    const sigCardW = (contentWidth - sigGap) / sigCols;
 
-      let helperStartY = cursorY + 40;
+    for (let si = 0; si < signatories.length; si += sigCols) {
+      const rowSigs = signatories.slice(si, si + sigCols).map((sig) => {
+        const fields = Array.isArray(sig.fields) && sig.fields.length
+          ? sig.fields
+          : ['Printed Name', 'Signature', 'Date'];
+        const helperLines = sig.helper ? wrap(sig.helper, sigCardW - 36, { size: 9 }) : [];
+        const prefilledFields = (sig.prefilledFields && typeof sig.prefilledFields === 'object') ? sig.prefilledFields : {};
+        // Signature image fields need extra height; all other fields use standard 28pt
+        const fieldH = (label) => {
+          const val = prefilledFields[label];
+          return (typeof val === 'string' && val.startsWith('data:image')) ? 52 : 28;
+        };
+        const cardH = 28 + 8 + (helperLines.length ? helperLines.length * 12 + 6 : 0) + fields.reduce((sum, f) => sum + fieldH(f), 0) + 14;
 
-      if (helperLines.length) {
-        drawWrappedLines(helperLines, {
-          x: lineStartX,
-          y: helperStartY,
-          lineHeight: 12,
-          fontSize: 10,
-          color: [71, 85, 105],
-        });
-        helperStartY += helperLines.length * 12;
-      }
-
-      fields.forEach((label, index) => {
-        const labelY = helperStartY + 16 + (index * 22);
-
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(9);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(label, lineStartX, labelY);
-        pdf.setDrawColor(148, 163, 184);
-        pdf.line(lineStartX, labelY + 10, lineEndX, labelY + 10);
+        return { ...sig, fields, helperLines, prefilledFields, cardH };
       });
 
-      cursorY += cardHeight + 14;
-    });
+      const rowH = Math.max(...rowSigs.map((s) => s.cardH));
+      ensureSpace(rowH + 8);
+
+      rowSigs.forEach((sig, ci) => {
+        const cx = margin + ci * (sigCardW + sigGap);
+        const innerX = cx + 18;
+        const lineEnd = cx + sigCardW - 18;
+
+        // Card background
+        pdf.setDrawColor(203, 213, 225);
+        pdf.setFillColor(252, 253, 254);
+        pdf.roundedRect(cx, cursorY, sigCardW, rowH, 10, 10, 'FD');
+
+        // Dark title bar
+        pdf.setFillColor(30, 41, 59);
+        pdf.roundedRect(cx, cursorY, sigCardW, 28, 10, 10, 'F');
+        // Square off bottom corners of title bar
+        pdf.rect(cx, cursorY + 18, sigCardW, 10, 'F');
+
+        txt(sig.title, innerX, cursorY + 18, {
+          size: 9.5,
+          family: 'times',
+          style: 'bold',
+          color: [255, 255, 255],
+        });
+
+        // E-signed badge on the title bar
+        if (sig.eSignedAt) {
+          const eBadgeW = 72;
+          const eBadgeX = cx + sigCardW - 18 - eBadgeW;
+          pdf.setFillColor(16, 185, 129);
+          pdf.roundedRect(eBadgeX, cursorY + 7, eBadgeW, 14, 7, 7, 'F');
+          txt('✓ E-SIGNED', cx + sigCardW - 21, cursorY + 16, {
+            size: 6.5,
+            style: 'bold',
+            color: [255, 255, 255],
+            align: 'right',
+          });
+        }
+
+        let fy = cursorY + 38;
+
+        if (sig.helperLines.length) {
+          fy += drawLines(sig.helperLines, innerX, fy, 12, { size: 9, color: [100, 116, 139] });
+          fy += 6;
+        }
+
+        fy += 4;
+
+        sig.fields.forEach((label) => {
+          const prefilled = sig.prefilledFields[String(label)];
+          const isSignatureImg = typeof prefilled === 'string' && prefilled.startsWith('data:image');
+
+          // Label
+          txt(String(label).toUpperCase(), innerX, fy, { size: 7.5, color: [148, 163, 184] });
+          fy += 10;
+
+          if (isSignatureImg) {
+            // Draw the signature image in the field area
+            const imgW = lineEnd - innerX;
+            const imgH = 38;
+            addImageSafe(prefilled, innerX, fy - 2, imgW, imgH);
+            pdf.setDrawColor(203, 213, 225);
+            pdf.setLineWidth(0.5);
+            pdf.line(innerX, fy + imgH, lineEnd, fy + imgH);
+            fy += imgH + 6;
+          } else if (prefilled) {
+            // Pre-filled text value
+            txt(String(prefilled), innerX, fy + 1, { size: 9.5, style: 'bold', color: [15, 23, 42] });
+            pdf.setDrawColor(203, 213, 225);
+            pdf.setLineWidth(0.5);
+            pdf.line(innerX, fy + 4, lineEnd, fy + 4);
+            fy += 18;
+          } else {
+            // Blank writing line
+            pdf.setDrawColor(148, 163, 184);
+            pdf.setLineWidth(0.75);
+            pdf.line(innerX, fy, lineEnd, fy);
+            fy += 18;
+          }
+        });
+      });
+
+      cursorY += rowH + 16;
+    }
   }
 
+  // ── ADDITIONAL NOTES ─────────────────────────────────────────
   if (note) {
-    const noteLines = wrapText(note, maxWidth - 32, 10);
-    const noteHeight = 28 + (noteLines.length * 14) + 10;
+    const noteLines = wrap(note, contentWidth - 32, { size: 9.5 });
+    const noteH = 14 + noteLines.length * 13 + 12;
 
-    ensureSpace(noteHeight);
+    ensureSpace(noteH);
     pdf.setDrawColor(186, 230, 253);
     pdf.setFillColor(240, 249, 255);
-    pdf.roundedRect(margin, cursorY, maxWidth, noteHeight, 18, 18, 'FD');
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10);
-    pdf.setTextColor(12, 74, 110);
-    pdf.text('Additional Notes', margin + 16, cursorY + 20);
-    drawWrappedLines(noteLines, {
-      x: margin + 16,
-      y: cursorY + 36,
-      lineHeight: 14,
-      fontSize: 10,
-      color: [12, 74, 110],
-    });
-    cursorY += noteHeight;
+    pdf.roundedRect(margin, cursorY, contentWidth, noteH, 8, 8, 'FD');
+    txt('ADDITIONAL NOTES', margin + 14, cursorY + 11, { size: 7, style: 'bold', color: [3, 105, 161] });
+    drawLines(noteLines, margin + 14, cursorY + 23, 13, { size: 9.5, color: [12, 74, 110] });
+    cursorY += noteH;
   }
 
+  // ── PAGE FOOTER ───────────────────────────────────────────────
   const pageCount = pdf.getNumberOfPages();
 
-  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
-    pdf.setPage(pageNumber);
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(9);
-    pdf.setTextColor(100, 116, 139);
-    pdf.text(`Generated by WSI Portal`, margin, pageHeight - 20);
-    pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
+  for (let p = 1; p <= pageCount; p += 1) {
+    pdf.setPage(p);
+    pdf.setDrawColor(226, 232, 240);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, pageHeight - 32, pageWidth - margin, pageHeight - 32);
+    txt('WSI Portal — Confidential Agreement Document', margin, pageHeight - 18, {
+      size: 7.5,
+      color: [148, 163, 184],
+    });
+    txt(`Page ${p} of ${pageCount}`, pageWidth - margin, pageHeight - 18, {
+      size: 7.5,
+      color: [148, 163, 184],
+      align: 'right',
+    });
   }
 
   return pdf.output('blob');
@@ -521,6 +735,63 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+const buildESignedContractDocument = (templateDocument, signerData, options = {}) => {
+  if (!templateDocument || !signerData) {
+    throw new Error('Template document and signer data are required.');
+  }
+
+  const { signatoryIndex = 0 } = options;
+  const signedDateFormatted = new Date(signerData.signedAt || Date.now()).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const signatories = Array.isArray(templateDocument.signatories)
+    ? templateDocument.signatories.map((sig, index) => {
+        if (index !== signatoryIndex) {
+          return sig;
+        }
+
+        const prefilledFields = sig?.prefilledFields && typeof sig.prefilledFields === 'object'
+          ? { ...sig.prefilledFields }
+          : {};
+
+        (Array.isArray(sig.fields) ? sig.fields : []).forEach((label) => {
+          const normalized = String(label).toLowerCase();
+
+          if (normalized.includes('company') || normalized.includes('organization')) {
+            if (signerData.signerCompany) {
+              prefilledFields[label] = signerData.signerCompany;
+            }
+          } else if (normalized.includes('printed') || normalized.includes('name')) {
+            if (signerData.signerName) {
+              prefilledFields[label] = signerData.signerName;
+            }
+          } else if (normalized.includes('title') || normalized.includes('role')) {
+            if (signerData.signerTitle) {
+              prefilledFields[label] = signerData.signerTitle;
+            }
+          } else if (normalized.includes('signature')) {
+            if (signerData.signatureDataUrl) {
+              prefilledFields[label] = signerData.signatureDataUrl;
+            }
+          } else if (normalized.includes('date')) {
+            prefilledFields[label] = signedDateFormatted;
+          }
+        });
+
+        return { ...sig, prefilledFields, eSignedAt: signerData.signedAt };
+      })
+    : templateDocument.signatories;
+
+  return {
+    ...templateDocument,
+    badge: 'Electronically Signed — Official Copy',
+    signatories,
+  };
+};
+
 export const portalApi = {
   setAuthToken(token) {
     authToken = token;
@@ -562,15 +833,34 @@ export const portalApi = {
     };
   },
 
-  downloadContractPdf(templateDocument, fallbackFileName = 'agreement-copy.pdf') {
+  async downloadContractPdf(templateDocument, fallbackFileName = 'agreement-copy.pdf') {
     const fileName = ensurePdfFileName(fallbackFileName);
-    const pdfBlob = createStyledContractPdf(templateDocument, fileName);
+    const pdfBlob = await createStyledContractPdf(templateDocument, fileName);
     downloadBlob(pdfBlob, fileName);
 
     return {
       fileName,
       generatedFromTemplate: true,
     };
+  },
+
+  buildESignedContractDocument(templateDocument, signerData, options = {}) {
+    return buildESignedContractDocument(templateDocument, signerData, options);
+  },
+
+  async generateESignedContractBlob(templateDocument, signerData, options = {}) {
+    const signedDocument = buildESignedContractDocument(templateDocument, signerData, options);
+
+    const fileName = ensurePdfFileName('signed-agreement.pdf');
+    return createStyledContractPdf(signedDocument, fileName);
+  },
+
+  async downloadESignedContractPdf(templateDocument, signerData, fallbackFileName = 'signed-agreement.pdf', options = {}) {
+    const blob = await portalApi.generateESignedContractBlob(templateDocument, signerData, options);
+    const fileName = ensurePdfFileName(fallbackFileName);
+    downloadBlob(blob, fileName);
+
+    return { fileName, eSigned: true };
   },
 
   async downloadFile(fileUrl, fallbackFileName = 'agreement-copy.pdf', options = {}) {

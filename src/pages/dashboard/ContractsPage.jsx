@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, Check, ChevronDown, Download, Eye, FileSignature, LayoutGrid, List, Search, Upload, X, XCircle } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Download, Eye, FileSignature, LayoutGrid, List, PenLine, Search, Upload, X, XCircle } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import DataTable from '../../components/common/DataTable';
+import ESignatureModal from '../../components/common/ESignatureModal';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatCard from '../../components/common/StatCard';
@@ -138,6 +139,7 @@ export default function ContractsPage() {
     isLoadingPortal,
     recordContractDecision,
     uploadSignedContract,
+    pushPortalNotification,
   } = usePortal();
   const [statusFilter, setStatusFilter] = useState(location.state?.statusFilter ?? 'All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -149,6 +151,8 @@ export default function ContractsPage() {
   const [downloadingSignedContractId, setDownloadingSignedContractId] = useState('');
   const [selectedContractId, setSelectedContractId] = useState(location.state?.focusContractId ?? '');
   const [quickActionContractId, setQuickActionContractId] = useState(location.state?.focusContractId ?? '');
+  const [eSignContractId, setESignContractId] = useState(null);
+  const [isESignSubmitting, setIsESignSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterTriggerRef = useRef(null);
@@ -245,6 +249,35 @@ export default function ContractsPage() {
   const quickActionTemplateId = quickActionContract?.id || GENERAL_TEMPLATE_CONTRACT.id;
   const isQuickActionDownloading = downloadingContractId === quickActionTemplateId;
   const isQuickActionUploading = Boolean(quickActionContract) && uploadingContractId === quickActionContract.id;
+
+  const notifyAdminContractUpdate = (contract, { mode = 'upload', isFullySigned = false, timestamp = new Date().toISOString() } = {}) => {
+    if (!contract) {
+      return;
+    }
+
+    const actorLabel = contract.clientName || 'Customer';
+    const reference = contract.auditReference || contract.orderNumber;
+    const actionLabel = mode === 'esign'
+      ? (isFullySigned ? 'completed the final portal signature for' : 'electronically signed')
+      : 'uploaded a signed copy for';
+
+    pushPortalNotification({
+      id: `synth-contract-admin-${mode}-${contract.id}-${Date.now()}`,
+      audience: 'admin',
+      type: 'success',
+      title: mode === 'esign' ? `${actorLabel} signed ${contract.title}` : `${actorLabel} uploaded ${contract.title}`,
+      message: `${actorLabel} ${actionLabel} ${contract.title}${reference ? ` (${reference})` : ''}.${isFullySigned ? ' The agreement now shows both party signatures in the portal.' : ' Review the updated agreement record in Admin Contracts.'}`,
+      createdAt: timestamp,
+      target: {
+        path: '/admin/contracts',
+        state: { focusContractId: contract.id },
+      },
+      data: {
+        contractId: contract.id,
+        focusContractId: contract.id,
+      },
+    });
+  };
 
   const visibleContracts = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -404,14 +437,17 @@ export default function ContractsPage() {
       return;
     }
 
+    const contract = allContracts.find((item) => item.id === contractId) ?? null;
+
     setUploadingContractId(contractId);
     setFeedback(null);
 
     try {
       const result = await uploadSignedContract(contractId, file);
+      notifyAdminContractUpdate(contract, { mode: 'upload' });
       setFeedback({
         tone: result?.persistedLocally ? 'warning' : 'success',
-        text: result?.message || 'Signed document uploaded successfully.',
+        text: result?.message || 'Signed document uploaded successfully. Admin has been notified in Notifications.',
       });
     } catch (error) {
       setFeedback({
@@ -497,6 +533,54 @@ export default function ContractsPage() {
     }
   };
 
+  const handleESign = async (contract, signerData) => {
+    if (!contract || !signerData) {
+      return;
+    }
+
+    setIsESignSubmitting(true);
+    setFeedback(null);
+
+    try {
+      const templateDocument = buildContractTemplateDocument(contract);
+      const eSignOptions = { signatoryIndex: 0 };
+      const signedTemplateDocument = portalApi.buildESignedContractDocument(templateDocument, signerData, eSignOptions);
+      const hasAdminSignature = signedTemplateDocument.signatories.some((signatory, index) => index !== eSignOptions.signatoryIndex && signatory?.eSignedAt);
+      const blob = await portalApi.generateESignedContractBlob(templateDocument, signerData, eSignOptions);
+      const fileName = `${contract.title || 'signed-agreement'}-esigned.pdf`;
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      const result = await uploadSignedContract(contract.id, file, {
+        contractKeys: [contract.id, contract.externalKey].filter(Boolean),
+        sharedContractPatch: {
+          eSignatureSignatories: signedTemplateDocument.signatories,
+          eSignatureUpdatedAt: signerData.signedAt,
+        },
+      });
+
+      notifyAdminContractUpdate(contract, {
+        mode: 'esign',
+        isFullySigned: hasAdminSignature,
+        timestamp: signerData.signedAt,
+      });
+
+      // Also download a copy for the signer
+      void portalApi.downloadESignedContractPdf(templateDocument, signerData, fileName, eSignOptions);
+
+      setESignContractId(null);
+      setFeedback({
+        tone: result?.persistedLocally ? 'warning' : 'success',
+        text: result?.message || 'Contract signed electronically. The signed PDF has been attached to the record and admin has been notified.',
+      });
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        text: error.message || 'Unable to complete the electronic signature right now.',
+      });
+    } finally {
+      setIsESignSubmitting(false);
+    }
+  };
+
   const handleSignedDownload = async (contract) => {
     if (!contract?.signedDocumentUrl) {
       return;
@@ -524,9 +608,8 @@ export default function ContractsPage() {
   const renderContractActions = (contract, layout = 'grid') => {
     const isTable = layout === 'table';
     const isWorking = workingContractId === contract.id;
-    const isUploading = uploadingContractId === contract.id;
     const isDownloading = downloadingContractId === contract.id;
-    const isDownloadingSigned = downloadingSignedContractId === contract.id;
+    const isESigningThis = isESignSubmitting && eSignContractId === contract.id;
     const tableButtonBase = 'btn-secondary flex h-10 w-10 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-60';
     const tablePrimaryBase = 'btn-primary flex h-10 w-10 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-60';
     const tableSuccessBase = 'flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500 bg-emerald-500 p-0 text-white shadow-[0_8px_20px_rgba(16,185,129,0.22)] transition hover:border-emerald-400 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60';
@@ -536,7 +619,6 @@ export default function ContractsPage() {
     const buttonBase = isTable ? tableButtonBase : gridButtonBase;
     const primaryButtonBase = isTable ? tablePrimaryBase : gridPrimaryBase;
     const acceptButtonBase = isTable ? tableSuccessBase : gridSuccessBase;
-    const uploadBase = isTable ? tableButtonBase : `${gridButtonBase} cursor-pointer`;
 
     return (
       <div className={isTable ? 'flex flex-wrap gap-2' : 'flex flex-wrap gap-3'}>
@@ -583,33 +665,16 @@ export default function ContractsPage() {
           <Download size={14} />
         </button>
 
-        <label className={uploadBase} title="Upload signed copy" aria-label={`Upload signed copy ${contract.title}`}>
-          <Upload size={14} />
-          <input
-            type="file"
-            className="hidden"
-            accept=".pdf,.png,.jpg,.jpeg"
-            disabled={isUploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              void handleUpload(contract.id, file);
-              event.target.value = '';
-            }}
-          />
-        </label>
-
-        {contract.signedDocumentUrl ? (
-          <button
-            type="button"
-            onClick={() => handleSignedDownload(contract)}
-            disabled={isDownloadingSigned}
-            className={buttonBase}
-            title={isDownloadingSigned ? 'Downloading signed copy' : 'Download signed copy'}
-            aria-label={`Download signed copy ${contract.title}`}
-          >
-            <FileSignature size={14} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setESignContractId(contract.id)}
+          disabled={isESigningThis}
+          className={primaryButtonBase}
+          title="Sign electronically"
+          aria-label={`Sign contract electronically ${contract.title}`}
+        >
+          <PenLine size={14} />
+        </button>
 
         {returnToCheckout && checkoutAgreementRecord?.id === contract.id && contract.status === 'Accepted' ? (
           <button
@@ -710,8 +775,21 @@ export default function ContractsPage() {
     },
   ];
 
+  const eSignTargetContract = eSignContractId
+    ? (allContracts.find((c) => c.id === eSignContractId) ?? null)
+    : null;
+
   return (
     <div>
+      {eSignTargetContract && (
+        <ESignatureModal
+          contract={eSignTargetContract}
+          signatoryIndex={0}
+          onClose={() => setESignContractId(null)}
+          onSign={(signerData) => handleESign(eSignTargetContract, signerData)}
+        />
+      )}
+
       <PageHeader
         eyebrow="Contracts & Agreements"
         title="Review, approve, and track agreement records"
@@ -830,7 +908,17 @@ export default function ContractsPage() {
                 className="btn-primary gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Download size={16} />
-                {isQuickActionDownloading ? 'Downloading...' : 'Download Signing Template'}
+                {isQuickActionDownloading ? 'Downloading...' : 'Download Signing'}
+              </button>
+
+              <button
+                type="button"
+                disabled={!quickActionContract || isESignSubmitting}
+                onClick={() => quickActionContract && setESignContractId(quickActionContract.id)}
+                className="btn-secondary gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <PenLine size={16} />
+                Sign Electronically
               </button>
 
               <label className={`btn-secondary gap-2 whitespace-nowrap ${quickActionContract ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
@@ -856,7 +944,7 @@ export default function ContractsPage() {
 
             <p className="text-xs leading-5 text-slate-400 lg:text-right">
               {quickActionContract
-                ? `Signed uploads will attach to ${getQuickActionContractLabel(quickActionContract)}.`
+                ? `Signed uploads will attach to ${getQuickActionContractLabel(quickActionContract)} and trigger an admin notification.`
                 : 'Template download is available now. Upload unlocks once a contract record is available.'}
             </p>
           </div>

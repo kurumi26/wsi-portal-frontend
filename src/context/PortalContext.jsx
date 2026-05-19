@@ -1,11 +1,79 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
-import { buildCheckoutAgreementRecord, buildContractRecords, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractOverrides } from '../utils/contracts';
+import { buildCheckoutAgreementRecord, buildContractRecords, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractOverrides, writeStoredContractESignState } from '../utils/contracts';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
 import { getServiceDisplayStatus } from '../utils/services';
 
 const PortalContext = createContext(null);
+const LOCAL_PORTAL_NOTIFICATION_STORAGE_KEY = 'wsi-local-portal-notifications-v1';
+const MAX_LOCAL_PORTAL_NOTIFICATIONS = 100;
+const LOCAL_NOTIFICATION_TYPES = new Set(['info', 'warning', 'success', 'danger']);
+
+const buildLocalNotificationId = () => `synth-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeLocalNotification = (notification) => {
+  if (!notification || typeof notification !== 'object') {
+    return null;
+  }
+
+  const id = String(notification.id ?? buildLocalNotificationId()).trim();
+  const type = String(notification.type ?? 'info').trim().toLowerCase();
+  const audience = String(notification.audience ?? 'all').trim().toLowerCase();
+
+  return {
+    id: id || buildLocalNotificationId(),
+    title: String(notification.title ?? 'Portal update').trim() || 'Portal update',
+    message: String(notification.message ?? '').trim(),
+    createdAt: notification.createdAt ?? new Date().toISOString(),
+    isRead: Boolean(notification.isRead),
+    type: LOCAL_NOTIFICATION_TYPES.has(type) ? type : 'info',
+    audience: audience || 'all',
+    target: notification.target ?? notification.link ?? notification.url ?? null,
+    data: notification.data && typeof notification.data === 'object' ? notification.data : {},
+    meta: notification.meta && typeof notification.meta === 'object' ? notification.meta : {},
+    isLocal: true,
+  };
+};
+
+const readStoredLocalNotifications = () => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const raw = localStorage.getItem(LOCAL_PORTAL_NOTIFICATION_STORAGE_KEY);
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return (Array.isArray(parsed) ? parsed : [])
+      .map((item) => normalizeLocalNotification(item))
+      .filter(Boolean);
+  } catch (error) {
+    return [];
+  }
+};
+
+const writeStoredLocalNotifications = (notifications) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const next = (Array.isArray(notifications) ? notifications : [])
+      .map((item) => normalizeLocalNotification(item))
+      .filter(Boolean)
+      .slice(0, MAX_LOCAL_PORTAL_NOTIFICATIONS);
+
+    localStorage.setItem(LOCAL_PORTAL_NOTIFICATION_STORAGE_KEY, JSON.stringify(next));
+  } catch (error) {
+    // ignore local notification storage failures
+  }
+};
 
 export function PortalProvider({ children }) {
   const { isAuthenticated, isAdmin, isAuthLoading, user } = useAuth();
@@ -145,6 +213,110 @@ export function PortalProvider({ children }) {
     });
   };
 
+  const notificationAudience = isAdmin ? 'admin' : 'customer';
+
+  const mergeNotificationSources = (serverNotifications = [], localNotifications = []) => {
+    const seen = new Set();
+
+    return sortNotificationsByTime(
+      [...(Array.isArray(localNotifications) ? localNotifications : []), ...(Array.isArray(serverNotifications) ? serverNotifications : [])]
+        .filter((notification) => {
+          const id = String(notification?.id ?? '').trim();
+
+          if (!id || seen.has(id)) {
+            return false;
+          }
+
+          seen.add(id);
+          return true;
+        }),
+    );
+  };
+
+  const getLocalNotificationsForAudience = (audience = notificationAudience) => readStoredLocalNotifications().filter((notification) => {
+    const targetAudience = String(notification?.audience ?? 'all').trim().toLowerCase();
+    return targetAudience === 'all' || targetAudience === audience;
+  });
+
+  const upsertStoredLocalNotification = (notification) => {
+    const normalized = normalizeLocalNotification(notification);
+
+    if (!normalized) {
+      return null;
+    }
+
+    const current = readStoredLocalNotifications();
+    const next = sortNotificationsByTime([
+      normalized,
+      ...current.filter((item) => item.id !== normalized.id),
+    ]).slice(0, MAX_LOCAL_PORTAL_NOTIFICATIONS);
+
+    writeStoredLocalNotifications(next);
+    return normalized;
+  };
+
+  const updateStoredLocalNotification = (notificationId, patch = {}) => {
+    const current = readStoredLocalNotifications();
+    const match = current.find((item) => item.id === notificationId);
+
+    if (!match) {
+      return null;
+    }
+
+    const updated = normalizeLocalNotification({ ...match, ...patch, id: match.id });
+    const next = current.map((item) => (item.id === notificationId ? updated : item));
+    writeStoredLocalNotifications(next);
+    return updated;
+  };
+
+  const removeStoredLocalNotification = (notificationId) => {
+    const current = readStoredLocalNotifications();
+
+    if (!current.some((item) => item.id === notificationId)) {
+      return false;
+    }
+
+    writeStoredLocalNotifications(current.filter((item) => item.id !== notificationId));
+    return true;
+  };
+
+  const markStoredLocalNotificationsRead = (audience = notificationAudience) => {
+    const current = readStoredLocalNotifications();
+    let changed = false;
+
+    const next = current.map((notification) => {
+      const targetAudience = String(notification?.audience ?? 'all').trim().toLowerCase();
+
+      if ((targetAudience === 'all' || targetAudience === audience) && !notification.isRead) {
+        changed = true;
+        return { ...notification, isRead: true };
+      }
+
+      return notification;
+    });
+
+    if (changed) {
+      writeStoredLocalNotifications(next);
+    }
+
+    return changed;
+  };
+
+  const pushPortalNotification = (notification) => {
+    const stored = upsertStoredLocalNotification(notification);
+
+    if (!stored) {
+      return null;
+    }
+
+    if (stored.audience === 'all' || stored.audience === notificationAudience) {
+      setNotifications((current) => mergeNotificationSources(current.filter((item) => item.id !== stored.id), [stored]));
+    }
+
+    broadcastPortalMessage({ type: 'local-notification-updated', notificationId: stored.id });
+    return stored;
+  };
+
   const shouldUseLocalContractFallback = (error) => {
     const message = String(error?.message ?? '').toLowerCase();
 
@@ -265,7 +437,7 @@ export function PortalProvider({ children }) {
         setAdminUsers(userData);
         setAdminPurchases(normalizeOrderNoteRecords(purchaseData));
         setAdminServices(normalizeServiceCancellationRecords(serviceData));
-        setNotifications(sortNotificationsByTime(notificationData));
+        setNotifications(mergeNotificationSources(notificationData, getLocalNotificationsForAudience('admin')));
         setOrders([]);
         setMyServices([]);
         setRemoteContracts(Array.isArray(contractData) ? contractData : []);
@@ -382,9 +554,9 @@ export function PortalProvider({ children }) {
           // Filter out synth notifications the user has dismissed locally
           const dismissed = getDismissedSynthIds();
           uniqueSynth = uniqueSynth.filter((s) => !dismissed.has(s.id));
-          setNotifications(sortNotificationsByTime([...uniqueSynth, ...serverNotifications]));
+          setNotifications(mergeNotificationSources(serverNotifications, [...uniqueSynth, ...getLocalNotificationsForAudience('customer')]));
         } catch (e) {
-          setNotifications(sortNotificationsByTime(notificationData));
+          setNotifications(mergeNotificationSources(notificationData, getLocalNotificationsForAudience('customer')));
         }
         setClients([]);
         setAdminUsers([]);
@@ -430,6 +602,10 @@ export function PortalProvider({ children }) {
       }
 
       if (msg.type === 'contract-updated') {
+        refreshPortalData();
+      }
+
+      if (msg.type === 'local-notification-updated') {
         refreshPortalData();
       }
     };
@@ -727,6 +903,15 @@ export function PortalProvider({ children }) {
   const updateNotificationStatus = async (notificationId, isRead) => {
     // Handle client-side synthetic notifications without calling the API
     if (String(notificationId).startsWith('synth-')) {
+      const updatedLocal = updateStoredLocalNotification(notificationId, { isRead });
+
+      if (updatedLocal) {
+        setNotifications((current) =>
+          current.map((notification) => (notification.id === notificationId ? { ...notification, ...updatedLocal } : notification)),
+        );
+        return updatedLocal;
+      }
+
       setNotifications((current) =>
         current.map((notification) => (notification.id === notificationId ? { ...notification, isRead } : notification)),
       );
@@ -742,6 +927,7 @@ export function PortalProvider({ children }) {
 
   const markAllNotificationsRead = async () => {
     await portalApi.markAllNotificationsRead();
+    markStoredLocalNotificationsRead(notificationAudience);
 
     setNotifications((current) => current.map((notification) => ({ ...notification, isRead: true })));
   };
@@ -749,6 +935,11 @@ export function PortalProvider({ children }) {
   const dismissNotification = async (notificationId) => {
     // Client-side notifications can be dismissed locally
     if (String(notificationId).startsWith('synth-')) {
+      if (removeStoredLocalNotification(notificationId)) {
+        setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+        return null;
+      }
+
       // persist dismissal so synthetic notifications do not reappear after refresh
       addDismissedSynthId(notificationId);
       setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
@@ -937,7 +1128,7 @@ export function PortalProvider({ children }) {
     }
   };
 
-  const uploadSignedContract = async (contractId, file) => {
+  const uploadSignedContract = async (contractId, file, options = {}) => {
     if (!contractId) {
       throw new Error('Contract record is required.');
     }
@@ -946,15 +1137,19 @@ export function PortalProvider({ children }) {
       throw new Error('Signed document file is required.');
     }
 
+    const { contractKeys = [contractId], sharedContractPatch = {} } = options;
     const previousOverride = contractOverrides[contractId];
     const timestamp = new Date().toISOString();
-
-    setContractOverride(contractId, {
+    const basePatch = {
       signedDocumentName: file.name,
       signedDocumentUploadedAt: timestamp,
-    });
+      ...sharedContractPatch,
+    };
+
+    setContractOverride(contractId, basePatch);
 
     if (isLocalCheckoutContract(contractId)) {
+      writeStoredContractESignState(contractKeys, basePatch);
       return {
         success: true,
         persistedLocally: true,
@@ -964,19 +1159,22 @@ export function PortalProvider({ children }) {
 
     try {
       const result = await portalApi.uploadSignedContract(contractId, file);
+      const signedDocument = getContractSignedDocumentMetadata(result?.contract ?? result);
+      const persistedPatch = {
+        ...basePatch,
+        signedDocumentName: signedDocument.name ?? file.name,
+        signedDocumentUploadedAt: signedDocument.uploadedAt ?? timestamp,
+        ...(signedDocument.url ? { signedDocumentUrl: signedDocument.url } : {}),
+      };
 
       if (result?.contract) {
         upsertRemoteContract(result.contract);
       } else if (result && typeof result === 'object' && getContractMatchKey(result)) {
         upsertRemoteContract(result);
-      } else {
-        const signedDocument = getContractSignedDocumentMetadata(result);
-        setContractOverride(contractId, {
-          signedDocumentName: signedDocument.name ?? file.name,
-          signedDocumentUploadedAt: signedDocument.uploadedAt ?? timestamp,
-          signedDocumentUrl: signedDocument.url,
-        });
       }
+
+      setContractOverride(contractId, persistedPatch);
+      writeStoredContractESignState(contractKeys, persistedPatch);
 
       await refreshPortalData();
       broadcastPortalMessage({
@@ -991,6 +1189,7 @@ export function PortalProvider({ children }) {
       };
     } catch (error) {
       if (shouldUseLocalContractFallback(error)) {
+        writeStoredContractESignState(contractKeys, basePatch);
         return {
           success: true,
           persistedLocally: true,
@@ -1078,7 +1277,7 @@ export function PortalProvider({ children }) {
     }
   };
 
-  const uploadAdminSignedContract = async (contractId, file) => {
+  const uploadAdminSignedContract = async (contractId, file, options = {}) => {
     if (!contractId) {
       throw new Error('Contract record is required.');
     }
@@ -1087,29 +1286,35 @@ export function PortalProvider({ children }) {
       throw new Error('Signed agreement file is required.');
     }
 
+    const { contractKeys = [contractId], sharedContractPatch = {} } = options;
     const previousOverride = contractOverrides[contractId];
     const timestamp = new Date().toISOString();
-
-    setContractOverride(contractId, {
+    const basePatch = {
       signedDocumentName: file.name,
       signedDocumentUploadedAt: timestamp,
-    });
+      ...sharedContractPatch,
+    };
+
+    setContractOverride(contractId, basePatch);
 
     try {
       const result = await portalApi.uploadAdminSignedContract(contractId, file);
+      const signedDocument = getContractSignedDocumentMetadata(result?.contract ?? result);
+      const persistedPatch = {
+        ...basePatch,
+        signedDocumentName: signedDocument.name ?? file.name,
+        signedDocumentUploadedAt: signedDocument.uploadedAt ?? timestamp,
+        ...(signedDocument.url ? { signedDocumentUrl: signedDocument.url } : {}),
+      };
 
       if (result?.contract) {
         upsertRemoteContract(result.contract);
       } else if (result && typeof result === 'object' && getContractMatchKey(result)) {
         upsertRemoteContract(result);
-      } else {
-        const signedDocument = getContractSignedDocumentMetadata(result);
-        setContractOverride(contractId, {
-          signedDocumentName: signedDocument.name ?? file.name,
-          signedDocumentUploadedAt: signedDocument.uploadedAt ?? timestamp,
-          signedDocumentUrl: signedDocument.url,
-        });
       }
+
+      setContractOverride(contractId, persistedPatch);
+      writeStoredContractESignState(contractKeys, persistedPatch);
 
       await refreshPortalData();
       broadcastPortalMessage({
@@ -1124,6 +1329,7 @@ export function PortalProvider({ children }) {
       };
     } catch (error) {
       if (shouldUseLocalContractFallback(error)) {
+        writeStoredContractESignState(contractKeys, basePatch);
         return {
           success: true,
           persistedLocally: true,
@@ -1280,6 +1486,7 @@ export function PortalProvider({ children }) {
       updateNotificationStatus,
       markAllNotificationsRead,
       dismissNotification,
+      pushPortalNotification,
       createCatalogService,
       updateCatalogService,
       createAdminService,

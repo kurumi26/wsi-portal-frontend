@@ -1,4 +1,5 @@
 const CONTRACT_OVERRIDE_STORAGE_KEY = 'wsi-contract-overrides-v1';
+const CONTRACT_ESIGN_STORAGE_KEY = 'wsi-contract-esign-v1';
 const API_BASE_URL = String(import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 const API_ORIGIN = (() => {
   if (!API_BASE_URL) {
@@ -39,6 +40,26 @@ const normalizeText = (value) => {
   }
 
   return String(value).trim();
+};
+
+const normalizeContractStorageKey = (value) => normalizeText(value);
+
+const resolveContractStorageKeys = (...values) => {
+  const keys = values.flatMap((value) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    if (value && typeof value === 'object') {
+      return [value.id, value.externalKey, value.contractId, value.contract_id];
+    }
+
+    return [value];
+  })
+    .map((value) => normalizeContractStorageKey(value))
+    .filter(Boolean);
+
+  return [...new Set(keys)];
 };
 
 const pickFirstValue = (...values) => {
@@ -223,14 +244,22 @@ const formatContractTemplateDate = (value) => {
   });
 };
 
+const formatAgreementDisplayText = (value) => normalizeText(value)
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const getContractTemplateData = (contract) => {
-  const serviceName = normalizeText(pickFirstValue(contract?.serviceName, contract?.title)) || 'Managed Service';
-  const contractTitle = normalizeText(pickFirstValue(contract?.title, `${serviceName} Agreement`)) || 'Service Agreement';
-  const providerName = normalizeText(pickFirstValue(contract?.providerName, contract?.companyName, contract?.vendorName)) || 'WSI Portal Services';
-  const customerName = normalizeText(pickFirstValue(contract?.clientName, contract?.customerName, contract?.customer)) || 'Customer';
+  const rawServiceName = normalizeText(pickFirstValue(contract?.serviceName, contract?.title)) || 'Managed Service';
+  const rawContractTitle = normalizeText(pickFirstValue(contract?.title, `${rawServiceName} Agreement`)) || 'Service Agreement';
+  const serviceName = formatAgreementDisplayText(rawServiceName) || rawServiceName;
+  const contractTitle = formatAgreementDisplayText(rawContractTitle) || rawContractTitle;
+  const providerName = formatAgreementDisplayText(pickFirstValue(contract?.providerName, contract?.companyName, contract?.vendorName)) || 'WSI Portal Services';
+  const customerName = formatAgreementDisplayText(pickFirstValue(contract?.clientName, contract?.customerName, contract?.customer)) || 'Customer';
   const reference = normalizeText(pickFirstValue(contract?.auditReference, contract?.orderNumber, contract?.orderId, contract?.id)) || 'Pending reference';
   const version = normalizeText(contract?.version) || 'v1.0';
   const effectiveDate = formatContractTemplateDate(pickFirstValue(contract?.issuedAt, contract?.acceptedAt, new Date().toISOString()));
+  const preparedDate = formatContractTemplateDate(new Date().toISOString());
   const scopeLabel = contract?.scope === 'checkout'
     ? 'checkout order review and approval'
     : contract?.scope === 'service'
@@ -246,6 +275,7 @@ const getContractTemplateData = (contract) => {
     reference,
     version,
     effectiveDate,
+    preparedDate,
     scopeLabel,
     documentSections,
   };
@@ -253,54 +283,89 @@ const getContractTemplateData = (contract) => {
 
 export const buildContractTemplateDocument = (contract) => {
   const template = getContractTemplateData(contract);
-  const agreementTitle = /agreement/i.test(template.contractTitle)
-    ? template.contractTitle
-    : `${template.serviceName} Service Agreement`;
+  const agreementTitle = template.serviceName && template.serviceName !== 'WSI Portal Services'
+    ? `${template.serviceName} Service Agreement`
+    : 'WSI Service Agreement';
+  const persistedSignatories = Array.isArray(contract?.eSignatureSignatories) ? contract.eSignatureSignatories : [];
+  const signatories = [
+    {
+      title: 'Customer / Client Representative',
+      helper: 'Authorized signatory for the customer or buying entity.',
+      fields: ['Company / Organization', 'Printed Name', 'Title / Role', 'Signature', 'Date Signed'],
+    },
+    {
+      title: `${template.providerName} Authorized Representative`,
+      helper: 'Authorized signatory for the service provider.',
+      fields: ['Company / Organization', 'Printed Name', 'Title / Role', 'Signature', 'Date Signed'],
+    },
+  ].map((signatory, index) => {
+    const persistedSignatory = persistedSignatories[index];
+
+    if (!persistedSignatory || typeof persistedSignatory !== 'object') {
+      return signatory;
+    }
+
+    const prefilledFields = persistedSignatory.prefilledFields && typeof persistedSignatory.prefilledFields === 'object'
+      ? persistedSignatory.prefilledFields
+      : null;
+
+    return {
+      ...signatory,
+      ...(prefilledFields ? { prefilledFields } : {}),
+      ...(persistedSignatory.eSignedAt ? { eSignedAt: persistedSignatory.eSignedAt } : {}),
+    };
+  });
 
   return {
-    badge: 'WSI service agreement',
+    badge: 'Official agreement for execution',
     title: agreementTitle,
-    subtitle: `${template.customerName} | ${template.serviceName} | Ref ${template.reference}`,
+    subtitle: `${template.customerName} and ${template.providerName} | Reference ${template.reference}`,
     metadata: [
+      { label: 'Agreement Type', value: 'Service Agreement' },
+      { label: 'Reference', value: template.reference },
       { label: 'Provider', value: template.providerName },
       { label: 'Customer', value: template.customerName },
       { label: 'Service', value: template.serviceName },
-      { label: 'Reference', value: template.reference },
       { label: 'Version', value: template.version },
       { label: 'Effective Date', value: template.effectiveDate },
+      { label: 'Prepared On', value: template.preparedDate },
     ],
-    overview: `This Service Agreement is made between ${template.providerName} and ${template.customerName} for ${template.scopeLabel} associated with ${template.serviceName}. By signing this document, both parties confirm the commercial, operational, and compliance terms recorded for the service order or service record.`,
+    overview: `This Service Agreement is entered into by and between ${template.providerName} and ${template.customerName} for ${template.scopeLabel} associated with ${template.serviceName}. By signing this document, the parties confirm the commercial, operational, and compliance obligations captured in the approved order, service record, and incorporated documents listed below.`,
     sections: [
       {
-        title: 'Parties and Order Scope',
-        body: `This Agreement governs the delivery of ${template.serviceName}, together with any approved order form, onboarding requirements, support commitments, renewal instructions, and service records maintained in the WSI Portal.`,
+        title: 'Parties and Service Scope',
+        body: `This Agreement governs the delivery and administration of ${template.serviceName}, together with any approved order form, onboarding requirements, support commitments, renewal instructions, and service records maintained in the WSI Portal.`,
       },
       {
-        title: 'Service Delivery',
-        body: `${template.providerName} will provision, maintain, and support ${template.serviceName} in accordance with the approved order, accepted configuration, implementation notes, and applicable service policies.`,
+        title: 'Service Delivery and Support',
+        body: `${template.providerName} will provision, maintain, and support ${template.serviceName} in accordance with the approved order, accepted configuration, implementation notes, operational standards, and applicable service policies.`,
       },
       {
-        title: 'Fees and Billing',
+        title: 'Fees, Billing, and Renewals',
         body: 'Recurring charges, one-time fees, renewal schedules, taxes, and approved add-ons will follow the commercial terms stated in the portal, quotation, invoice, or service order accepted by the customer.',
       },
       {
-        title: 'Customer Obligations',
-        body: `${template.customerName} will provide accurate account information, timely approvals, requested technical details, and reasonable cooperation needed to provision, secure, and maintain the subscribed service.`,
+        title: 'Customer Obligations and Authorized Use',
+        body: `${template.customerName} will provide accurate account information, timely approvals, requested technical details, lawful instructions, and reasonable cooperation needed to provision, secure, and maintain the subscribed service.`,
       },
       {
-        title: 'Provider Obligations',
+        title: 'Provider Duties and Standards of Care',
         body: `${template.providerName} will use commercially reasonable efforts to operate, support, and administer the subscribed service in accordance with documented service policies, internal controls, and applicable law.`,
       },
       {
         title: 'Confidentiality and Data Protection',
-        body: 'Each party will protect confidential information and process account, operational, and personal data only for legitimate service delivery, billing, support, compliance, and legal purposes consistent with applicable privacy obligations.',
+        body: 'Each party will protect confidential information and process account, operational, and personal data only for legitimate service delivery, billing, support, compliance, and legal purposes consistent with applicable privacy and data protection obligations.',
       },
       {
         title: 'Term, Suspension, and Termination',
         body: 'This Agreement takes effect on the effective date or activation date, whichever occurs first, and remains in force until the service expires, is terminated, is suspended under applicable policies, or is superseded by a newer signed agreement.',
       },
       {
-        title: 'Execution',
+        title: 'Incorporated Records and Portal Copy',
+        body: 'Approved order forms, invoices, implementation notes, service schedules, policies, and contract attachments maintained in the WSI Portal are incorporated into this Agreement to the extent they apply to the subscribed service.',
+      },
+      {
+        title: 'Execution and Authority',
         body: 'By signing below, the parties confirm that they are authorized to bind their respective organizations, that they reviewed the incorporated service documents, and that this signed copy may be stored in the WSI Portal as the official contract record.',
       },
     ],
@@ -308,19 +373,9 @@ export const buildContractTemplateDocument = (contract) => {
       title: section.title,
       description: section.description || 'Included in the agreement bundle.',
     })),
-    signatories: [
-      {
-        title: 'Customer / Client Representative',
-        helper: 'Sign on behalf of the customer or buying entity.',
-        fields: ['Printed Name', 'Title / Role', 'Signature', 'Date'],
-      },
-      {
-        title: `${template.providerName} Authorized Representative`,
-        helper: 'Sign on behalf of the service provider.',
-        fields: ['Printed Name', 'Title / Role', 'Signature', 'Date'],
-      },
-    ],
-    note: 'Service-specific schedules, statements of work, SLAs, implementation milestones, compliance appendices, or approval notes may be attached to the fully signed copy and retained with this agreement record.',
+    signatureStatement: 'IN WITNESS WHEREOF, the parties, intending to be legally bound, have caused this Agreement to be signed by their duly authorized representatives on the dates written below.',
+    signatories,
+    note: 'Service-specific schedules, statements of work, SLAs, implementation milestones, compliance appendices, approval notes, or supporting exhibits may be attached to the fully signed copy and retained with this agreement record.',
   };
 };
 
@@ -353,6 +408,8 @@ export const buildContractTemplateText = (contract) => {
     ...sectionLines,
     'Included Documents',
     ...documentLines,
+    '',
+    template.signatureStatement,
     '',
     'Signature Blocks',
     ...signatoryLines,
@@ -602,21 +659,35 @@ export const getContractVerificationStatus = (contract) => {
 };
 
 const applyContractOverride = (contract, overrides = {}) => {
+  const sharedESignState = readStoredContractESignState(contract);
+  const sharedSignedDocument = getContractSignedDocumentMetadata(sharedESignState ?? {});
+  const baseContract = {
+    ...contract,
+    signedDocumentName: pickFirstValue(contract?.signedDocumentName, sharedSignedDocument.name),
+    signedDocumentUploadedAt: pickFirstValue(contract?.signedDocumentUploadedAt, sharedSignedDocument.uploadedAt),
+    signedDocumentUrl: pickFirstValue(contract?.signedDocumentUrl, sharedSignedDocument.url),
+    eSignatureSignatories: Array.isArray(contract?.eSignatureSignatories) && contract.eSignatureSignatories.length
+      ? contract.eSignatureSignatories
+      : Array.isArray(sharedESignState?.eSignatureSignatories) && sharedESignState.eSignatureSignatories.length
+        ? sharedESignState.eSignatureSignatories
+        : contract?.eSignatureSignatories,
+    eSignatureUpdatedAt: pickFirstValue(contract?.eSignatureUpdatedAt, sharedESignState?.eSignatureUpdatedAt),
+  };
   const override = overrides?.[contract.id] ?? overrides?.[contract.externalKey];
-  const next = override ? { ...contract, ...override } : { ...contract };
-  const signedDocument = getContractSignedDocumentMetadata(next, contract);
+  const next = override ? { ...baseContract, ...override } : { ...baseContract };
+  const signedDocument = getContractSignedDocumentMetadata(next, baseContract);
   const verifiedAt = pickFirstValue(
     next.verifiedAt,
     next.verified_at,
     next.acceptanceVerifiedAt,
     next.acceptance_verified_at,
-    contract.verifiedAt,
-    contract.verified_at,
-    contract.acceptanceVerifiedAt,
-    contract.acceptance_verified_at,
+    baseContract.verifiedAt,
+    baseContract.verified_at,
+    baseContract.acceptanceVerifiedAt,
+    baseContract.acceptance_verified_at,
   );
   const verificationSource = {
-    ...contract,
+    ...baseContract,
     ...next,
     verifiedAt,
   };
@@ -624,16 +695,16 @@ const applyContractOverride = (contract, overrides = {}) => {
   return {
     ...next,
     status: normalizeContractStatus(next.status),
-    clientId: pickFirstValue(next.clientId, contract.clientId),
-    clientName: pickFirstValue(next.clientName, contract.clientName),
+    clientId: pickFirstValue(next.clientId, baseContract.clientId),
+    clientName: pickFirstValue(next.clientName, baseContract.clientName),
     documentSections: normalizeDocumentSections(next.documentSections, next.serviceName),
-    downloadUrl: resolveAssetUrl(pickFirstValue(next.downloadUrl, contract.downloadUrl)),
-    acceptedAt: pickFirstValue(next.acceptedAt, contract.acceptedAt),
-    rejectedAt: pickFirstValue(next.rejectedAt, contract.rejectedAt),
-    decisionAt: pickFirstValue(next.decisionAt, next.acceptedAt, next.rejectedAt, contract.decisionAt),
+    downloadUrl: resolveAssetUrl(pickFirstValue(next.downloadUrl, baseContract.downloadUrl)),
+    acceptedAt: pickFirstValue(next.acceptedAt, baseContract.acceptedAt),
+    rejectedAt: pickFirstValue(next.rejectedAt, baseContract.rejectedAt),
+    decisionAt: pickFirstValue(next.decisionAt, next.acceptedAt, next.rejectedAt, baseContract.decisionAt),
     verifiedAt,
-    verifiedBy: pickFirstValue(next.verifiedBy, next.verified_by, contract.verifiedBy, contract.verified_by),
-    verificationStatus: pickFirstValue(next.verificationStatus, next.verification_status, contract.verificationStatus, getContractVerificationStatus(verificationSource)),
+    verifiedBy: pickFirstValue(next.verifiedBy, next.verified_by, baseContract.verifiedBy, baseContract.verified_by),
+    verificationStatus: pickFirstValue(next.verificationStatus, next.verification_status, baseContract.verificationStatus, getContractVerificationStatus(verificationSource)),
     acceptanceVerified: isContractVerified(verificationSource),
     signedDocumentName: signedDocument.name,
     signedDocumentUploadedAt: signedDocument.uploadedAt,
@@ -687,6 +758,68 @@ export const writeStoredContractOverrides = (ownerKey = 'anonymous', overrides =
     localStorage.setItem(CONTRACT_OVERRIDE_STORAGE_KEY, JSON.stringify(next));
   } catch (error) {
     // ignore local storage write failures
+  }
+};
+
+const readStoredContractESignStateMap = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const raw = localStorage.getItem(CONTRACT_ESIGN_STORAGE_KEY);
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+export const readStoredContractESignState = (...values) => {
+  const keys = resolveContractStorageKeys(...values);
+
+  if (!keys.length) {
+    return null;
+  }
+
+  const stateMap = readStoredContractESignStateMap();
+
+  for (const key of keys) {
+    const entry = stateMap[key];
+
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      return entry;
+    }
+  }
+
+  return null;
+};
+
+export const writeStoredContractESignState = (values, patch = {}) => {
+  const keys = resolveContractStorageKeys(values);
+
+  if (!keys.length || !patch || typeof patch !== 'object') {
+    return null;
+  }
+
+  try {
+    const stateMap = readStoredContractESignStateMap();
+    const previous = readStoredContractESignState(values) ?? {};
+    const nextEntry = { ...previous, ...patch };
+
+    keys.forEach((key) => {
+      stateMap[key] = nextEntry;
+    });
+
+    localStorage.setItem(CONTRACT_ESIGN_STORAGE_KEY, JSON.stringify(stateMap));
+    return nextEntry;
+  } catch (error) {
+    return null;
   }
 };
 

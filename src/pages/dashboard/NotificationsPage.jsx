@@ -417,7 +417,7 @@ export default function NotificationsPage() {
                         navigate(t);
                       }
                     } else if (t && t.path) {
-                      navigate(t.path);
+                      navigate(t.path, t.state ? { state: t.state } : undefined);
                     }
                   }}
                   className="btn-primary"
