@@ -8,6 +8,8 @@ import {
   Clock3,
   FileText,
   LayoutDashboard,
+  LayoutGrid,
+  List,
   Mail,
   Plus,
   ReceiptText,
@@ -486,6 +488,7 @@ export default function AdminDashboardPage() {
   const [selectedStatCard, setSelectedStatCard] = useState(null);
   const [attentionNow, setAttentionNow] = useState(() => Date.now());
   const [chartScope, setChartScope] = useState('This Month');
+  const [queueViewMode, setQueueViewMode] = useState('list');
 
   const visibleWidgetSet = useMemo(() => new Set(visibleWidgetKeys), [visibleWidgetKeys]);
 
@@ -895,6 +898,138 @@ export default function AdminDashboardPage() {
   const showQuickActions = visibleWidgetSet.has('quickActions');
   const showRecentActivity = visibleWidgetSet.has('recentActivity');
   const visibleQueueCardCount = [showNewOrders, showExpiringServices, showOverdue].filter(Boolean).length;
+  const queueViewToggle = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setQueueViewMode('list')}
+        className={queueViewMode === 'list' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+        aria-label="List layout"
+        title="List layout"
+      >
+        <List size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={() => setQueueViewMode('grid')}
+        className={queueViewMode === 'grid' ? 'btn-primary px-3 py-2' : 'btn-secondary px-3 py-2'}
+        aria-label="Grid layout"
+        title="Grid layout"
+      >
+        <LayoutGrid size={16} />
+      </button>
+    </div>
+  );
+  const queueCards = (
+    <>
+      {showNewOrders ? (
+        <DashboardTableCard
+          tone="blue"
+          icon={ReceiptText}
+          title="New Orders"
+          columns={[
+            { label: 'Order ID' },
+            { label: 'Client' },
+            { label: 'Date Created' },
+            { label: 'Amount', className: 'text-right' },
+            { label: 'Status', className: 'text-right' },
+          ]}
+          rows={newestOrders}
+          emptyLabel="No new orders in the queue."
+          footerLabel="View All New Orders"
+          to="/admin/approvals"
+          renderRow={(purchase) => (
+            <tr key={purchase.id} className="border-b border-slate-100 last:border-b-0">
+              <td className="px-2 py-3 font-semibold text-slate-800">{getOrderReference(purchase)}</td>
+              <td className="px-2 py-3 text-slate-600">{purchase.client || purchase.customer || '—'}</td>
+              <td className="px-2 py-3 text-slate-600">{formatDashboardDate(purchase.date || purchase.createdAt || purchase.created_at)}</td>
+              <td className="px-2 py-3 text-right font-medium text-slate-800">{formatCurrency(getMoneyValue(purchase.amount, purchase.price))}</td>
+              <td className="px-2 py-3 text-right"><TinyStatus label="New" /></td>
+            </tr>
+          )}
+        />
+      ) : null}
+
+      {showExpiringServices ? (
+        <DashboardTableCard
+          tone="amber"
+          icon={CalendarClock}
+          title="Expiring Services"
+          columns={[
+            { label: 'Service' },
+            { label: 'Client' },
+            { label: 'Expiry Date' },
+            { label: 'Days Left', className: 'text-center' },
+            { label: 'Status', className: 'text-right' },
+          ]}
+          rows={expiringQueue}
+          emptyLabel="No services are close to expiry."
+          footerLabel="View All Expiring Services"
+          to="/admin/client-services"
+          renderRow={(service) => (
+            <tr key={service.id} className="border-b border-slate-100 last:border-b-0">
+              <td className="px-2 py-3 font-medium text-slate-800">{service.name}</td>
+              <td className="px-2 py-3 text-slate-600">{service.client || service.clientEmail || '—'}</td>
+              <td className="px-2 py-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTimeline({
+                    title: service.name,
+                    subtitle: service.client || service.clientEmail || 'Client service',
+                    label: 'Expiry Date',
+                    value: service.renewsOn,
+                  })}
+                  className="text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-2 transition hover:text-amber-600"
+                >
+                  {formatDashboardDate(service.renewsOn)}
+                </button>
+              </td>
+              <td className="px-2 py-3 text-center font-medium text-slate-700">{getDaysLeft(service.renewsOn, attentionNow)}</td>
+              <td className="px-2 py-3 text-right"><TinyStatus label="Expiring" /></td>
+            </tr>
+          )}
+        />
+      ) : null}
+
+      {showOverdue ? (
+        <DashboardTableCard
+          tone="rose"
+          icon={CircleAlert}
+          title="Overdue"
+          columns={[
+            { label: 'SOA / Ref #' },
+            { label: 'Client' },
+            { label: 'Due Date' },
+            { label: 'Amount', className: 'text-right' },
+            { label: 'Status', className: 'text-right' },
+          ]}
+          rows={overdueQueue}
+          emptyLabel="No overdue receivables right now."
+          footerLabel="View All Overdue"
+          to="/admin/reports/receivables"
+          renderRow={(purchase) => (
+            <tr key={`overdue-${purchase.id}`} className="border-b border-slate-100 last:border-b-0">
+              <td className="px-2 py-3 font-semibold text-slate-800">{getOverdueReference(purchase)}</td>
+              <td className="px-2 py-3 text-slate-600">{purchase.client || purchase.customer || '—'}</td>
+              <td className="px-2 py-3 text-slate-600">
+                {formatDashboardDate(
+                  purchase.dueDate
+                  || purchase.due_date
+                  || purchase.dueOn
+                  || purchase.due_on
+                  || purchase.invoiceDueDate
+                  || purchase.invoice_due_date
+                  || purchase.date,
+                )}
+              </td>
+              <td className="px-2 py-3 text-right font-medium text-slate-800">{formatCurrency(getMoneyValue(purchase.amount, purchase.price))}</td>
+              <td className="px-2 py-3 text-right"><TinyStatus label="Overdue" /></td>
+            </tr>
+          )}
+        />
+      ) : null}
+    </>
+  );
   const visibleSummaryCards = useMemo(
     () => summaryCards.filter((card) => visibleWidgetSet.has(card.widgetKey)),
     [summaryCards, visibleWidgetSet],
@@ -1115,113 +1250,19 @@ export default function AdminDashboardPage() {
       </div>
 
       {visibleQueueCardCount ? (
-        <div className={getDashboardQueueGridClass(visibleQueueCardCount)}>
-          {showNewOrders ? (
-            <DashboardTableCard
-              tone="blue"
-              icon={ReceiptText}
-              title="New Orders"
-              columns={[
-                { label: 'Order ID' },
-                { label: 'Client' },
-                { label: 'Date Created' },
-                { label: 'Amount', className: 'text-right' },
-                { label: 'Status', className: 'text-right' },
-              ]}
-              rows={newestOrders}
-              emptyLabel="No new orders in the queue."
-              footerLabel="View All New Orders"
-              to="/admin/approvals"
-              renderRow={(purchase) => (
-                <tr key={purchase.id} className="border-b border-slate-100 last:border-b-0">
-                  <td className="px-2 py-3 font-semibold text-slate-800">{getOrderReference(purchase)}</td>
-                  <td className="px-2 py-3 text-slate-600">{purchase.client || purchase.customer || '—'}</td>
-                  <td className="px-2 py-3 text-slate-600">{formatDashboardDate(purchase.date || purchase.createdAt || purchase.created_at)}</td>
-                  <td className="px-2 py-3 text-right font-medium text-slate-800">{formatCurrency(getMoneyValue(purchase.amount, purchase.price))}</td>
-                  <td className="px-2 py-3 text-right"><TinyStatus label="New" /></td>
-                </tr>
-              )}
-            />
-          ) : null}
+        <div className="space-y-4">
+          <div className="flex flex-col gap-4 px-1 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold uppercase tracking-[0.08em] text-slate-800">Queue Overview</h2>
+              <p className="mt-1 text-sm text-slate-500">Switch between the standard list and grid layouts.</p>
+            </div>
 
-          {showExpiringServices ? (
-            <DashboardTableCard
-              tone="amber"
-              icon={CalendarClock}
-              title="Expiring Services"
-              columns={[
-                { label: 'Service' },
-                { label: 'Client' },
-                { label: 'Expiry Date' },
-                { label: 'Days Left', className: 'text-center' },
-                { label: 'Status', className: 'text-right' },
-              ]}
-              rows={expiringQueue}
-              emptyLabel="No services are close to expiry."
-              footerLabel="View All Expiring Services"
-              to="/admin/client-services"
-              renderRow={(service) => (
-                <tr key={service.id} className="border-b border-slate-100 last:border-b-0">
-                  <td className="px-2 py-3 font-medium text-slate-800">{service.name}</td>
-                  <td className="px-2 py-3 text-slate-600">{service.client || service.clientEmail || '—'}</td>
-                  <td className="px-2 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTimeline({
-                        title: service.name,
-                        subtitle: service.client || service.clientEmail || 'Client service',
-                        label: 'Expiry Date',
-                        value: service.renewsOn,
-                      })}
-                      className="text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-2 transition hover:text-amber-600"
-                    >
-                      {formatDashboardDate(service.renewsOn)}
-                    </button>
-                  </td>
-                  <td className="px-2 py-3 text-center font-medium text-slate-700">{getDaysLeft(service.renewsOn, attentionNow)}</td>
-                  <td className="px-2 py-3 text-right"><TinyStatus label="Expiring" /></td>
-                </tr>
-              )}
-            />
-          ) : null}
+            {queueViewToggle}
+          </div>
 
-          {showOverdue ? (
-            <DashboardTableCard
-              tone="rose"
-              icon={CircleAlert}
-              title="Overdue"
-              columns={[
-                { label: 'SOA / Ref #' },
-                { label: 'Client' },
-                { label: 'Due Date' },
-                { label: 'Amount', className: 'text-right' },
-                { label: 'Status', className: 'text-right' },
-              ]}
-              rows={overdueQueue}
-              emptyLabel="No overdue receivables right now."
-              footerLabel="View All Overdue"
-              to="/admin/reports/receivables"
-              renderRow={(purchase) => (
-                <tr key={`overdue-${purchase.id}`} className="border-b border-slate-100 last:border-b-0">
-                  <td className="px-2 py-3 font-semibold text-slate-800">{getOverdueReference(purchase)}</td>
-                  <td className="px-2 py-3 text-slate-600">{purchase.client || purchase.customer || '—'}</td>
-                  <td className="px-2 py-3 text-slate-600">
-                    {formatDashboardDate(
-                      purchase.dueDate
-                      || purchase.due_date
-                      || purchase.dueOn
-                      || purchase.due_on
-                      || purchase.invoiceDueDate
-                      || purchase.invoice_due_date
-                      || purchase.date,
-                    )}
-                  </td>
-                  <td className="px-2 py-3 text-right font-medium text-slate-800">{formatCurrency(getMoneyValue(purchase.amount, purchase.price))}</td>
-                  <td className="px-2 py-3 text-right"><TinyStatus label="Overdue" /></td>
-                </tr>
-              )}
-            />
-          ) : null}
+          <div className={queueViewMode === 'list' ? 'space-y-4' : getDashboardQueueGridClass(visibleQueueCardCount)}>
+            {queueCards}
+          </div>
         </div>
       ) : null}
 
