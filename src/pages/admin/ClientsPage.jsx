@@ -774,7 +774,7 @@ export default function ClientsPage() {
             </div>
 
             <div className="max-h-[calc(88vh-110px)] space-y-6 overflow-y-auto px-6 py-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 {[
                   { icon: UserCircle2, label: 'Client Name', value: selectedClientAccount.name },
                   { icon: Mail, label: 'Email', value: selectedClientAccount.email },
