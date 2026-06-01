@@ -505,7 +505,7 @@ export default function ContractsPage() {
   };
 
   const handleDownload = async (contract) => {
-    await downloadAgreementCopy(contract);
+    await downloadAgreementCopy(contract, { allowRemoteDownload: false });
   };
 
   const handleQuickTemplateDownload = async () => {
