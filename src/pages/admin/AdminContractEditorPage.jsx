@@ -122,7 +122,7 @@ const buildEditorState = (contract) => {
     title: managedTemplate.title || templateDocument.title,
     subtitle: managedTemplate.subtitle || templateDocument.subtitle,
     providerName: managedTemplate.providerName || contract?.providerName || 'WSI Portal Services',
-    customerName: managedTemplate.customerName || contract?.clientName || contract?.customerName || 'Customer',
+    customerName: templateDocument.metadata.find((item) => item.label === 'Customer')?.value || contract?.clientName || contract?.company || 'Customer',
     serviceName: managedTemplate.serviceName || contract?.serviceName || contract?.title || '',
     version: managedTemplate.version || contract?.version || 'v1.0',
     overviewHtml: managedTemplate.overviewHtml || createRichTextFromPlainText(managedTemplate.overviewText || templateDocument.overview),
@@ -788,7 +788,8 @@ export default function AdminContractEditorPage() {
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Customer</span>
-                <input type="text" value={editorState.customerName} onChange={(event) => updateEditorField('customerName', event.target.value)} className="input" />
+                <input type="text" value={editorState.customerName} readOnly className="input cursor-not-allowed opacity-80" />
+                <span className="mt-1 block text-xs text-slate-500">Auto-filled from the linked customer record.</span>
               </label>
               <label className="block md:col-span-2">
                 <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Service name</span>
@@ -889,19 +890,19 @@ export default function AdminContractEditorPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">Customer signatory</p>
-                <p className="mt-1 text-xs text-slate-400">Printed on the agreement PDF before the customer e-signs.</p>
+                <p className="mt-1 text-xs text-slate-400">Auto-filled from the linked customer record. Customer details can only be finalized during the customer e-sign flow.</p>
                 <div className="mt-4 space-y-3">
                   <label className="block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Company</span>
-                    <input type="text" value={editorState.signatoryProfiles[0]?.company ?? ''} onChange={(event) => updateSignatoryField(0, 'company', event.target.value)} className="input" />
+                    <input type="text" value={editorState.signatoryProfiles[0]?.company ?? ''} readOnly className="input cursor-not-allowed opacity-80" />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Printed name</span>
-                    <input type="text" value={editorState.signatoryProfiles[0]?.printedName ?? ''} onChange={(event) => updateSignatoryField(0, 'printedName', event.target.value)} className="input" />
+                    <input type="text" value={editorState.signatoryProfiles[0]?.printedName ?? ''} readOnly className="input cursor-not-allowed opacity-80" />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Title / role</span>
-                    <input type="text" value={editorState.signatoryProfiles[0]?.title ?? ''} onChange={(event) => updateSignatoryField(0, 'title', event.target.value)} className="input" />
+                    <input type="text" value={editorState.signatoryProfiles[0]?.title ?? ''} readOnly className="input cursor-not-allowed opacity-80" />
                   </label>
                 </div>
               </div>

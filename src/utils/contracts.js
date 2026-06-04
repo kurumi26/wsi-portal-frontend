@@ -11,6 +11,23 @@ const SIGNATORY_FIELD_LABELS = {
   dateSigned: 'Date Signed',
 };
 
+const CUSTOMER_SIGNATORY_PLACEHOLDERS = new Set([
+  'customer',
+  'client',
+  'customer / client',
+  'customer/client',
+  'customer representative',
+  'client representative',
+  'customer / client representative',
+  'customer/client representative',
+]);
+
+const PROVIDER_SIGNATORY_PLACEHOLDERS = new Set([
+  'provider',
+  'service provider',
+  'authorized representative',
+]);
+
 const createEmptySignatoryProfile = () => ({
   company: '',
   printedName: '',
@@ -51,33 +68,130 @@ const prefilledFieldsToProfile = (prefilledFields) => {
   };
 };
 
-export const normalizeSignatoryProfiles = (profiles, { customerName = 'Customer', providerName = 'WSI Portal Services' } = {}) => {
+const normalizePlaceholderToken = (value) => normalizeText(value).toLowerCase().replace(/\s+/g, ' ').trim();
+
+const resolveAutofilledSignatoryValue = (value, fallbackValue, placeholders = new Set()) => {
+  const normalizedValue = normalizeText(value);
+  const normalizedFallback = normalizeText(fallbackValue);
+
+  if (!normalizedValue) {
+    return normalizedFallback;
+  }
+
+  if (normalizedFallback && normalizedValue !== normalizedFallback && placeholders.has(normalizePlaceholderToken(normalizedValue))) {
+    return normalizedFallback;
+  }
+
+  return normalizedValue;
+};
+
+// ── FIX: also read customerCompany from the contract ──────────────────────────
+const getContractPartyNames = (contract, managedTemplate = null) => {
+  const fallbackCustomerName = normalizeText(pickFirstValue(
+    contract?.clientName,
+    contract?.client_name,
+    contract?.customerName,
+    contract?.customer_name,
+    contract?.customer,
+    contract?.client,
+  )) || 'Customer';
+
+  // NEW: read the customer's company separately from their personal name
+  const fallbackCustomerCompany = normalizeText(pickFirstValue(
+    contract?.clientCompany,
+    contract?.client_company,
+    contract?.customerCompany,
+    contract?.customer_company,
+    contract?.companyName,
+    contract?.company_name,
+    contract?.company,
+  )) || '';
+
+  const fallbackProviderName = normalizeText(pickFirstValue(
+    contract?.providerName,
+    contract?.provider_name,
+    contract?.vendorName,
+    contract?.vendor_name,
+  )) || 'Webfocus Solutions Inc.';
+
+  return {
+    customerName: resolveAutofilledSignatoryValue(managedTemplate?.customerName, fallbackCustomerName, CUSTOMER_SIGNATORY_PLACEHOLDERS) || fallbackCustomerName,
+    // NEW: expose customerCompany so signatory profiles can use it
+    customerCompany: normalizeText(managedTemplate?.customerCompany) || fallbackCustomerCompany,
+    providerName: resolveAutofilledSignatoryValue(managedTemplate?.providerName, fallbackProviderName, PROVIDER_SIGNATORY_PLACEHOLDERS) || fallbackProviderName,
+  };
+};
+
+const sanitizeSignatoryPrefilledFields = (prefilledFields, { index, customerName, customerCompany, providerName }) => {
+  if (!prefilledFields || typeof prefilledFields !== 'object') {
+    return {};
+  }
+
+  return Object.entries(prefilledFields).reduce((accumulator, [label, rawValue]) => {
+    const normalizedLabel = normalizeText(label).toLowerCase();
+    const isCompanyField = normalizedLabel.includes('company') || normalizedLabel.includes('organization');
+    const isNameField = normalizedLabel.includes('printed name') || normalizedLabel === 'name';
+    let nextValue = normalizeText(rawValue);
+
+    // FIX: for customer company field, prefer customerCompany over customerName
+    if (index === 0 && isCompanyField) {
+      if (customerCompany) {
+        nextValue = resolveAutofilledSignatoryValue(nextValue, customerCompany, CUSTOMER_SIGNATORY_PLACEHOLDERS);
+      } else {
+        nextValue = resolveAutofilledSignatoryValue(nextValue, customerName, CUSTOMER_SIGNATORY_PLACEHOLDERS);
+      }
+    }
+
+    if (index === 0 && isNameField) {
+      nextValue = resolveAutofilledSignatoryValue(nextValue, customerName, CUSTOMER_SIGNATORY_PLACEHOLDERS);
+    }
+
+    if (index === 1 && isCompanyField) {
+      nextValue = resolveAutofilledSignatoryValue(nextValue, providerName, PROVIDER_SIGNATORY_PLACEHOLDERS);
+    }
+
+    if (nextValue) {
+      accumulator[label] = nextValue;
+    }
+
+    return accumulator;
+  }, {});
+};
+
+// ── FIX: normalizeSignatoryProfiles now accepts customerCompany ───────────────
+export const normalizeSignatoryProfiles = (profiles, { customerName = 'Customer', customerCompany = '', providerName = 'WSI Portal Services' } = {}) => {
   const source = Array.isArray(profiles) ? profiles : [];
 
   return [0, 1].map((index) => ({
-    company: normalizeText(source[index]?.company) || (index === 0 ? customerName : providerName),
-    printedName: normalizeText(source[index]?.printedName) || (index === 0 ? customerName : ''),
+    // FIX: customer company uses customerCompany fallback, NOT customerName
+    company: index === 0
+      ? resolveAutofilledSignatoryValue(source[index]?.company, customerCompany || '', CUSTOMER_SIGNATORY_PLACEHOLDERS)
+      : resolveAutofilledSignatoryValue(source[index]?.company, providerName, PROVIDER_SIGNATORY_PLACEHOLDERS),
+    printedName: index === 0
+      ? resolveAutofilledSignatoryValue(source[index]?.printedName, customerName, CUSTOMER_SIGNATORY_PLACEHOLDERS)
+      : normalizeText(source[index]?.printedName),
     title: normalizeText(source[index]?.title) || (index === 1 ? 'Authorized Representative' : ''),
   }));
 };
 
+// ── FIX: buildSignatoryStateFromContract passes customerCompany through ───────
 export const buildSignatoryStateFromContract = (contract, managedTemplate = {}) => {
-  const customerName = normalizeText(managedTemplate.customerName || contract?.clientName || contract?.customerName) || 'Customer';
-  const providerName = normalizeText(managedTemplate.providerName || contract?.providerName) || 'WSI Portal Services';
+  const { customerName, customerCompany, providerName } = getContractPartyNames(contract, managedTemplate);
 
   if (Array.isArray(managedTemplate.signatoryProfiles) && managedTemplate.signatoryProfiles.length) {
-    return normalizeSignatoryProfiles(managedTemplate.signatoryProfiles, { customerName, providerName });
+    return normalizeSignatoryProfiles(managedTemplate.signatoryProfiles, { customerName, customerCompany, providerName });
   }
 
   const persisted = Array.isArray(contract?.eSignatureSignatories) ? contract.eSignatureSignatories : [];
 
   return [0, 1].map((index) => {
     const profile = prefilledFieldsToProfile(persisted[index]?.prefilledFields);
-    const normalized = normalizeSignatoryProfiles([profile], { customerName, providerName })[0];
+    const normalized = normalizeSignatoryProfiles([profile], { customerName, customerCompany, providerName })[0];
 
     if (index === 0) {
       return {
-        company: normalized.company || customerName,
+        // FIX: company falls back to customerCompany, NOT customerName
+        company: normalized.company || customerCompany || '',
         printedName: normalized.printedName || customerName,
         title: normalized.title,
       };
@@ -107,6 +221,7 @@ export const buildESignatureSignatoriesFromProfiles = (profiles, existingSignato
     };
   });
 };
+
 const API_BASE_URL = String(import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 const API_ORIGIN = (() => {
   if (!API_BASE_URL) {
@@ -452,14 +567,18 @@ const getManagedTemplateSettings = (contract) => (
     : null
 );
 
+// ── FIX: getContractTemplateData now also exposes customerCompany ─────────────
 const getContractTemplateData = (contract) => {
   const managedTemplateSettings = getManagedTemplateSettings(contract);
   const rawServiceName = normalizeText(pickFirstValue(managedTemplateSettings?.serviceName, contract?.serviceName, contract?.title)) || 'Managed Service';
   const rawContractTitle = normalizeText(pickFirstValue(managedTemplateSettings?.contractTitle, managedTemplateSettings?.title, contract?.title, `${rawServiceName} Agreement`)) || 'Service Agreement';
+  const partyNames = getContractPartyNames(contract, managedTemplateSettings);
   const serviceName = formatAgreementDisplayText(rawServiceName) || rawServiceName;
   const contractTitle = formatAgreementDisplayText(rawContractTitle) || rawContractTitle;
-  const providerName = formatAgreementDisplayText(pickFirstValue(managedTemplateSettings?.providerName, contract?.providerName, contract?.companyName, contract?.vendorName)) || 'WSI Portal Services';
-  const customerName = formatAgreementDisplayText(pickFirstValue(managedTemplateSettings?.customerName, contract?.clientName, contract?.customerName, contract?.customer)) || 'Customer';
+  const providerName = formatAgreementDisplayText(partyNames.providerName) || 'WSI Portal Services';
+  const customerName = formatAgreementDisplayText(partyNames.customerName) || 'Customer';
+  // NEW: include customerCompany in template data
+  const customerCompany = formatAgreementDisplayText(partyNames.customerCompany) || '';
   const reference = normalizeText(pickFirstValue(managedTemplateSettings?.reference, contract?.auditReference, contract?.orderNumber, contract?.orderId, contract?.id)) || 'Pending reference';
   const version = normalizeText(pickFirstValue(managedTemplateSettings?.version, contract?.version)) || 'v1.0';
   const effectiveDate = formatContractTemplateDate(pickFirstValue(contract?.issuedAt, contract?.acceptedAt, new Date().toISOString()));
@@ -475,6 +594,7 @@ const getContractTemplateData = (contract) => {
     contractTitle,
     providerName,
     customerName,
+    customerCompany, // NEW
     serviceName,
     reference,
     version,
@@ -492,10 +612,14 @@ export const buildContractTemplateDocument = (contract) => {
     ? `${template.serviceName} Service Agreement`
     : 'WSI Service Agreement';
   const persistedSignatories = Array.isArray(contract?.eSignatureSignatories) ? contract.eSignatureSignatories : [];
+
+  // FIX: pass customerCompany into normalizeSignatoryProfiles
   const profilePrefills = normalizeSignatoryProfiles(managedTemplateSettings?.signatoryProfiles, {
     customerName: template.customerName,
+    customerCompany: template.customerCompany,
     providerName: template.providerName,
   });
+
   const signatories = [
     {
       title: 'Customer / Client Representative',
@@ -511,7 +635,12 @@ export const buildContractTemplateDocument = (contract) => {
     const persistedSignatory = persistedSignatories[index];
     const profilePrefilled = profileToPrefilledFields(profilePrefills[index]);
     const persistedPrefilled = persistedSignatory?.prefilledFields && typeof persistedSignatory.prefilledFields === 'object'
-      ? persistedSignatory.prefilledFields
+      ? sanitizeSignatoryPrefilledFields(persistedSignatory.prefilledFields, {
+          index,
+          customerName: template.customerName,
+          customerCompany: template.customerCompany, // FIX: pass customerCompany
+          providerName: template.providerName,
+        })
       : {};
     const mergedPrefilled = {
       ...profilePrefilled,
@@ -1207,6 +1336,7 @@ export const writeStoredContractESignState = (values, patch = {}) => {
   }
 };
 
+// ── FIX: buildDerivedOrderContract now reads clientCompany from the order ─────
 const buildDerivedOrderContract = ({ order, services, myServices, overrides, user, index }) => {
   const relatedService = findRelatedService({
     serviceId: pickFirstValue(order?.serviceId, order?.service_id),
@@ -1229,7 +1359,9 @@ const buildDerivedOrderContract = ({ order, services, myServices, overrides, use
     order?.rejected,
     order?.isRejected,
   ));
-  const clientName = normalizeText(pickFirstValue(order?.clientName, order?.client, order?.customerName, order?.customer)) || 'Customer';
+  const clientName = normalizeText(pickFirstValue(order?.clientName, order?.client, order?.customerName, order?.customer, user?.name)) || 'Customer';
+  // FIX: read company from order fields first, then fall back to user.company from AuthContext
+  const clientCompany = normalizeText(pickFirstValue(order?.clientCompany, order?.client_company, order?.customerCompany, order?.customer_company, order?.companyName, order?.company_name, order?.company, user?.company)) || '';
   const status = explicitRejected
     ? 'Rejected'
     : explicitAccepted
@@ -1247,6 +1379,7 @@ const buildDerivedOrderContract = ({ order, services, myServices, overrides, use
     description: 'Customer agreement bundle attached to the order record for legal, billing, and privacy acknowledgement.',
     clientId: pickFirstValue(order?.clientId, order?.client_id, order?.userId, order?.user_id),
     clientName,
+    clientCompany, // NEW
     serviceName,
     serviceId: pickFirstValue(order?.serviceId, order?.service_id, relatedService?.id),
     orderId: pickFirstValue(order?.id, order?.orderNumber, order?.order_number),
@@ -1273,10 +1406,13 @@ const buildDerivedOrderContract = ({ order, services, myServices, overrides, use
   }, overrides);
 };
 
-const buildDerivedServiceContract = ({ service, overrides, index }) => {
+// ── FIX: buildDerivedServiceContract now reads clientCompany from the service ─
+const buildDerivedServiceContract = ({ service, overrides, user, index }) => {
   const serviceKey = normalizeText(pickFirstValue(service?.id, service?.serviceId, `service-${index}`));
   const serviceName = normalizeText(pickFirstValue(service?.name, service?.serviceName)) || 'Service Agreement';
-  const clientName = normalizeText(pickFirstValue(service?.clientName, service?.client, service?.customerName, service?.customer)) || 'Customer';
+  const clientName = normalizeText(pickFirstValue(service?.clientName, service?.client, service?.customerName, service?.customer, user?.name)) || 'Customer';
+  // FIX: read company from service fields first, then fall back to user.company from AuthContext
+  const clientCompany = normalizeText(pickFirstValue(service?.clientCompany, service?.client_company, service?.customerCompany, service?.customer_company, service?.companyName, service?.company_name, service?.company, user?.company)) || '';
   const signedDocument = getContractSignedDocumentMetadata(service);
 
   return applyContractOverride({
@@ -1288,6 +1424,7 @@ const buildDerivedServiceContract = ({ service, overrides, index }) => {
     description: 'Agreement record inherited from the active customer service profile.',
     clientId: pickFirstValue(service?.clientId, service?.client_id, service?.userId, service?.user_id),
     clientName,
+    clientCompany, // NEW
     serviceName,
     serviceId: pickFirstValue(service?.id, service?.serviceId),
     status: 'Accepted',
@@ -1309,6 +1446,7 @@ const buildDerivedServiceContract = ({ service, overrides, index }) => {
   }, overrides);
 };
 
+// ── FIX: normalizeRemoteContract now reads clientCompany from the contract ────
 const normalizeRemoteContract = ({ contract, orders, myServices, services, overrides, user, index }) => {
   const remoteId = normalizeText(pickFirstValue(contract?.id, contract?.contractId, contract?.contract_id, contract?.referenceId, contract?.reference_id));
   const orderKey = normalizeText(pickFirstValue(contract?.orderId, contract?.order_id, contract?.orderNumber, contract?.order_number));
@@ -1344,6 +1482,31 @@ const normalizeRemoteContract = ({ contract, orders, myServices, services, overr
     relatedService?.customerName,
     relatedService?.customer,
   )) || 'Customer';
+  // NEW: read clientCompany from multiple sources
+  const clientCompany = normalizeText(pickFirstValue(
+    contract?.clientCompany,
+    contract?.client_company,
+    contract?.customerCompany,
+    contract?.customer_company,
+    contract?.companyName,
+    contract?.company_name,
+    contract?.company,
+    matchingOrder?.clientCompany,
+    matchingOrder?.client_company,
+    matchingOrder?.customerCompany,
+    matchingOrder?.customer_company,
+    matchingOrder?.companyName,
+    matchingOrder?.company_name,
+    matchingOrder?.company,
+    relatedService?.clientCompany,
+    relatedService?.client_company,
+    relatedService?.customerCompany,
+    relatedService?.customer_company,
+    relatedService?.companyName,
+    relatedService?.company_name,
+    relatedService?.company,
+    user?.company,
+  )) || '';
   const explicitAccepted = normalizeBoolean(pickFirstValue(
     contract?.accepted,
     contract?.isAccepted,
@@ -1367,6 +1530,7 @@ const normalizeRemoteContract = ({ contract, orders, myServices, services, overr
     description: normalizeText(pickFirstValue(contract?.description, contract?.summary)) || 'Contract and compliance record returned by the backend contracts endpoint.',
     clientId: pickFirstValue(contract?.clientId, contract?.client_id, contract?.userId, contract?.user_id, matchingOrder?.clientId, matchingOrder?.client_id, relatedService?.clientId, relatedService?.client_id),
     clientName,
+    clientCompany, // NEW
     serviceName,
     serviceId: pickFirstValue(contract?.serviceId, contract?.service_id, relatedService?.id),
     orderId: pickFirstValue(contract?.orderId, contract?.order_id, matchingOrder?.id),
@@ -1408,7 +1572,7 @@ export const buildContractRecords = ({ orders = [], myServices = [], services = 
   const orderKeys = new Set(derivedOrderContracts.map((contract) => contract.externalKey));
   const derivedServiceContracts = ensureArray(myServices)
     .filter((service) => !orderKeys.has(`service-${normalizeText(pickFirstValue(service?.id, service?.serviceId))}`))
-    .map((service, index) => buildDerivedServiceContract({ service, overrides, index }));
+    .map((service, index) => buildDerivedServiceContract({ service, overrides, user, index }));
   const normalizedRemoteContracts = ensureArray(remoteContracts).map((contract, index) => normalizeRemoteContract({
     contract,
     orders,

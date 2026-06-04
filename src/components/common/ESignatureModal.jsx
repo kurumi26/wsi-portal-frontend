@@ -1,8 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronRight, PenLine, RotateCcw, X } from 'lucide-react';
+import { buildContractTemplateDocument } from '../../utils/contracts';
 
 const STEPS = ['details', 'draw', 'confirm'];
+
+const getSignatoryFormDefaults = (signatory) => {
+  const prefilledFields = signatory?.prefilledFields && typeof signatory.prefilledFields === 'object'
+    ? signatory.prefilledFields
+    : {};
+
+  return {
+    signerName: String(prefilledFields['Printed Name'] ?? prefilledFields.Name ?? '').trim(),
+    signerCompany: String(prefilledFields['Company / Organization'] ?? prefilledFields.Company ?? prefilledFields.Organization ?? '').trim(),
+    signerTitle: String(prefilledFields['Title / Role'] ?? prefilledFields.Title ?? prefilledFields.Role ?? '').trim(),
+  };
+};
 
 export default function ESignatureModal({ contract, onClose, onSign, signatoryIndex = 0 }) {
   const [step, setStep] = useState('details');
@@ -16,10 +29,12 @@ export default function ESignatureModal({ contract, onClose, onSign, signatoryIn
 
   const contractTitle = contract?.title || 'Service Agreement';
   const contractRef = contract?.auditReference || contract?.orderNumber || '';
+  const fallbackSignatories = useMemo(() => buildContractTemplateDocument(contract).signatories, [contract]);
   const persistedSignatories = Array.isArray(contract?.eSignatureSignatories) ? contract.eSignatureSignatories : [];
+  const signatorySnapshot = persistedSignatories.length ? persistedSignatories : fallbackSignatories;
   const hasTrackedSignature = persistedSignatories.some((signatory) => signatory?.eSignedAt);
-  const currentSignatory = persistedSignatories[signatoryIndex] ?? null;
-  const otherPartySigned = persistedSignatories.some((signatory, index) => index !== signatoryIndex && signatory?.eSignedAt);
+  const currentSignatory = signatorySnapshot[signatoryIndex] ?? null;
+  const otherPartySigned = signatorySnapshot.some((signatory, index) => index !== signatoryIndex && signatory?.eSignedAt);
   const hasLegacySignedCopy = Boolean(contract?.signedDocumentUrl) && !hasTrackedSignature;
   const flowNotice = hasLegacySignedCopy
     ? {
@@ -40,6 +55,13 @@ export default function ESignatureModal({ contract, onClose, onSign, signatoryIn
             tone: 'border-orange-300 bg-orange-50 text-orange-900',
             text: 'Your signature will be saved first, and the other party can sign the same agreement afterward without replacing your block.',
           };
+
+  useEffect(() => {
+    setForm(getSignatoryFormDefaults(currentSignatory));
+    setStep('details');
+    setSignatureDataUrl(null);
+    setHasDrawn(false);
+  }, [currentSignatory, signatoryIndex]);
 
   // ── Canvas drawing wiring ──────────────────────────────────
   useEffect(() => {

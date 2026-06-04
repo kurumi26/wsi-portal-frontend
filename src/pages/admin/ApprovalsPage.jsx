@@ -1089,8 +1089,6 @@ export default function ApprovalsPage() {
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Admin Queue</p>
                 <h2 className="mt-2 text-xl font-semibold text-white">Pending Orders</h2>
               </div>
-
-
             </div>
 
         {typeFilter === 'services' ? (
@@ -1311,8 +1309,9 @@ export default function ApprovalsPage() {
           </>
         ) : (
           viewMode === 'list' ? (
+            // ─── FIX: removed min-w-[1320px], now uses w-full so no horizontal scrollbar ───
             <div className="mt-4 overflow-x-auto">
-            <table className="min-w-[1320px] divide-y divide-white/10 text-left">
+            <table className="w-full divide-y divide-white/10 text-left">
                 <thead className="bg-white/5 text-sm text-slate-400">
                   <tr>
                     <th className="px-5 py-4 font-semibold text-white">
@@ -1334,13 +1333,13 @@ export default function ApprovalsPage() {
                       </button>
                     </th>
                     <th className="px-5 py-4 font-semibold text-white">Invoice</th>
-                    <th className="px-5 py-4 font-semibold text-white">
+                    <th className="w-px whitespace-nowrap px-5 py-4 font-semibold text-white">
                       <button type="button" onClick={() => handlePendingTableSort('status')} className="inline-flex items-center gap-1 hover:text-sky-200">
                         <span>Status</span>
                         {renderPendingSortIndicator('status')}
                       </button>
                     </th>
-                    <th className="px-5 py-4 font-semibold text-white text-center">Actions</th>
+                    <th className="px-5 py-4 font-semibold text-white ">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
@@ -1354,7 +1353,7 @@ export default function ApprovalsPage() {
                       <td className="px-5 py-4 align-middle">
                         <p className="font-medium text-white">{row.client}</p>
                       </td>
-                      <td className="px-5 py-4 align-middler">
+                      <td className="px-5 py-4 align-middle">
                         {row.amount != null ? <p className="font-semibold text-sky-300">{formatCurrency(row.amount)}</p> : <span className="text-sm text-slate-500">—</span>}
                       </td>
                       <td className="px-5 py-4 align-middle">
@@ -1370,9 +1369,10 @@ export default function ApprovalsPage() {
                           <span className="text-sm text-slate-500">—</span>
                         )}
                       </td>
-                      <td className="px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
-                      <td className="px-5 py-4 align-middle">
-                        <div className="ml-auto grid w-fit grid-cols-[44px_minmax(96px,auto)_minmax(156px,auto)] items-center justify-end gap-3">
+                      <td className="w-px whitespace-nowrap px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
+                      {/* ─── FIX: flex instead of grid, null instead of spacer <span> ─── */}
+                      <td className="w-px whitespace-nowrap px-5 py-4 align-middle">
+                        <div className="flex items-center justify-end gap-3">
                           {row.type === 'order' ? (
                             <>
                               {shouldShowCommentAction(row) ? (
@@ -1385,9 +1385,15 @@ export default function ApprovalsPage() {
                                 >
                                   <MessageSquare size={16} />
                                 </button>
-                              ) : <span className="h-11 w-11" aria-hidden="true" />}
+                              ) : null}
                               <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center">View</button>
-                              <button type="button" onClick={() => handleApproveOrder(row.raw)} disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning} title={row.approvalBlockReason || 'Approve order'} className={`inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl px-4 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveOrder(row.raw)}
+                                disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning}
+                                title={row.approvalBlockReason || 'Approve order'}
+                                className={`inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl px-4 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}
+                              >
                                 <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}
                               </button>
                             </>
@@ -1403,7 +1409,7 @@ export default function ApprovalsPage() {
                                 >
                                   <MessageSquare size={16} />
                                 </button>
-                              ) : <span className="h-11 w-11" aria-hidden="true" />}
+                              ) : null}
                               <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-rose-500">
                                 <XCircle size={16} /> Keep Service
                               </button>

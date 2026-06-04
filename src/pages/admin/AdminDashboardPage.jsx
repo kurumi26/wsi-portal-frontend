@@ -929,7 +929,7 @@ export default function AdminDashboardPage() {
           title="New Orders"
           columns={[
             { label: 'Order ID' },
-            { label: 'Client' },
+            { label: 'Company Name' },
             { label: 'Date Created' },
             { label: 'Amount', className: 'text-right' },
             { label: 'Status', className: 'text-right' },
@@ -957,7 +957,7 @@ export default function AdminDashboardPage() {
           title="Expiring Services"
           columns={[
             { label: 'Service' },
-            { label: 'Client' },
+            { label: 'Company Name' },
             { label: 'Expiry Date' },
             { label: 'Days Left', className: 'text-center' },
             { label: 'Status', className: 'text-right' },
@@ -998,7 +998,7 @@ export default function AdminDashboardPage() {
           title="Overdue"
           columns={[
             { label: 'SOA / Ref #' },
-            { label: 'Client' },
+            { label: 'Company Name' },
             { label: 'Due Date' },
             { label: 'Amount', className: 'text-right' },
             { label: 'Status', className: 'text-right' },
@@ -1426,7 +1426,7 @@ export default function AdminDashboardPage() {
                 <th className="px-2 py-2 font-semibold">Date &amp; Time</th>
                 <th className="px-2 py-2 font-semibold">Activity</th>
                 <th className="px-2 py-2 font-semibold">Reference</th>
-                <th className="px-2 py-2 font-semibold">Client</th>
+                <th className="px-2 py-2 font-semibold">Company Name</th>
                 <th className="px-2 py-2 font-semibold">Performed By</th>
                 <th className="px-2 py-2 font-semibold text-right">Status</th>
               </tr>
