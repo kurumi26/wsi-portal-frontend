@@ -15,6 +15,11 @@ const buildReportSubmenu = (basePath) => REPORT_SIDEBAR_ITEMS.map((item) => ({
   to: buildReportFocusPath(item.value, basePath),
 }));
 
+const CONTRACT_SIDEBAR_ITEMS = [
+  { label: 'Agreement Records', to: '/admin/contracts' },
+  { label: 'Manage Contracts', to: '/admin/contracts/manage' },
+];
+
 const isNestedRouteActive = (pathname, basePath) => pathname === basePath || pathname.startsWith(`${basePath}/`);
 
 const adminNav = [
@@ -23,7 +28,7 @@ const adminNav = [
   { label: 'Users', to: '/admin/users', icon: Settings },
   { label: 'Approvals', to: '/admin/approvals', icon: ClipboardList },
   { label: 'Manage Service', to: '/admin/services', icon: ShieldAlert },
-  { label: 'Contracts', to: '/admin/contracts', icon: FileSignature },
+  { label: 'Contracts', to: '/admin/contracts', icon: FileSignature, children: CONTRACT_SIDEBAR_ITEMS },
   { label: 'Purchases', to: '/admin/purchases', icon: ReceiptText },
   { label: 'Notifications', to: '/admin/notifications', icon: Bell },
   { label: 'Helpdesk', to: '/admin/helpdesk', icon: LifeBuoy },
@@ -38,9 +43,10 @@ export default function AdminLayout() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [openMenus, setOpenMenus] = useState({
-    '/admin/reports': false,
-  });
+  const [openMenus, setOpenMenus] = useState(() => ({
+    '/admin/reports': isNestedRouteActive(location.pathname, '/admin/reports'),
+    '/admin/contracts': isNestedRouteActive(location.pathname, '/admin/contracts'),
+  }));
 
   const notificationsRef = useRef(null);
   const profileMenuRef = useRef(null);
@@ -83,6 +89,14 @@ export default function AdminLayout() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    setOpenMenus((current) => ({
+      ...current,
+      ...(isNestedRouteActive(location.pathname, '/admin/reports') ? { '/admin/reports': true } : {}),
+      ...(isNestedRouteActive(location.pathname, '/admin/contracts') ? { '/admin/contracts': true } : {}),
+    }));
+  }, [location.pathname]);
 
   const handleOpenNotificationsPage = () => {
     setIsNotificationsOpen(false);

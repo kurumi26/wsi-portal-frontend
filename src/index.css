@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "quill/dist/quill.snow.css";
 
 :root {
   color-scheme: dark;
@@ -218,6 +219,106 @@ body.theme-dark .text-slate-400 {
 
 body.theme-dark .text-slate-300 {
   color: #94A3B8 !important;
+}
+
+.contract-rich-editor {
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 1.5rem;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.contract-rich-editor .ql-toolbar.ql-snow {
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.contract-rich-editor .ql-container.ql-snow {
+  border: none;
+  font-family: inherit;
+}
+
+.contract-rich-editor .ql-editor {
+  min-height: 240px;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.contract-rich-editor .ql-editor.ql-blank::before {
+  color: #64748b;
+  font-style: normal;
+}
+
+.contract-rich-editor .ql-picker {
+  color: #e2e8f0;
+}
+
+.contract-rich-editor .ql-stroke {
+  stroke: #cbd5e1;
+}
+
+.contract-rich-editor .ql-fill {
+  fill: #cbd5e1;
+}
+
+.contract-rich-editor .ql-picker-options,
+.contract-rich-editor .ql-tooltip {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+.contract-rich-editor .ql-active .ql-stroke,
+.contract-rich-editor button:hover .ql-stroke,
+.contract-rich-editor .ql-picker-label:hover .ql-stroke,
+.contract-rich-editor .ql-picker-label.ql-active .ql-stroke {
+  stroke: #7dd3fc;
+}
+
+.contract-rich-editor .ql-active .ql-fill,
+.contract-rich-editor button:hover .ql-fill,
+.contract-rich-editor .ql-picker-label:hover .ql-fill,
+.contract-rich-editor .ql-picker-label.ql-active .ql-fill {
+  fill: #7dd3fc;
+}
+
+.contract-rich-editor .ql-picker-options .ql-picker-item {
+  color: inherit;
+}
+
+body.theme-light .contract-rich-editor {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+body.theme-light .contract-rich-editor .ql-toolbar.ql-snow {
+  background: #f8fafc;
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+body.theme-light .contract-rich-editor .ql-editor {
+  color: #0f172a;
+}
+
+body.theme-light .contract-rich-editor .ql-picker {
+  color: #0f172a;
+}
+
+body.theme-light .contract-rich-editor .ql-stroke {
+  stroke: #334155;
+}
+
+body.theme-light .contract-rich-editor .ql-fill {
+  fill: #334155;
+}
+
+body.theme-light .contract-rich-editor .ql-picker-options,
+body.theme-light .contract-rich-editor .ql-tooltip {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #0f172a;
 }
 
 body.theme-dark .admin-dashboard-page .text-slate-900 {
@@ -515,6 +616,85 @@ body.theme-light .bg-slate-900\/72 {
 
 body.theme-light .bg-white\/5 {
   background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  background: linear-gradient(180deg, #eff6ff 0%, #e8f2ff 100%) !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-workspace-surface {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  box-shadow: 0 18px 50px -30px rgba(15, 23, 42, 0.18) !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-workspace-tile {
+  background: rgba(248, 250, 252, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-template-pill {
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .text-sky-200 {
+  color: #2563eb !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-workspace-title,
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-details-value {
+  color: #0f172a !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-details-label,
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-details-helper {
+  color: #64748b !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-details-table {
+  background: #f8fafc !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-details-table tbody tr:nth-child(even) {
+  background: rgba(241, 245, 249, 0.65);
+}
+
+body.theme-light .manage-contracts-workspace-shell .manage-contracts-template-pill:not([class*='emerald']) {
+  color: #475569 !important;
+}
+
+body.theme-light .contract-editor-clause-list,
+body.theme-light .contract-editor-clause-panel {
+  background: #f8fafc !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+body.theme-light .contract-editor-clause-list button {
+  color: #334155 !important;
+}
+
+body.theme-light .contract-editor-clause-list button.border-sky-400\/50 {
+  background: rgba(224, 242, 254, 0.9) !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .manage-contract-record-card {
+  background: rgba(248, 250, 252, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.26) !important;
+}
+
+body.theme-light .manage-contract-record-card:hover {
+  background: rgba(241, 245, 249, 0.98) !important;
+  border-color: rgba(125, 211, 252, 0.36) !important;
+}
+
+body.theme-light .manage-contract-record-card.manage-contract-record-card-active {
+  background: linear-gradient(180deg, rgba(224, 242, 254, 0.9), rgba(239, 246, 255, 0.98)) !important;
+  border-color: rgba(56, 189, 248, 0.44) !important;
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.22) !important;
 }
 
 body.theme-light .border-white\/10 {

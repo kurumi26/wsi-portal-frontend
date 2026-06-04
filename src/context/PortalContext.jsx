@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
-import { buildCheckoutAgreementRecord, buildContractRecords, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractOverrides, writeStoredContractESignState } from '../utils/contracts';
+import { buildCheckoutAgreementRecord, buildContractRecords, clearStoredManagedContractTemplate, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractESignState, writeStoredContractOverrides, writeStoredManagedContractTemplate } from '../utils/contracts';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
 import { getServiceDisplayStatus } from '../utils/services';
 
@@ -84,6 +84,7 @@ export function PortalProvider({ children }) {
   const contractOwnerKey = useMemo(() => getContractOwnerKey(user), [user?.email, user?.id, user?.name]);
   const [remoteContracts, setRemoteContracts] = useState([]);
   const [contractOverrides, setContractOverrides] = useState(() => readStoredContractOverrides(contractOwnerKey));
+  const [managedTemplateRevision, setManagedTemplateRevision] = useState(0);
 
   // Deduplicate services by name (or id) preferring active/provisioning records over unpaid
   const dedupeServices = (list) => {
@@ -626,7 +627,7 @@ export function PortalProvider({ children }) {
       overrides: contractOverrides,
       user,
     }),
-    [contractOverrides, myServices, orders, remoteContracts, services, user],
+    [contractOverrides, managedTemplateRevision, myServices, orders, remoteContracts, services, user],
   );
 
   const adminContractRecords = useMemo(
@@ -638,7 +639,7 @@ export function PortalProvider({ children }) {
       overrides: contractOverrides,
       user,
     }),
-    [adminPurchases, adminServices, contractOverrides, remoteContracts, services, user],
+    [adminPurchases, adminServices, contractOverrides, managedTemplateRevision, remoteContracts, services, user],
   );
 
   const checkoutAgreementRecord = useMemo(
@@ -1352,6 +1353,45 @@ export function PortalProvider({ children }) {
     }
   };
 
+  const saveManagedContractTemplate = (contract, managedTemplateSettings) => {
+    if (!contract) {
+      throw new Error('Contract record is required.');
+    }
+
+    const timestamp = new Date().toISOString();
+    const updatedBy = user?.name ?? 'Admin';
+
+    writeStoredManagedContractTemplate(contract, {
+      managedTemplateSettings,
+      updatedAt: timestamp,
+      managedTemplateUpdatedAt: timestamp,
+      updatedBy,
+      managedTemplateUpdatedBy: updatedBy,
+    });
+    setManagedTemplateRevision((current) => current + 1);
+
+    broadcastPortalMessage({
+      type: 'contract-updated',
+      contractId: contract.id,
+      action: 'managed-template-saved',
+    });
+  };
+
+  const resetManagedContractTemplate = (contract) => {
+    if (!contract) {
+      throw new Error('Contract record is required.');
+    }
+
+    clearStoredManagedContractTemplate(contract);
+    setManagedTemplateRevision((current) => current + 1);
+
+    broadcastPortalMessage({
+      type: 'contract-updated',
+      contractId: contract.id,
+      action: 'managed-template-reset',
+    });
+  };
+
   const approveProfileUpdateRequest = async (requestId, note = '') => {
     const result = await portalApi.approveProfileUpdateRequest(requestId, note);
     await refreshPortalData();
@@ -1498,6 +1538,8 @@ export function PortalProvider({ children }) {
       uploadSignedContract,
       verifyContractAcceptance,
       uploadAdminSignedContract,
+      saveManagedContractTemplate,
+      resetManagedContractTemplate,
       updateServiceStatus,
       approveAdminOrder,
       markAdminPurchasePaid,

@@ -1101,7 +1101,6 @@ export default function AdminContractsPage() {
     <div>
       <PageHeader
         eyebrow="Contracts / Agreements"
-        title="Verify Agreement and Store Signed Copies"
         belowDescription={feedback ? (
           <div className={`rounded-2xl border px-4 py-3 text-sm ${feedbackToneClasses[feedback.tone] ?? feedbackToneClasses.success}`}>
             {feedback.text}

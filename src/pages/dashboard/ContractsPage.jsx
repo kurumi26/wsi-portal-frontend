@@ -220,6 +220,11 @@ export default function ContractsPage() {
     return [checkoutAgreementRecord, ...historyContracts.filter((contract) => contract.id !== checkoutAgreementRecord.id)];
   }, [checkoutAgreementRecord, contractRecords]);
 
+  const contractsAwaitingCustomerReview = useMemo(
+    () => allContracts.filter((contract) => contract.sentToCustomerAt && contract.status === 'Pending Review'),
+    [allContracts],
+  );
+
   useEffect(() => {
     if (!allContracts.length) {
       if (quickActionContractId) {
@@ -964,6 +969,28 @@ export default function ContractsPage() {
           />
         ))}
       </div>
+
+      {contractsAwaitingCustomerReview.length ? (
+        <div className="panel mb-6 border-sky-400/25 p-5">
+          <p className="text-xs uppercase tracking-[0.24em] text-sky-300">Action Required</p>
+          <h2 className="mt-2 text-xl font-semibold text-white">Agreements sent by WSI for your review</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            WSI delivered {contractsAwaitingCustomerReview.length === 1 ? 'an updated agreement' : `${contractsAwaitingCustomerReview.length} updated agreements`} to your portal. Review the template, download the PDF, and add your e-signature when ready.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {contractsAwaitingCustomerReview.map((contract) => (
+              <button
+                key={contract.id}
+                type="button"
+                onClick={() => handleReviewContract(contract.id)}
+                className="rounded-full border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+              >
+                {contract.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {checkoutAgreementRecord ? (
         <div className={`panel mb-6 p-5 ${checkoutAgreementRecord.status === 'Accepted' ? 'border-emerald-400/20' : 'border-orange-400/20'}`}>

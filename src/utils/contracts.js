@@ -1,5 +1,112 @@
 const CONTRACT_OVERRIDE_STORAGE_KEY = 'wsi-contract-overrides-v1';
 const CONTRACT_ESIGN_STORAGE_KEY = 'wsi-contract-esign-v1';
+const MANAGED_CONTRACT_TEMPLATE_STORAGE_KEY = 'wsi-managed-contract-templates-v1';
+const CONTRACT_DELIVERY_STORAGE_KEY = 'wsi-contract-delivery-v1';
+
+const SIGNATORY_FIELD_LABELS = {
+  company: 'Company / Organization',
+  printedName: 'Printed Name',
+  title: 'Title / Role',
+  signature: 'Signature',
+  dateSigned: 'Date Signed',
+};
+
+const createEmptySignatoryProfile = () => ({
+  company: '',
+  printedName: '',
+  title: '',
+});
+
+const profileToPrefilledFields = (profile) => {
+  if (!profile || typeof profile !== 'object') {
+    return {};
+  }
+
+  return {
+    [SIGNATORY_FIELD_LABELS.company]: normalizeText(profile.company),
+    [SIGNATORY_FIELD_LABELS.printedName]: normalizeText(profile.printedName),
+    [SIGNATORY_FIELD_LABELS.title]: normalizeText(profile.title),
+  };
+};
+
+const prefilledFieldsToProfile = (prefilledFields) => {
+  if (!prefilledFields || typeof prefilledFields !== 'object') {
+    return createEmptySignatoryProfile();
+  }
+
+  const findValue = (...labels) => {
+    for (const label of labels) {
+      if (prefilledFields[label]) {
+        return normalizeText(prefilledFields[label]);
+      }
+    }
+
+    return '';
+  };
+
+  return {
+    company: findValue(SIGNATORY_FIELD_LABELS.company, 'Company', 'Organization'),
+    printedName: findValue(SIGNATORY_FIELD_LABELS.printedName, 'Printed Name', 'Name'),
+    title: findValue(SIGNATORY_FIELD_LABELS.title, 'Title / Role', 'Title', 'Role'),
+  };
+};
+
+export const normalizeSignatoryProfiles = (profiles, { customerName = 'Customer', providerName = 'WSI Portal Services' } = {}) => {
+  const source = Array.isArray(profiles) ? profiles : [];
+
+  return [0, 1].map((index) => ({
+    company: normalizeText(source[index]?.company) || (index === 0 ? customerName : providerName),
+    printedName: normalizeText(source[index]?.printedName) || (index === 0 ? customerName : ''),
+    title: normalizeText(source[index]?.title) || (index === 1 ? 'Authorized Representative' : ''),
+  }));
+};
+
+export const buildSignatoryStateFromContract = (contract, managedTemplate = {}) => {
+  const customerName = normalizeText(managedTemplate.customerName || contract?.clientName || contract?.customerName) || 'Customer';
+  const providerName = normalizeText(managedTemplate.providerName || contract?.providerName) || 'WSI Portal Services';
+
+  if (Array.isArray(managedTemplate.signatoryProfiles) && managedTemplate.signatoryProfiles.length) {
+    return normalizeSignatoryProfiles(managedTemplate.signatoryProfiles, { customerName, providerName });
+  }
+
+  const persisted = Array.isArray(contract?.eSignatureSignatories) ? contract.eSignatureSignatories : [];
+
+  return [0, 1].map((index) => {
+    const profile = prefilledFieldsToProfile(persisted[index]?.prefilledFields);
+    const normalized = normalizeSignatoryProfiles([profile], { customerName, providerName })[0];
+
+    if (index === 0) {
+      return {
+        company: normalized.company || customerName,
+        printedName: normalized.printedName || customerName,
+        title: normalized.title,
+      };
+    }
+
+    return {
+      company: normalized.company || providerName,
+      printedName: normalized.printedName,
+      title: normalized.title || 'Authorized Representative',
+    };
+  });
+};
+
+export const buildESignatureSignatoriesFromProfiles = (profiles, existingSignatories = []) => {
+  const normalizedProfiles = normalizeSignatoryProfiles(profiles);
+
+  return normalizedProfiles.map((profile, index) => {
+    const existing = existingSignatories[index];
+
+    if (existing?.eSignedAt) {
+      return existing;
+    }
+
+    return {
+      prefilledFields: profileToPrefilledFields(profile),
+      ...(existing?.eSignedAt ? { eSignedAt: existing.eSignedAt } : {}),
+    };
+  });
+};
 const API_BASE_URL = String(import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 const API_ORIGIN = (() => {
   if (!API_BASE_URL) {
@@ -249,15 +356,112 @@ const formatAgreementDisplayText = (value) => normalizeText(value)
   .replace(/\s+/g, ' ')
   .trim();
 
+const stripHtmlToText = (value) => {
+  const normalized = normalizeText(value);
+
+  if (!normalized) {
+    return '';
+  }
+
+  if (typeof document !== 'undefined') {
+    const container = document.createElement('div');
+    container.innerHTML = normalized;
+    return normalizeText(container.innerText || container.textContent || '');
+  }
+
+  return normalized
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+const normalizeManagedTemplateText = (...values) => {
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const normalized = stripHtmlToText(value)
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return '';
+};
+
+const normalizeManagedTemplateSections = (sections = [], fallbackSections = []) => {
+  const normalized = ensureArray(sections)
+    .map((section, index) => {
+      if (!section || typeof section !== 'object') {
+        return null;
+      }
+
+      const title = normalizeText(section.title || section.label) || `Clause ${index + 1}`;
+      const body = normalizeManagedTemplateText(section.bodyText, section.body, section.bodyHtml);
+
+      if (!title && !body) {
+        return null;
+      }
+
+      return {
+        title,
+        body,
+      };
+    })
+    .filter((section) => section?.title || section?.body);
+
+  return normalized.length ? normalized : fallbackSections;
+};
+
+const normalizeManagedTemplateDocuments = (documents = [], fallbackDocuments = []) => {
+  const normalized = ensureArray(documents)
+    .map((document, index) => {
+      if (!document || typeof document !== 'object') {
+        return null;
+      }
+
+      const title = normalizeText(document.title || document.label) || `Document ${index + 1}`;
+      const description = normalizeManagedTemplateText(document.descriptionText, document.description, document.descriptionHtml);
+
+      if (!title && !description) {
+        return null;
+      }
+
+      return {
+        title,
+        description,
+      };
+    })
+    .filter((document) => document?.title || document?.description);
+
+  return normalized.length ? normalized : fallbackDocuments;
+};
+
+const getManagedTemplateSettings = (contract) => (
+  contract?.managedTemplateSettings && typeof contract.managedTemplateSettings === 'object' && !Array.isArray(contract.managedTemplateSettings)
+    ? contract.managedTemplateSettings
+    : null
+);
+
 const getContractTemplateData = (contract) => {
-  const rawServiceName = normalizeText(pickFirstValue(contract?.serviceName, contract?.title)) || 'Managed Service';
-  const rawContractTitle = normalizeText(pickFirstValue(contract?.title, `${rawServiceName} Agreement`)) || 'Service Agreement';
+  const managedTemplateSettings = getManagedTemplateSettings(contract);
+  const rawServiceName = normalizeText(pickFirstValue(managedTemplateSettings?.serviceName, contract?.serviceName, contract?.title)) || 'Managed Service';
+  const rawContractTitle = normalizeText(pickFirstValue(managedTemplateSettings?.contractTitle, managedTemplateSettings?.title, contract?.title, `${rawServiceName} Agreement`)) || 'Service Agreement';
   const serviceName = formatAgreementDisplayText(rawServiceName) || rawServiceName;
   const contractTitle = formatAgreementDisplayText(rawContractTitle) || rawContractTitle;
-  const providerName = formatAgreementDisplayText(pickFirstValue(contract?.providerName, contract?.companyName, contract?.vendorName)) || 'WSI Portal Services';
-  const customerName = formatAgreementDisplayText(pickFirstValue(contract?.clientName, contract?.customerName, contract?.customer)) || 'Customer';
-  const reference = normalizeText(pickFirstValue(contract?.auditReference, contract?.orderNumber, contract?.orderId, contract?.id)) || 'Pending reference';
-  const version = normalizeText(contract?.version) || 'v1.0';
+  const providerName = formatAgreementDisplayText(pickFirstValue(managedTemplateSettings?.providerName, contract?.providerName, contract?.companyName, contract?.vendorName)) || 'WSI Portal Services';
+  const customerName = formatAgreementDisplayText(pickFirstValue(managedTemplateSettings?.customerName, contract?.clientName, contract?.customerName, contract?.customer)) || 'Customer';
+  const reference = normalizeText(pickFirstValue(managedTemplateSettings?.reference, contract?.auditReference, contract?.orderNumber, contract?.orderId, contract?.id)) || 'Pending reference';
+  const version = normalizeText(pickFirstValue(managedTemplateSettings?.version, contract?.version)) || 'v1.0';
   const effectiveDate = formatContractTemplateDate(pickFirstValue(contract?.issuedAt, contract?.acceptedAt, new Date().toISOString()));
   const preparedDate = formatContractTemplateDate(new Date().toISOString());
   const scopeLabel = contract?.scope === 'checkout'
@@ -283,10 +487,15 @@ const getContractTemplateData = (contract) => {
 
 export const buildContractTemplateDocument = (contract) => {
   const template = getContractTemplateData(contract);
+  const managedTemplateSettings = getManagedTemplateSettings(contract);
   const agreementTitle = template.serviceName && template.serviceName !== 'WSI Portal Services'
     ? `${template.serviceName} Service Agreement`
     : 'WSI Service Agreement';
   const persistedSignatories = Array.isArray(contract?.eSignatureSignatories) ? contract.eSignatureSignatories : [];
+  const profilePrefills = normalizeSignatoryProfiles(managedTemplateSettings?.signatoryProfiles, {
+    customerName: template.customerName,
+    providerName: template.providerName,
+  });
   const signatories = [
     {
       title: 'Customer / Client Representative',
@@ -300,28 +509,74 @@ export const buildContractTemplateDocument = (contract) => {
     },
   ].map((signatory, index) => {
     const persistedSignatory = persistedSignatories[index];
-
-    if (!persistedSignatory || typeof persistedSignatory !== 'object') {
-      return signatory;
-    }
-
-    const prefilledFields = persistedSignatory.prefilledFields && typeof persistedSignatory.prefilledFields === 'object'
+    const profilePrefilled = profileToPrefilledFields(profilePrefills[index]);
+    const persistedPrefilled = persistedSignatory?.prefilledFields && typeof persistedSignatory.prefilledFields === 'object'
       ? persistedSignatory.prefilledFields
-      : null;
+      : {};
+    const mergedPrefilled = {
+      ...profilePrefilled,
+      ...persistedPrefilled,
+    };
 
     return {
       ...signatory,
-      ...(prefilledFields ? { prefilledFields } : {}),
-      ...(persistedSignatory.eSignedAt ? { eSignedAt: persistedSignatory.eSignedAt } : {}),
+      ...(Object.keys(mergedPrefilled).length ? { prefilledFields: mergedPrefilled } : {}),
+      ...(persistedSignatory?.eSignedAt ? { eSignedAt: persistedSignatory.eSignedAt } : {}),
     };
   });
 
+  const defaultOverview = `This Service Agreement is entered into by and between ${template.providerName} and ${template.customerName} for ${template.scopeLabel} associated with ${template.serviceName}. By signing this document, the parties confirm the commercial, operational, and compliance obligations captured in the approved order, service record, and incorporated documents listed below.`;
+  const defaultSections = [
+    {
+      title: 'Parties and Service Scope',
+      body: `This Agreement governs the delivery and administration of ${template.serviceName}, together with any approved order form, onboarding requirements, support commitments, renewal instructions, and service records maintained in the WSI Portal.`,
+    },
+    {
+      title: 'Service Delivery and Support',
+      body: `${template.providerName} will provision, maintain, and support ${template.serviceName} in accordance with the approved order, accepted configuration, implementation notes, operational standards, and applicable service policies.`,
+    },
+    {
+      title: 'Fees, Billing, and Renewals',
+      body: 'Recurring charges, one-time fees, renewal schedules, taxes, and approved add-ons will follow the commercial terms stated in the portal, quotation, invoice, or service order accepted by the customer.',
+    },
+    {
+      title: 'Customer Obligations and Authorized Use',
+      body: `${template.customerName} will provide accurate account information, timely approvals, requested technical details, lawful instructions, and reasonable cooperation needed to provision, secure, and maintain the subscribed service.`,
+    },
+    {
+      title: 'Provider Duties and Standards of Care',
+      body: `${template.providerName} will use commercially reasonable efforts to operate, support, and administer the subscribed service in accordance with documented service policies, internal controls, and applicable law.`,
+    },
+    {
+      title: 'Confidentiality and Data Protection',
+      body: 'Each party will protect confidential information and process account, operational, and personal data only for legitimate service delivery, billing, support, compliance, and legal purposes consistent with applicable privacy and data protection obligations.',
+    },
+    {
+      title: 'Term, Suspension, and Termination',
+      body: 'This Agreement takes effect on the effective date or activation date, whichever occurs first, and remains in force until the service expires, is terminated, is suspended under applicable policies, or is superseded by a newer signed agreement.',
+    },
+    {
+      title: 'Incorporated Records and Portal Copy',
+      body: 'Approved order forms, invoices, implementation notes, service schedules, policies, and contract attachments maintained in the WSI Portal are incorporated into this Agreement to the extent they apply to the subscribed service.',
+    },
+    {
+      title: 'Execution and Authority',
+      body: 'By signing below, the parties confirm that they are authorized to bind their respective organizations, that they reviewed the incorporated service documents, and that this signed copy may be stored in the WSI Portal as the official contract record.',
+    },
+  ];
+  const defaultDocuments = template.documentSections.map((section) => ({
+    title: section.title,
+    description: section.description || 'Included in the agreement bundle.',
+  }));
+  const defaultSignatureStatement = 'IN WITNESS WHEREOF, the parties, intending to be legally bound, have caused this Agreement to be signed by their duly authorized representatives on the dates written below.';
+  const defaultNote = 'Service-specific schedules, statements of work, SLAs, implementation milestones, compliance appendices, approval notes, or supporting exhibits may be attached to the fully signed copy and retained with this agreement record.';
+
   return {
-    badge: 'Official agreement for execution',
-    title: agreementTitle,
-    subtitle: `${template.customerName} and ${template.providerName} | Reference ${template.reference}`,
+    badge: normalizeText(pickFirstValue(managedTemplateSettings?.badge, 'Official agreement for execution')) || 'Official agreement for execution',
+    title: normalizeText(pickFirstValue(managedTemplateSettings?.title, agreementTitle)) || agreementTitle,
+    subtitle: normalizeText(pickFirstValue(managedTemplateSettings?.subtitle, `${template.customerName} and ${template.providerName} | Reference ${template.reference}`)) || `${template.customerName} and ${template.providerName} | Reference ${template.reference}`,
     metadata: [
-      { label: 'Agreement Type', value: 'Service Agreement' },
+      { label: 'Agreement Type', value: normalizeText(pickFirstValue(managedTemplateSettings?.agreementType, 'Service Agreement')) || 'Service Agreement' },
       { label: 'Reference', value: template.reference },
       { label: 'Provider', value: template.providerName },
       { label: 'Customer', value: template.customerName },
@@ -330,52 +585,12 @@ export const buildContractTemplateDocument = (contract) => {
       { label: 'Effective Date', value: template.effectiveDate },
       { label: 'Prepared On', value: template.preparedDate },
     ],
-    overview: `This Service Agreement is entered into by and between ${template.providerName} and ${template.customerName} for ${template.scopeLabel} associated with ${template.serviceName}. By signing this document, the parties confirm the commercial, operational, and compliance obligations captured in the approved order, service record, and incorporated documents listed below.`,
-    sections: [
-      {
-        title: 'Parties and Service Scope',
-        body: `This Agreement governs the delivery and administration of ${template.serviceName}, together with any approved order form, onboarding requirements, support commitments, renewal instructions, and service records maintained in the WSI Portal.`,
-      },
-      {
-        title: 'Service Delivery and Support',
-        body: `${template.providerName} will provision, maintain, and support ${template.serviceName} in accordance with the approved order, accepted configuration, implementation notes, operational standards, and applicable service policies.`,
-      },
-      {
-        title: 'Fees, Billing, and Renewals',
-        body: 'Recurring charges, one-time fees, renewal schedules, taxes, and approved add-ons will follow the commercial terms stated in the portal, quotation, invoice, or service order accepted by the customer.',
-      },
-      {
-        title: 'Customer Obligations and Authorized Use',
-        body: `${template.customerName} will provide accurate account information, timely approvals, requested technical details, lawful instructions, and reasonable cooperation needed to provision, secure, and maintain the subscribed service.`,
-      },
-      {
-        title: 'Provider Duties and Standards of Care',
-        body: `${template.providerName} will use commercially reasonable efforts to operate, support, and administer the subscribed service in accordance with documented service policies, internal controls, and applicable law.`,
-      },
-      {
-        title: 'Confidentiality and Data Protection',
-        body: 'Each party will protect confidential information and process account, operational, and personal data only for legitimate service delivery, billing, support, compliance, and legal purposes consistent with applicable privacy and data protection obligations.',
-      },
-      {
-        title: 'Term, Suspension, and Termination',
-        body: 'This Agreement takes effect on the effective date or activation date, whichever occurs first, and remains in force until the service expires, is terminated, is suspended under applicable policies, or is superseded by a newer signed agreement.',
-      },
-      {
-        title: 'Incorporated Records and Portal Copy',
-        body: 'Approved order forms, invoices, implementation notes, service schedules, policies, and contract attachments maintained in the WSI Portal are incorporated into this Agreement to the extent they apply to the subscribed service.',
-      },
-      {
-        title: 'Execution and Authority',
-        body: 'By signing below, the parties confirm that they are authorized to bind their respective organizations, that they reviewed the incorporated service documents, and that this signed copy may be stored in the WSI Portal as the official contract record.',
-      },
-    ],
-    documents: template.documentSections.map((section) => ({
-      title: section.title,
-      description: section.description || 'Included in the agreement bundle.',
-    })),
-    signatureStatement: 'IN WITNESS WHEREOF, the parties, intending to be legally bound, have caused this Agreement to be signed by their duly authorized representatives on the dates written below.',
+    overview: normalizeManagedTemplateText(managedTemplateSettings?.overviewText, managedTemplateSettings?.overview, managedTemplateSettings?.overviewHtml, defaultOverview) || defaultOverview,
+    sections: normalizeManagedTemplateSections(managedTemplateSettings?.sections, defaultSections),
+    documents: normalizeManagedTemplateDocuments(managedTemplateSettings?.documents, defaultDocuments),
+    signatureStatement: normalizeManagedTemplateText(managedTemplateSettings?.signatureStatementText, managedTemplateSettings?.signatureStatement, managedTemplateSettings?.signatureStatementHtml, defaultSignatureStatement) || defaultSignatureStatement,
     signatories,
-    note: 'Service-specific schedules, statements of work, SLAs, implementation milestones, compliance appendices, approval notes, or supporting exhibits may be attached to the fully signed copy and retained with this agreement record.',
+    note: normalizeManagedTemplateText(managedTemplateSettings?.noteText, managedTemplateSettings?.note, managedTemplateSettings?.noteHtml, defaultNote) || defaultNote,
   };
 };
 
@@ -658,11 +873,84 @@ export const getContractVerificationStatus = (contract) => {
   return 'Awaiting Acceptance';
 };
 
+const readStoredContractDeliveryMap = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const raw = localStorage.getItem(CONTRACT_DELIVERY_STORAGE_KEY);
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+export const readStoredContractDelivery = (...values) => {
+  const keys = resolveContractStorageKeys(...values);
+
+  if (!keys.length) {
+    return null;
+  }
+
+  const deliveryMap = readStoredContractDeliveryMap();
+
+  for (const key of keys) {
+    const entry = deliveryMap[key];
+
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      return entry;
+    }
+  }
+
+  return null;
+};
+
+export const writeStoredContractDelivery = (values, patch = {}) => {
+  const keys = resolveContractStorageKeys(values);
+
+  if (!keys.length || !patch || typeof patch !== 'object') {
+    return null;
+  }
+
+  try {
+    const deliveryMap = readStoredContractDeliveryMap();
+    const previous = readStoredContractDelivery(values) ?? {};
+    const nextEntry = { ...previous, ...patch };
+
+    keys.forEach((key) => {
+      deliveryMap[key] = nextEntry;
+    });
+
+    localStorage.setItem(CONTRACT_DELIVERY_STORAGE_KEY, JSON.stringify(deliveryMap));
+    return nextEntry;
+  } catch (error) {
+    return null;
+  }
+};
+
 const applyContractOverride = (contract, overrides = {}) => {
   const sharedESignState = readStoredContractESignState(contract);
+  const sharedManagedTemplateState = readStoredManagedContractTemplate(contract);
+  const sharedDeliveryState = readStoredContractDelivery(contract);
   const sharedSignedDocument = getContractSignedDocumentMetadata(sharedESignState ?? {});
+  const deliveryPendingReview = sharedDeliveryState?.sentToCustomerAt
+    && !acceptedStatusTokens.has(normalizeText(contract?.status).toLowerCase());
   const baseContract = {
     ...contract,
+    managedTemplateSettings: pickFirstValue(sharedManagedTemplateState?.managedTemplateSettings, contract?.managedTemplateSettings),
+    managedTemplateUpdatedAt: pickFirstValue(sharedManagedTemplateState?.updatedAt, sharedManagedTemplateState?.managedTemplateUpdatedAt, contract?.managedTemplateUpdatedAt),
+    managedTemplateUpdatedBy: pickFirstValue(sharedManagedTemplateState?.updatedBy, sharedManagedTemplateState?.managedTemplateUpdatedBy, contract?.managedTemplateUpdatedBy),
+    sentToCustomerAt: pickFirstValue(sharedDeliveryState?.sentToCustomerAt, contract?.sentToCustomerAt),
+    sentToCustomerBy: pickFirstValue(sharedDeliveryState?.sentToCustomerBy, contract?.sentToCustomerBy),
+    deliveryStatus: pickFirstValue(sharedDeliveryState?.deliveryStatus, contract?.deliveryStatus),
+    ...(deliveryPendingReview ? { status: 'Pending Review' } : {}),
     signedDocumentName: pickFirstValue(contract?.signedDocumentName, sharedSignedDocument.name),
     signedDocumentUploadedAt: pickFirstValue(contract?.signedDocumentUploadedAt, sharedSignedDocument.uploadedAt),
     signedDocumentUrl: pickFirstValue(contract?.signedDocumentUrl, sharedSignedDocument.url),
@@ -758,6 +1046,102 @@ export const writeStoredContractOverrides = (ownerKey = 'anonymous', overrides =
     localStorage.setItem(CONTRACT_OVERRIDE_STORAGE_KEY, JSON.stringify(next));
   } catch (error) {
     // ignore local storage write failures
+  }
+};
+
+const readStoredManagedContractTemplateMap = () => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const raw = localStorage.getItem(MANAGED_CONTRACT_TEMPLATE_STORAGE_KEY);
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+export const readStoredManagedContractTemplate = (...values) => {
+  const keys = resolveContractStorageKeys(...values);
+
+  if (!keys.length) {
+    return null;
+  }
+
+  const templateMap = readStoredManagedContractTemplateMap();
+
+  for (const key of keys) {
+    const entry = templateMap[key];
+
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      return entry;
+    }
+  }
+
+  return null;
+};
+
+export const writeStoredManagedContractTemplate = (values, patch = {}) => {
+  const keys = resolveContractStorageKeys(values);
+
+  if (!keys.length || !patch || typeof patch !== 'object') {
+    return null;
+  }
+
+  try {
+    const templateMap = readStoredManagedContractTemplateMap();
+    const previous = readStoredManagedContractTemplate(values) ?? {};
+    const nextEntry = {
+      ...previous,
+      ...patch,
+      managedTemplateSettings: patch.managedTemplateSettings && typeof patch.managedTemplateSettings === 'object'
+        ? patch.managedTemplateSettings
+        : previous.managedTemplateSettings,
+    };
+
+    keys.forEach((key) => {
+      templateMap[key] = nextEntry;
+    });
+
+    localStorage.setItem(MANAGED_CONTRACT_TEMPLATE_STORAGE_KEY, JSON.stringify(templateMap));
+    return nextEntry;
+  } catch (error) {
+    return null;
+  }
+};
+
+export const clearStoredManagedContractTemplate = (...values) => {
+  const keys = resolveContractStorageKeys(...values);
+
+  if (!keys.length) {
+    return false;
+  }
+
+  try {
+    const templateMap = readStoredManagedContractTemplateMap();
+    let changed = false;
+
+    keys.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(templateMap, key)) {
+        delete templateMap[key];
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      localStorage.setItem(MANAGED_CONTRACT_TEMPLATE_STORAGE_KEY, JSON.stringify(templateMap));
+    }
+
+    return changed;
+  } catch (error) {
+    return false;
   }
 };
 

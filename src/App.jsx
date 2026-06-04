@@ -27,6 +27,8 @@ import ApprovalsPage from './pages/admin/ApprovalsPage';
 import ClientServicesPage from './pages/admin/ClientServicesPage';
 import HelpdeskPage from './pages/admin/HelpdeskPage';
 import AdminContractsPage from './pages/admin/AdminContractsPage';
+import AdminContractEditorPage from './pages/admin/AdminContractEditorPage';
+import AdminManageContractsPage from './pages/admin/AdminManageContractsPage';
 import PurchasesPage from './pages/admin/PurchasesPage';
 import AdminNotificationsPage from './pages/admin/AdminNotificationsPage';
 import UsersPage from './pages/admin/UsersPage';
@@ -119,6 +121,8 @@ export default function App() {
         <Route path="/admin/client-services" element={<ClientServicesPage />} />
         <Route path="/admin/helpdesk" element={<HelpdeskPage />} />
         <Route path="/admin/contracts" element={<AdminContractsPage />} />
+        <Route path="/admin/contracts/manage" element={<AdminManageContractsPage />} />
+        <Route path="/admin/contracts/manage/:contractId/editor" element={<AdminContractEditorPage />} />
         <Route path="/admin/purchases" element={<PurchasesPage />} />
         <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
         <Route path="/admin/account" element={<AdminAccountPage />} />
