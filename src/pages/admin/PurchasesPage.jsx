@@ -299,6 +299,7 @@ export default function PurchasesPage() {
   const renderPurchaseActions = (purchase, buttonSizeClasses = 'h-10 w-10') => {
     const isProcessing = processingPaidPurchaseId === String(purchase.id);
     const markPaidDisabled = isProcessing || !purchase.canMarkInvoicePaid;
+    const rejectDisabled = processingRejectPurchaseId === String(purchase.id) || purchase.isInvoicePaid || purchase.invoiceStatus === 'Cancelled';
     const baseButtonClasses = `${buttonSizeClasses} ${workspaceActionButtonClass} transition`;
 
     return (
@@ -320,17 +321,17 @@ export default function PurchasesPage() {
           title={getMarkPaidActionTitle(purchase)}
           aria-label={`${getMarkPaidActionTitle(purchase)} for ${purchase.invoiceNumber || purchase.displayId}`}
         >
-          <CheckCircle2 size={16} className="text-current" strokeWidth={2} />
+          <CheckCircle2 size={16} className={markPaidDisabled ? 'text-slate-500' : 'text-emerald-400'} strokeWidth={2} />
         </button>
         <button
           type="button"
           onClick={() => handleReject(purchase)}
-          disabled={processingRejectPurchaseId === String(purchase.id) || purchase.isInvoicePaid || purchase.invoiceStatus === 'Cancelled'}
-          className={`${baseButtonClasses} ${(processingRejectPurchaseId === String(purchase.id) || purchase.isInvoicePaid || purchase.invoiceStatus === 'Cancelled') ? 'border-white/10 bg-white/[0.04] text-slate-500' : 'border-rose-400/25 bg-rose-400/12 text-rose-200 hover:bg-rose-400/20'}`}
+          disabled={rejectDisabled}
+          className={`${baseButtonClasses} ${rejectDisabled ? 'border-white/10 bg-white/[0.04] text-slate-500' : 'border-rose-400/25 bg-rose-400/12 text-rose-200 hover:bg-rose-400/20'}`}
           title={purchase.isInvoicePaid ? 'Cannot reject a paid invoice' : 'Reject purchase'}
           aria-label={`Reject purchase ${purchase.displayId}`}
         >
-          <XCircle size={16} className="text-current" strokeWidth={2} />
+          <XCircle size={16} className={rejectDisabled ? 'text-slate-500' : 'text-rose-400'} strokeWidth={2} />
         </button>
       </>
     );
