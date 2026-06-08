@@ -551,7 +551,7 @@ const ExpirationMetaCell = ({ expirationMeta }) => (
 );
 
 export default function ApprovalsPage() {
-  const { adminPurchases, approveAdminOrder, clients, adminServices, approveServiceCancellation, rejectServiceCancellation, updateServiceStatus, requestServiceCancellation } = usePortal();
+  const { adminPurchases, approveAdminOrder, clients, adminServices, approveServiceCancellation, rejectServiceCancellation, updateServiceStatus, requestServiceCancellation, approveProfileUpdateRequest, rejectProfileUpdateRequest, approveClientRegistration, rejectClientRegistration } = usePortal();
   const { isDarkMode } = useTheme();
   const [processingOrderId, setProcessingOrderId] = useState('');
   const [selectedOrderForReview, setSelectedOrderForReview] = useState(null);
@@ -567,6 +567,14 @@ export default function ApprovalsPage() {
   const [processingCancellationId, setProcessingCancellationId] = useState('');
   const [cancellationMessage, setCancellationMessage] = useState('');
   const [cancellationError, setCancellationError] = useState('');
+  const [processingProfileId, setProcessingProfileId] = useState('');
+  const [processingRegistrationId, setProcessingRegistrationId] = useState('');
+  const [selectedProfileRequest, setSelectedProfileRequest] = useState(null);
+  const [profileReviewNote, setProfileReviewNote] = useState('');
+  const [profileReviewMessage, setProfileReviewMessage] = useState('');
+  const [profileReviewError, setProfileReviewError] = useState('');
+  const [isReviewingProfile, setIsReviewingProfile] = useState(false);
+  const [approvalsTab, setApprovalsTab] = useState('orders');
 
   // --- copied states from ManageServicesPage for actions/modals ---
   const [showDiscountModal, setShowDiscountModal] = useState(false);
@@ -626,6 +634,16 @@ export default function ApprovalsPage() {
     [adminServices, selectedClientRecord],
   );
 
+  const pendingProfileRequests = useMemo(
+    () => clients.filter((client) => client.profileUpdateRequest?.statusKey === 'pending' && (!selectedClientRecord || selectedClientRecord.id === client.id)),
+    [clients, selectedClientRecord],
+  );
+
+  const pendingRegistrations = useMemo(
+    () => clients.filter((client) => client.registrationApproval?.statusKey === 'pending' && (!selectedClientRecord || selectedClientRecord.id === client.id)),
+    [clients, selectedClientRecord],
+  );
+
   const combinedPending = useMemo(() => {
     const orders = pendingOrders.map((o) => {
       const customerNote = getDesiredDomainValue(o);
@@ -666,9 +684,8 @@ export default function ApprovalsPage() {
       customerNote: getCancellationReasonValue(s),
       meta: { requestedAt: s.cancellationRequest?.requestedAt },
     }));
-
     return [...orders, ...cancels];
-  }, [pendingOrders, pendingCancellationServices]);
+  }, [pendingOrders, pendingCancellationServices, pendingProfileRequests, pendingRegistrations]);
 
   const statuses = ['Active', 'Expired', 'Unpaid', 'Undergoing Provisioning'];
 
@@ -1046,6 +1063,147 @@ export default function ApprovalsPage() {
     }
   };
 
+  const openProfileRequestModal = (client) => {
+    setSelectedProfileRequest(client);
+    setProfileReviewNote(client?.profileUpdateRequest?.adminNotes ?? client?.registrationApproval?.adminNotes ?? '');
+    setProfileReviewMessage('');
+    setProfileReviewError('');
+  };
+
+  const closeProfileRequestModal = () => {
+    setSelectedProfileRequest(null);
+    setProfileReviewNote('');
+    setProfileReviewMessage('');
+    setProfileReviewError('');
+  };
+
+  const profileRequestPreview = useMemo(() => {
+    if (!selectedProfileRequest?.profileUpdateRequest) return [];
+
+    const requestedProfile = selectedProfileRequest.profileUpdateRequest.requestedProfile ?? {};
+
+    return [
+      { label: 'Full Name', current: selectedProfileRequest.name, requested: requestedProfile.name },
+      { label: 'Email', current: selectedProfileRequest.email, requested: requestedProfile.email },
+      { label: 'Company', current: selectedProfileRequest.company, requested: requestedProfile.company },
+      { label: 'Address', current: selectedProfileRequest.address || 'Not set', requested: requestedProfile.address || 'Not set' },
+      { label: 'Mobile Number', current: selectedProfileRequest.mobileNumber || 'Not set', requested: requestedProfile.mobileNumber || 'Not set' },
+      { label: 'Profile Picture URL', current: selectedProfileRequest.profilePhotoUrl ? 'Set' : 'Not set', requested: requestedProfile.profilePhotoUrl ? 'Set' : 'Not set' },
+    ];
+  }, [selectedProfileRequest]);
+
+  const handleApproveProfileRequest = async () => {
+    const requestId = selectedProfileRequest?.profileUpdateRequest?.id;
+
+    if (!requestId) {
+      setProfileReviewError('No profile update request found.');
+      return false;
+    }
+
+    setIsReviewingProfile(true);
+    setProcessingProfileId(requestId);
+    setProfileReviewError('');
+
+    try {
+      const response = await approveProfileUpdateRequest(requestId, profileReviewNote.trim());
+      setProfileReviewMessage(response.message);
+      setMessage(response.message);
+      closeProfileRequestModal();
+      return true;
+    } catch (err) {
+      setProfileReviewError(err.message);
+      setError(err.message);
+      return false;
+    } finally {
+      setIsReviewingProfile(false);
+      setProcessingProfileId('');
+    }
+  };
+
+  const handleRejectProfileRequest = async () => {
+    const requestId = selectedProfileRequest?.profileUpdateRequest?.id;
+
+    if (!requestId) {
+      setProfileReviewError('No profile update request found.');
+      return false;
+    }
+
+    setIsReviewingProfile(true);
+    setProcessingProfileId(requestId);
+    setProfileReviewError('');
+
+    try {
+      const response = await rejectProfileUpdateRequest(requestId, profileReviewNote.trim());
+      setProfileReviewMessage(response.message);
+      setMessage(response.message);
+      closeProfileRequestModal();
+      return true;
+    } catch (err) {
+      setProfileReviewError(err.message);
+      setError(err.message);
+      return false;
+    } finally {
+      setIsReviewingProfile(false);
+      setProcessingProfileId('');
+    }
+  };
+
+  const handleApproveRegistration = async () => {
+    const clientId = selectedProfileRequest?.id;
+
+    if (!clientId) {
+      setProfileReviewError('No client id provided.');
+      return false;
+    }
+
+    setIsReviewingProfile(true);
+    setProcessingRegistrationId(clientId);
+    setProfileReviewError('');
+
+    try {
+      const response = await approveClientRegistration(clientId, profileReviewNote.trim());
+      setProfileReviewMessage(response.message);
+      setMessage(response.message);
+      closeProfileRequestModal();
+      return true;
+    } catch (err) {
+      setProfileReviewError(err.message);
+      setError(err.message);
+      return false;
+    } finally {
+      setIsReviewingProfile(false);
+      setProcessingRegistrationId('');
+    }
+  };
+
+  const handleRejectRegistration = async () => {
+    const clientId = selectedProfileRequest?.id;
+
+    if (!clientId) {
+      setProfileReviewError('No client id provided.');
+      return false;
+    }
+
+    setIsReviewingProfile(true);
+    setProcessingRegistrationId(clientId);
+    setProfileReviewError('');
+
+    try {
+      const response = await rejectClientRegistration(clientId, profileReviewNote.trim());
+      setProfileReviewMessage(response.message);
+      setMessage(response.message);
+      closeProfileRequestModal();
+      return true;
+    } catch (err) {
+      setProfileReviewError(err.message);
+      setError(err.message);
+      return false;
+    } finally {
+      setIsReviewingProfile(false);
+      setProcessingRegistrationId('');
+    }
+  };
+
   const headerAction = (
     <div className="w-full lg:w-auto flex items-center gap-3">
       <label className="relative block">
@@ -1059,6 +1217,8 @@ export default function ApprovalsPage() {
           <option value="all">All</option>
           <option value="order">Orders</option>
           <option value="cancellation">Cancellations</option>
+          <option value="profile">Profile Updates</option>
+          <option value="registration">Registrations</option>
         </select>
 
         <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
@@ -1075,14 +1235,34 @@ export default function ApprovalsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Operations" title="Approve New Orders" action={headerAction} />
+      <PageHeader eyebrow="Operations" title="Approve Orders / Update Profiles" action={headerAction} />
 
       {error ? <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{error}</div> : null}
       {message ? <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{message}</div> : null}
       {cancellationError ? <div className="mt-3 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-2 text-sm text-orange-100">{cancellationError}</div> : null}
       {cancellationMessage ? <div className="mt-3 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-2 text-sm text-sky-100">{cancellationMessage}</div> : null}
 
+      <div className="mt-6">
+        <div className="inline-flex items-center gap-1 rounded-2xl border border-white/10 bg-slate-900/70 p-1 approvals-tabs">
+          <button
+            type="button"
+            onClick={() => setApprovalsTab('orders')}
+            className={`approvals-tab-btn inline-flex h-10 items-center justify-center rounded-xl px-4 ${approvalsTab === 'orders' ? 'bg-orange-400 text-white' : (isDarkMode ? 'text-slate-400 hover:bg-white/5 hover:text-white' : 'text-slate-900 hover:bg-white/5')}`}
+          >
+            Orders
+          </button>
 
+          <button
+            type="button"
+            onClick={() => setApprovalsTab('profiles')}
+            className={`approvals-tab-btn inline-flex h-10 items-center justify-center rounded-xl px-4 ${approvalsTab === 'profiles' ? 'bg-orange-400 text-white' : (isDarkMode ? 'text-slate-400 hover:bg-white/5 hover:text-white' : 'text-slate-900 hover:bg-white/5')}`}
+          >
+            Profiles
+          </button>
+        </div>
+      </div>
+
+      {approvalsTab === 'orders' ? (
           <div className="mt-6 panel p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -1091,6 +1271,7 @@ export default function ApprovalsPage() {
               </div>
             </div>
 
+            {/* Profile & Registration Requests panel moved to separate tab */}
         {typeFilter === 'services' ? (
           <>
             {viewMode === 'list' ? (
@@ -1196,7 +1377,7 @@ export default function ApprovalsPage() {
                             )}
                           </td>
                           <td className="px-5 py-4 align-top">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex items-center justify-center gap-2">
                               <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="View service">
                                 <Eye size={16} />
                               </button>
@@ -1265,7 +1446,7 @@ export default function ApprovalsPage() {
                           <td className="px-5 py-4 align-top"><select className="input w-48 whitespace-nowrap" value={service.status} onChange={(e) => updateServiceStatus(service.id, e.target.value)}>{statuses.map((st) => <option key={st} value={st}>{st}</option>)}</select></td>
                           <td className="px-5 py-4 align-top">{service.cancellationRequest ? <span className="text-sm text-orange-200 whitespace-nowrap">{service.cancellationRequest.status}</span> : <span className="text-sm text-slate-500 whitespace-nowrap">No request</span>}</td>
                           <td className="px-5 py-4 align-top">
-                            <div className="flex justify-end gap-2 whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                               <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100" title="View"><Eye size={16} /></button>
                               <button type="button" onClick={() => openCancellationModal(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 text-orange-100" title="Queue cancellation"><CircleOff size={16} /></button>
                             </div>
@@ -1295,7 +1476,7 @@ export default function ApprovalsPage() {
                         <button type="button" onClick={() => openServiceBreakdownModal(service)} className="mt-2 block text-xs text-sky-300 transition hover:text-sky-200">{purchaseDetails.totalPaid !== null ? formatCurrency(purchaseDetails.totalPaid) : '—'}</button>
                       </div>
 
-                      <div className="mt-4 flex justify-end gap-2">
+                      <div className="mt-4 flex items-center justify-center gap-2">
                         <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="btn-secondary px-3"><Eye size={16} /></button>
                         <button type="button" onClick={() => openCancellationModal(service)} className="btn-secondary border-orange-400/20 bg-orange-400/10 px-3 text-orange-100"><CircleOff size={16} /></button>
                       </div>
@@ -1348,7 +1529,7 @@ export default function ApprovalsPage() {
                       <td className="px-5 py-4 align-middle">
                         <p className="font-semibold text-white">{row.serviceName}</p>
                         {row.type === 'order' && row.meta?.date ? <p className="mt-1 text-sm text-slate-400">{formatDate(row.meta.date)} • {row.meta.paymentMethod}</p> : null}
-                        {row.type === 'cancellation' && row.meta?.requestedAt ? <p className="mt-1 text-sm text-slate-400">Requested {formatDateTime(row.meta.requestedAt)}</p> : null}
+                        {(row.type === 'cancellation' || row.type === 'profile' || row.type === 'registration') && row.meta?.requestedAt ? <p className="mt-1 text-sm text-slate-400">Requested {formatDateTime(row.meta.requestedAt)}</p> : null}
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <p className="font-medium text-white">{row.client}</p>
@@ -1372,7 +1553,7 @@ export default function ApprovalsPage() {
                       <td className="w-px whitespace-nowrap px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
                       {/* ─── FIX: flex instead of grid, null instead of spacer <span> ─── */}
                       <td className="w-px whitespace-nowrap px-5 py-4 align-middle">
-                        <div className="flex items-center justify-end gap-3">
+                        <div className="flex items-center justify-center gap-3">
                           {row.type === 'order' ? (
                             <>
                               {shouldShowCommentAction(row) ? (
@@ -1397,7 +1578,7 @@ export default function ApprovalsPage() {
                                 <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}
                               </button>
                             </>
-                          ) : (
+                          ) : row.type === 'cancellation' ? (
                             <>
                               {shouldShowCommentAction(row) ? (
                                 <button
@@ -1417,7 +1598,31 @@ export default function ApprovalsPage() {
                                 <CheckCircle2 size={16} /> {processingCancellationId === row.raw.id ? 'Approving...' : 'Approve Cancellation'}
                               </button>
                             </>
-                          )}
+                          ) : row.type === 'profile' ? (
+                            <>
+                              <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View request" aria-label={`View profile request for ${row.client}`}>
+                                <Eye size={16} />
+                              </button>
+                              <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white hover:bg-rose-500">
+                                <XCircle size={16} /> Reject
+                              </button>
+                              <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white hover:bg-emerald-500">
+                                <CheckCircle2 size={16} /> Approve Update
+                              </button>
+                            </>
+                          ) : row.type === 'registration' ? (
+                            <>
+                              <button type="button" onClick={() => { setSelectedClientId(row.raw.id); setShowClientProfile(true); }} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View client" aria-label={`View client ${row.client}`}>
+                                <Eye size={16} />
+                              </button>
+                              <button type="button" onClick={() => handleRejectRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-rose-500">
+                                <XCircle size={16} /> Reject
+                              </button>
+                              <button type="button" onClick={() => handleApproveRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-emerald-500">
+                                <CheckCircle2 size={16} /> {processingRegistrationId === row.raw.id ? 'Approving...' : 'Approve'}
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -1455,7 +1660,7 @@ export default function ApprovalsPage() {
                     </div>
                   ) : null}
 
-                  <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-right">
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-center">
                     {row.type === 'order' ? (
                       <>
                         {shouldShowCommentAction(row) ? (
@@ -1472,7 +1677,7 @@ export default function ApprovalsPage() {
                         <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center px-3">View</button>
                         <button type="button" onClick={() => handleApproveOrder(row.raw)} disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning} title={row.approvalBlockReason || 'Approve order'} className={`inline-flex min-w-[140px] items-center justify-center gap-2 rounded-2xl px-3 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}>{processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}</button>
                       </>
-                    ) : (
+                    ) : row.type === 'cancellation' ? (
                       <>
                         {shouldShowCommentAction(row) ? (
                           <button
@@ -1488,7 +1693,23 @@ export default function ApprovalsPage() {
                         <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-secondary min-w-[140px] justify-center px-3">Keep Service</button>
                         <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingCancellationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
                       </>
-                    )}
+                    ) : row.type === 'profile' ? (
+                      <>
+                        <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View request" aria-label={`View profile request for ${row.client}`}>
+                          <Eye size={16} />
+                        </button>
+                        <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="btn-secondary min-w-[140px] justify-center px-3">Reject</button>
+                        <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="btn-primary min-w-[140px] justify-center px-3">Approve</button>
+                      </>
+                    ) : row.type === 'registration' ? (
+                      <>
+                        <button type="button" onClick={() => { setSelectedClientId(row.raw.id); setShowClientProfile(true); }} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View client" aria-label={`View client ${row.client}`}>
+                          <Eye size={16} />
+                        </button>
+                        <button type="button" onClick={() => handleRejectRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="btn-secondary min-w-[140px] justify-center px-3">Reject</button>
+                        <button type="button" onClick={() => handleApproveRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingRegistrationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -1498,6 +1719,77 @@ export default function ApprovalsPage() {
           )
         )}
           </div>
+        ) : null}
+
+      {approvalsTab === 'profiles' ? (
+        <div className="mt-6 panel p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Account Approvals</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Profile & Registration Requests</h2>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full divide-y divide-white/10 text-left">
+                  <thead className="bg-white/5 text-sm text-slate-400">
+                    <tr>
+                      <th className="px-5 py-4 font-semibold text-white">Client</th>
+                      <th className="px-5 py-4 font-semibold text-white">Type</th>
+                      <th className="px-5 py-4 font-semibold text-white">Requested</th>
+                      <th className="px-5 py-4 font-semibold text-white">Changes</th>
+                      <th className="px-5 py-4 font-semibold text-white text-center">Actions</th>
+                    </tr>
+                  </thead>
+              <tbody className="divide-y divide-white/10 bg-transparent text-sm text-slate-200">
+                {(pendingProfileRequests.length || pendingRegistrations.length) ? (
+                  <>
+                    {pendingProfileRequests.map((c) => (
+                      <tr key={`profile-${c.id}`} className="table-row-hoverable">
+                        <td className="px-5 py-4 align-middle"><p className="font-medium text-white">{c.name || c.email}</p></td>
+                        <td className="px-5 py-4 align-middle"><span className="text-sm text-slate-400">Profile Update</span></td>
+                        <td className="px-5 py-4 align-middle">{c.profileUpdateRequest?.submittedAt ? formatDateTime(c.profileUpdateRequest.submittedAt) : (c.profileUpdateRequest?.createdAt ? formatDateTime(c.profileUpdateRequest.createdAt) : '—')}</td>
+                        <td className="px-5 py-4 align-middle">
+                          <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary px-3">Preview</button>
+                        </td>
+                        <td className="px-5 py-4 align-middle">
+                          <div className="flex items-center justify-center gap-2">
+                            <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary">View</button>
+                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-rose-400 px-3 py-2 text-white hover:bg-rose-500">Reject</button>
+                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 py-2 text-white hover:bg-emerald-500">Approve</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {pendingRegistrations.map((c) => (
+                      <tr key={`registration-${c.id}`} className="table-row-hoverable">
+                        <td className="px-5 py-4 align-middle"><p className="font-medium text-white">{c.name || c.email}</p></td>
+                        <td className="px-5 py-4 align-middle"><span className="text-sm text-slate-400">Registration</span></td>
+                        <td className="px-5 py-4 align-middle">{c.registrationApproval?.requestedAt ? formatDateTime(c.registrationApproval.requestedAt) : (c.registrationApproval?.createdAt ? formatDateTime(c.registrationApproval.createdAt) : '—')}</td>
+                        <td className="px-5 py-4 align-middle">
+                          <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary px-3">Preview</button>
+                        </td>
+                        <td className="px-5 py-4 align-middle">
+                          <div className="flex items-center justify-center gap-2">
+                            <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary">View</button>
+                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-rose-400 px-3 py-2 text-white hover:bg-rose-500">Reject</button>
+                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 py-2 text-white hover:bg-emerald-500">Approve</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-12 text-center text-slate-400">No profile or registration requests pending.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {showDiscountModal && discountTargetService ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -1537,6 +1829,82 @@ export default function ApprovalsPage() {
           </form>
         </div>
       ) : null}
+
+      {selectedProfileRequest ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="panel max-h-[85vh] w-full max-w-4xl overflow-hidden">
+            <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">{selectedProfileRequest.profileUpdateRequest ? 'Profile Update Review' : 'Registration Review'}</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{selectedProfileRequest.name || selectedProfileRequest.email}</h2>
+                <p className="mt-2 text-sm text-slate-400">{selectedProfileRequest.profileUpdateRequest ? `Submitted ${formatDateTime(selectedProfileRequest.profileUpdateRequest.submittedAt ?? selectedProfileRequest.profileUpdateRequest.createdAt)}` : (selectedProfileRequest.registrationApproval ? `Submitted ${formatDateTime(selectedProfileRequest.registrationApproval.requestedAt ?? selectedProfileRequest.registrationApproval.createdAt)}` : '')}</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {selectedProfileRequest.profileUpdateRequest ? (
+                  <>
+                    <button type="button" onClick={handleApproveProfileRequest} disabled={isReviewingProfile} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500"><CheckCircle2 size={16} /> Approve</button>
+                    <button type="button" onClick={handleRejectProfileRequest} disabled={isReviewingProfile} className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500"><XCircle size={16} /> Reject</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={handleApproveRegistration} disabled={isReviewingProfile} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-emerald-500"><CheckCircle2 size={16} /> Approve</button>
+                    <button type="button" onClick={handleRejectRegistration} disabled={isReviewingProfile} className="inline-flex items-center gap-2 rounded-2xl bg-rose-400 text-white px-4 py-2 disabled:opacity-60 hover:bg-rose-500"><XCircle size={16} /> Reject</button>
+                  </>
+                )}
+
+                <button type="button" onClick={closeProfileRequestModal} className="btn-secondary px-4">Close</button>
+              </div>
+            </div>
+
+            <div className="max-h-[calc(85vh-110px)] space-y-5 overflow-y-auto px-6 py-5">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                <label className="block text-sm text-slate-300">
+                  Admin note (optional)
+                  <textarea value={profileReviewNote} onChange={(e) => setProfileReviewNote(e.target.value)} rows={4} className="input mt-2 min-h-28 resize-y" placeholder="Add a note for the customer before you approve or reject this request." />
+                </label>
+                <p className="mt-2 text-xs text-slate-500">This note will appear in the customer profile status panel after review.</p>
+              </div>
+
+              {selectedProfileRequest.profileUpdateRequest ? (
+                <div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge status={selectedProfileRequest.profileUpdateRequest.status} />
+                    <span className="text-sm text-slate-400">Review status: {selectedProfileRequest.profileUpdateRequest.status}</span>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 mt-4">
+                    {profileRequestPreview.map((item) => (
+                      <div key={item.label} className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
+                        <div className="mt-3 space-y-2 text-sm">
+                          <p className="text-slate-400">Current: <span className="text-white">{item.current}</span></p>
+                          <p className="text-slate-400">Requested: <span className="text-sky-200">{item.requested}</span></p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedProfileRequest.profileUpdateRequest.adminNotes ? (
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300 mt-4">
+                      <p className="font-medium text-white">Admin note</p>
+                      <p className="mt-2">{selectedProfileRequest.profileUpdateRequest.adminNotes}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                  <p className="text-sm text-slate-300">Registration request details</p>
+                  <div className="mt-3 text-sm text-slate-200">
+                    <p><strong>Name:</strong> {selectedProfileRequest.name || '—'}</p>
+                    <p className="mt-1"><strong>Email:</strong> {selectedProfileRequest.email || '—'}</p>
+                    <p className="mt-1"><strong>Company:</strong> {selectedProfileRequest.company || '—'}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>, document.body) : null}
 
       {showPricingLogsModal && pricingLogsService ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">

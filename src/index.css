@@ -259,6 +259,22 @@ body.theme-dark .text-slate-300 {
   stroke: #cbd5e1;
 }
 
+/* Approvals tab labels: dark text when inactive in light theme; active tab uses white */
+body.theme-light .approvals-tabs .approvals-tab-btn {
+  color: #0f172a; /* dark text for inactive tabs */
+}
+
+body.theme-light .approvals-tabs .approvals-tab-btn svg {
+  stroke: #0f172a;
+  color: #0f172a;
+}
+
+body.theme-light .approvals-tabs .approvals-tab-btn.bg-orange-400,
+body.theme-light .approvals-tabs .approvals-tab-btn.bg-orange-400 svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
 .contract-rich-editor .ql-fill {
   fill: #cbd5e1;
 }

@@ -171,6 +171,8 @@ export default function CheckoutPage() {
                               );
                             })}
                           </div>
+                        ) : Array.isArray(item.addon) && !item.addon.length ? (
+                          <p className="mt-2 text-sm text-slate-400">Add-on: No Available Add-on</p>
                         ) : item.addon ? (
                           <p className="mt-2 text-sm text-slate-400">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs text-white">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}{getAddonBilling(item.addon, item) ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-400">/{getAddonBilling(item.addon, item)}</span> : null}</p>
                         ) : null}
@@ -178,7 +180,7 @@ export default function CheckoutPage() {
                         {showDesiredDomainField ? (
                           <div className="mt-4">
                             <label htmlFor={`desired-domain-${item.lineId}`} className="text-sm font-medium text-white">
-                              Desired domain / note
+                              Desired domain / note <span className="text-rose-500 ml-1" aria-hidden="true">*</span>
                             </label>
                             <textarea
                               id={`desired-domain-${item.lineId}`}
@@ -189,7 +191,7 @@ export default function CheckoutPage() {
                               className={`input mt-3 w-full resize-y ${!desiredDomain ? 'border-white/10' : ''}`}
                               aria-required="true"
                             />
-                            <p className="mt-2 text-xs text-slate-500">Required for domain orders. This note is visible to the admin team during review.</p>
+                            <p className="mt-2 text-xs font-bold text-slate-10000">Required for domain orders. This note is visible to the admin team during review.</p>
                           </div>
                         ) : null}
                       </div>

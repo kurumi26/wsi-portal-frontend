@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, PenLine, RotateCcw, Search } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, PenLine, RotateCcw, Search, Eye, X, FileSignature } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
@@ -15,7 +16,7 @@ const feedbackToneClasses = {
   error: 'border-rose-400/20 bg-rose-400/10 text-rose-100',
 };
 
-const CONTRACTS_PER_PAGE = 10;
+const CONTRACTS_PER_PAGE = 5;
 
 const workspaceActionButtonClass = 'btn-secondary flex h-10 w-10 shrink-0 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-60';
 
@@ -29,6 +30,77 @@ const getContractSearchValue = (contract) => [
 ].join(' ').toLowerCase();
 
 const getContractEditorPath = (contractId) => `/admin/contracts/manage/${encodeURIComponent(contractId)}/editor`;
+
+function ContractLivePreview({ previewDocument }) {
+  if (!previewDocument) {
+    return null;
+  }
+
+  return (
+    <div className="contract-paper-preview space-y-5 text-slate-900">
+      <div className="rounded-[24px] bg-slate-900 px-5 py-5 text-white shadow-lg">
+        <p className="inline-flex rounded-full bg-[#ff7a1a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+          {previewDocument.badge}
+        </p>
+        <h4 className="mt-4 text-3xl font-semibold leading-tight text-white">{previewDocument.title}</h4>
+        <p className="mt-3 text-sm leading-6 text-slate-300">{previewDocument.subtitle}</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {previewDocument.metadata.map((item) => (
+          <div key={item.label} className="rounded-2xl border border-slate-300/60 bg-white/90 p-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-900">{item.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-[#f6b37b] bg-[#fff3e8] p-4 shadow-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d15f06]">Statement of Agreement</p>
+        <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{previewDocument.overview}</p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-300/60 bg-white/90 p-4 shadow-sm">
+        <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          Core Terms
+        </div>
+        <div className="mt-4 space-y-5">
+          {previewDocument.sections.map((section, index) => (
+            <div key={`${section.title}-${index}`}>
+              <p className="text-sm font-semibold text-slate-900">{index + 1}. {section.title}</p>
+              <p className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-700">{section.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-300/60 bg-white/90 p-4 shadow-sm">
+        <div className="flex items-center gap-2 text-slate-900">
+          <FileSignature size={16} />
+          <p className="text-sm font-semibold">Schedules and Included Documents</p>
+        </div>
+        <div className="mt-4 space-y-3">
+          {previewDocument.documents.map((document, index) => (
+            <div key={`${document.title}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-900">{index + 1}. {document.title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{document.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-300/60 bg-white/90 p-4 shadow-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Execution</p>
+        <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{previewDocument.signatureStatement}</p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-300/60 bg-white/90 p-4 shadow-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Additional Notes</p>
+        <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{previewDocument.note}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminManageContractsPage() {
   usePageTitle('Manage Contract Templates');
@@ -92,13 +164,37 @@ export default function AdminManageContractsPage() {
     [adminContractRecords, selectedContractId],
   );
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewContract, setPreviewContract] = useState(null);
+
   const previewDocument = useMemo(() => {
-    if (!selectedContract) {
+    if (!previewContract) {
       return null;
     }
 
-    return buildContractTemplateDocument(selectedContract);
-  }, [selectedContract]);
+    return buildContractTemplateDocument(previewContract);
+  }, [previewContract]);
+
+  useEffect(() => {
+    if (!previewOpen) {
+      document.body.style.overflow = '';
+      return undefined;
+    }
+
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setPreviewOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewOpen]);
 
   const hasManagedTemplate = Boolean(selectedContract?.managedTemplateSettings);
 
@@ -126,8 +222,39 @@ export default function AdminManageContractsPage() {
     }
   };
 
+  const previewModal = previewOpen && previewDocument
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[80] flex min-h-screen items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="contract-live-preview-title"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <div
+            className="panel flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden p-0"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">Live Preview</p>
+                <h2 id="contract-live-preview-title" className="mt-1 text-lg font-semibold text-white">Styled download output</h2>
+              </div>
+              <button type="button" onClick={() => setPreviewOpen(false)} className="btn-secondary flex h-10 w-10 items-center justify-center p-0" aria-label="Close preview">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-[#f7f2e8] p-5">
+              <ContractLivePreview previewDocument={previewDocument} />
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
   return (
-    <div>
+    <div className="pb-12 ">
       <PageHeader
         eyebrow="Contracts / Manage"
         title="Manage Contract Templates"
@@ -137,101 +264,12 @@ export default function AdminManageContractsPage() {
             {feedback.text}
           </div>
         ) : null}
-        action={(
-          <Link to="/admin/contracts" className="btn-secondary gap-2 whitespace-nowrap">
-            <ArrowLeft size={16} />
-            Agreement Records
-          </Link>
-        )}
+
       />
 
       <div className="space-y-6">
-        {selectedContract ? (
-          <div className="panel overflow-hidden">
-            <div className="manage-contracts-workspace-shell border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(96,165,250,0.18),transparent_38%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.94))] p-6">
-              <div className="manage-contracts-workspace-surface rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_18px_60px_rgba(15,23,42,0.24)]">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-200">Contract Workspace</p>
-                      <StatusBadge status={selectedContract.status} />
-                      <span className={`manage-contracts-template-pill rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${hasManagedTemplate ? 'border-emerald-300/30 bg-emerald-400/10 text-emerald-100' : 'border-white/15 bg-white/[0.06] text-slate-200'}`}>
-                        {hasManagedTemplate ? 'Custom template' : 'Default template'}
-                      </span>
-                    </div>
-                    <h2 className="manage-contracts-workspace-title mt-4 text-3xl font-semibold tracking-tight text-white">{selectedContract.title}</h2>
-                  </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Link
-                      to={getContractEditorPath(selectedContract.id)}
-                      className={workspaceActionButtonClass}
-                      title="Open full editor"
-                      aria-label={`Open full editor for ${selectedContract.title}`}
-                    >
-                      <PenLine size={16} className="text-current" strokeWidth={2.3} />
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => handleReset()}
-                      disabled={isResetting || !hasManagedTemplate}
-                      className={workspaceActionButtonClass}
-                      title={isResetting ? 'Resetting template' : 'Reset to default template'}
-                      aria-label={`Reset ${selectedContract.title} to default template`}
-                    >
-                      <RotateCcw size={16} className="text-current" strokeWidth={2.3} />
-                    </button>
-                  </div>
-                </div>
 
-                <div className="manage-contracts-details-table mt-6 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
-                  <table className="min-w-full divide-y divide-white/10 text-left text-sm">
-                    <tbody className="divide-y divide-white/10">
-                      <tr>
-                        <th className="manage-contracts-details-label w-[180px] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Customer</th>
-                        <td className="manage-contracts-details-value px-4 py-3 font-medium text-white">{selectedContract.clientName || 'Customer not linked yet'}</td>
-                      </tr>
-                      <tr>
-                        <th className="manage-contracts-details-label px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Service</th>
-                        <td className="manage-contracts-details-value px-4 py-3 font-medium text-white">{selectedContract.serviceName || 'Agreement record'}</td>
-                      </tr>
-                      <tr>
-                        <th className="manage-contracts-details-label px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Reference</th>
-                        <td className="manage-contracts-details-value px-4 py-3 font-medium text-white">{selectedContract.auditReference || selectedContract.orderNumber || 'Pending reference'}</td>
-                      </tr>
-                      <tr>
-                        <th className="manage-contracts-details-label px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Last update</th>
-                        <td className="manage-contracts-details-value px-4 py-3 text-white">
-                          <p className="font-medium">{formatDateTime(selectedContract.managedTemplateUpdatedAt || selectedContract.issuedAt)}</p>
-                          <p className="manage-contracts-details-helper mt-1 text-xs text-slate-400">{selectedContract.managedTemplateUpdatedBy || 'Default system template'}</p>
-                        </td>
-                      </tr>
-                      <tr>
-                        <th className="manage-contracts-details-label px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Clauses</th>
-                        <td className="manage-contracts-details-value px-4 py-3 font-medium text-white">{previewDocument?.sections.length ?? 0}</td>
-                      </tr>
-                      <tr>
-                        <th className="manage-contracts-details-label px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Schedules</th>
-                        <td className="manage-contracts-details-value px-4 py-3 font-medium text-white">{previewDocument?.documents.length ?? 0}</td>
-                      </tr>
-                      <tr>
-                        <th className="manage-contracts-details-label px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Signed copy</th>
-                        <td className="manage-contracts-details-value px-4 py-3 font-medium text-white">{selectedContract.requiresSignedDocument ? 'Required' : 'Optional'}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="panel p-10 text-center">
-            <p className="text-lg font-semibold text-white">No contract selected</p>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              {isLoadingPortal ? 'Loading contract records...' : 'Select a contract from the table below.'}
-            </p>
-          </div>
-        )}
 
         <section className="panel overflow-hidden">
           <div className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -265,7 +303,8 @@ export default function AdminManageContractsPage() {
                     <th className="px-5 py-3 font-medium">Customer</th>
                     <th className="px-5 py-3 font-medium">Service</th>
                     <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 font-medium">Template</th>
+                      <th className="px-5 py-3 font-medium">Template</th>
+                      <th className="px-5 py-3 font-medium text-center align-middle">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/10">
@@ -297,6 +336,28 @@ export default function AdminManageContractsPage() {
                             <span className="text-slate-400">Default</span>
                           )}
                         </td>
+                        <td className="px-5 py-4 align-middle text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              className={workspaceActionButtonClass}
+                              title="Preview contract"
+                              aria-label={`Preview ${contract.title}`}
+                              onClick={(e) => { e.stopPropagation(); setPreviewContract(contract); setPreviewOpen(true); }}
+                            >
+                              <Eye size={16} className="text-current" />
+                            </button>
+                            <Link
+                              to={getContractEditorPath(contract.id)}
+                              className={workspaceActionButtonClass}
+                              title="Open full editor"
+                              aria-label={`Open full editor for ${contract.title}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <PenLine size={16} className="text-current" strokeWidth={2.3} />
+                            </Link>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -309,11 +370,15 @@ export default function AdminManageContractsPage() {
             )}
           </div>
 
-          {filteredContracts.length ? (
-            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
-          ) : null}
         </section>
+
+        {filteredContracts.length ? (
+          <div className="mt-6">
+            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+          </div>
+        ) : null}
       </div>
+      {previewModal}
     </div>
   );
 }

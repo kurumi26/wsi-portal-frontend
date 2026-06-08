@@ -1109,7 +1109,7 @@ export default function AdminContractsPage() {
         action={contractsHeaderAction}
       />
 
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      {/* <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">Signing Template</p>
@@ -1190,7 +1190,7 @@ export default function AdminContractsPage() {
             </p>
           </div>
         </div>
-      </div>
+      </div> */}
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (

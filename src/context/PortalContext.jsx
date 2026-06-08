@@ -1458,6 +1458,12 @@ export function PortalProvider({ children }) {
     return result;
   };
 
+  const rejectAdminOrder = async (orderId) => {
+    const result = await portalApi.rejectAdminOrder(orderId);
+    await refreshPortalData();
+    return result;
+  };
+
   const markAdminPurchasePaid = async (orderId, payload = {}) => {
     const result = await portalApi.markAdminPurchasePaid(orderId, payload);
     await refreshPortalData();
@@ -1542,6 +1548,7 @@ export function PortalProvider({ children }) {
       resetManagedContractTemplate,
       updateServiceStatus,
       approveAdminOrder,
+      rejectAdminOrder,
       markAdminPurchasePaid,
       updateClientBilling,
       updateClientAccount,

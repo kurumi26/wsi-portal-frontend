@@ -7,6 +7,7 @@ import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency, formatDate } from '../../utils/format';
+import { getInvoiceNumber } from '../../utils/invoices';
 
 const ORDERS_PER_PAGE = 5;
 
@@ -262,6 +263,8 @@ export default function OrderHistoryPage() {
     },
   ];
 
+  const selectedOrderInvoice = selectedOrder ? getInvoiceNumber(selectedOrder) : '';
+
   return (
     <div>
       <PageHeader
@@ -422,7 +425,15 @@ export default function OrderHistoryPage() {
                 <div className="flex items-start justify-between border-b border-white/10 px-6 py-5">
                   <div>
                     <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Order Details</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">{selectedOrder.id}</h2>
+                    <div className="mt-2 flex items-center gap-3">
+                      <h2 className="text-2xl font-semibold text-white">{selectedOrder.id}</h2>
+                      {selectedOrderInvoice ? (
+                        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-slate-300">
+                          <span className="uppercase tracking-[0.12em] text-xs text-slate-400">Invoice</span>
+                          <span className="font-mono text-sm text-white">{selectedOrderInvoice}</span>
+                        </div>
+                      ) : null}
+                    </div>
                     <p className="mt-2 text-sm text-slate-400">Customer order record for phase 1 portal activity</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">

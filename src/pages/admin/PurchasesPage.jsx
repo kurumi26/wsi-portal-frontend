@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, ChevronDown, List, Grid2x2, Eye, CheckCircle2 } from 'lucide-react';
+import { Search, ChevronDown, List, Grid2x2, Eye, CheckCircle2, XCircle } from 'lucide-react';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
@@ -14,6 +14,8 @@ import { getDesiredDomainValue } from '../../utils/orders';
 
 const PURCHASES_PER_PAGE = 5;
 const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/api\/?$/i, '');
+
+const workspaceActionButtonClass = 'btn-secondary p-0 flex shrink-0 items-center justify-center disabled:cursor-not-allowed disabled:opacity-60';
 
 const getDisplayValue = (...values) => {
   for (const value of values) {
@@ -146,7 +148,8 @@ const buildPurchaseRow = (purchase, clients) => {
 };
 
 export default function PurchasesPage() {
-  const { adminPurchases, clients, markAdminPurchasePaid } = usePortal();
+  const { adminPurchases, clients, markAdminPurchasePaid, rejectAdminOrder } = usePortal();
+  const [processingRejectPurchaseId, setProcessingRejectPurchaseId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [layoutMode, setLayoutMode] = useState('list');
@@ -260,6 +263,23 @@ export default function PurchasesPage() {
     }
   };
 
+  const handleReject = async (purchase) => {
+    if (!purchase?.id) return;
+
+    setProcessingRejectPurchaseId(String(purchase.id));
+    setPaymentActionMessage('');
+    setPaymentActionError('');
+
+    try {
+      const response = await rejectAdminOrder(purchase.id, {});
+      setPaymentActionMessage(response?.message || 'Purchase was rejected.');
+    } catch (requestError) {
+      setPaymentActionError(requestError.message || 'Unable to reject this purchase.');
+    } finally {
+      setProcessingRejectPurchaseId('');
+    }
+  };
+
   const getMarkPaidActionTitle = (purchase) => {
     if (!purchase) {
       return 'Mark invoice as paid';
@@ -276,10 +296,10 @@ export default function PurchasesPage() {
     return purchase.markPaidBlockedReason || 'Mark invoice as paid';
   };
 
-  const renderPurchaseActions = (purchase, buttonSizeClasses = 'h-10 w-10 rounded-2xl') => {
+  const renderPurchaseActions = (purchase, buttonSizeClasses = 'h-10 w-10') => {
     const isProcessing = processingPaidPurchaseId === String(purchase.id);
     const markPaidDisabled = isProcessing || !purchase.canMarkInvoicePaid;
-    const baseButtonClasses = `inline-flex ${buttonSizeClasses} items-center justify-center border transition disabled:cursor-not-allowed disabled:opacity-60`;
+    const baseButtonClasses = `${buttonSizeClasses} ${workspaceActionButtonClass} transition`;
 
     return (
       <>
@@ -290,7 +310,7 @@ export default function PurchasesPage() {
           title="View purchase details"
           aria-label={`View purchase details for ${purchase.displayId}`}
         >
-          <Eye size={16} />
+          <Eye size={16} className="text-current" />
         </button>
         <button
           type="button"
@@ -300,7 +320,17 @@ export default function PurchasesPage() {
           title={getMarkPaidActionTitle(purchase)}
           aria-label={`${getMarkPaidActionTitle(purchase)} for ${purchase.invoiceNumber || purchase.displayId}`}
         >
-          <CheckCircle2 size={16} />
+          <CheckCircle2 size={16} className="text-current" strokeWidth={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => handleReject(purchase)}
+          disabled={processingRejectPurchaseId === String(purchase.id) || purchase.isInvoicePaid || purchase.invoiceStatus === 'Cancelled'}
+          className={`${baseButtonClasses} ${(processingRejectPurchaseId === String(purchase.id) || purchase.isInvoicePaid || purchase.invoiceStatus === 'Cancelled') ? 'border-white/10 bg-white/[0.04] text-slate-500' : 'border-rose-400/25 bg-rose-400/12 text-rose-200 hover:bg-rose-400/20'}`}
+          title={purchase.isInvoicePaid ? 'Cannot reject a paid invoice' : 'Reject purchase'}
+          aria-label={`Reject purchase ${purchase.displayId}`}
+        >
+          <XCircle size={16} className="text-current" strokeWidth={2} />
         </button>
       </>
     );
@@ -406,11 +436,9 @@ export default function PurchasesPage() {
       key: 'actions',
       label: 'Actions',
       hideable: false,
-      render: (_, row) => (
-        <div className="flex justify-center gap-2">
-          {renderPurchaseActions(row)}
-        </div>
-      ),
+      headerClassName: 'px-6 py-5',
+      cellClassName: 'px-6 py-5 flex items-center justify-start gap-2 text-center align-middle',
+      render: (_, row) => renderPurchaseActions(row),
     },
   ];
 

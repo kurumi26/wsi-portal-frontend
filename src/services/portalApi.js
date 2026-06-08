@@ -1161,6 +1161,12 @@ export const portalApi = {
     });
   },
 
+  async rejectAdminOrder(orderId) {
+    return apiRequest(`/admin/purchases/${orderId}/reject`, {
+      method: 'PATCH',
+    });
+  },
+
   async markAdminPurchasePaid(orderId, payload = {}) {
     return apiRequest(`/admin/purchases/${orderId}/mark-paid`, {
       method: 'PATCH',
