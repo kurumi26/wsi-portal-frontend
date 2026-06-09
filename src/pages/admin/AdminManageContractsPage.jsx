@@ -8,6 +8,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
 import usePageTitle from '../../hooks/usePageTitle';
 import { formatDateTime } from '../../utils/format';
+import { getAdminServiceExpirationMeta } from '../../utils/services';
 import { buildContractTemplateDocument } from '../../utils/contracts';
 
 const feedbackToneClasses = {
@@ -107,6 +108,7 @@ export default function AdminManageContractsPage() {
 
   const {
     adminContractRecords,
+    adminServices,
     isLoadingPortal,
     resetManagedContractTemplate,
   } = usePortal();
@@ -197,6 +199,102 @@ export default function AdminManageContractsPage() {
   }, [previewOpen]);
 
   const hasManagedTemplate = Boolean(selectedContract?.managedTemplateSettings);
+
+  const getContractService = (contract) => {
+    if (!Array.isArray(adminServices) || !adminServices.length) {
+      return null;
+    }
+
+    const contractServiceId = contract?.serviceId ?? contract?.service_id;
+    const normalizedName = String(contract?.serviceName || contract?.title || '').trim().toLowerCase();
+
+    const byId = adminServices.find((service) => String(service?.id) === String(contractServiceId) || String(service?.serviceId) === String(contractServiceId));
+    if (byId) {
+      return byId;
+    }
+
+    return adminServices.find((service) => String(service?.name || service?.serviceName || '').trim().toLowerCase() === normalizedName);
+  };
+
+  const getContractPlanDuration = (contract, service) => {
+    const parseTimestamp = (value) => {
+      if (!value) return null;
+      const timestamp = new Date(value).getTime();
+      return Number.isNaN(timestamp) ? null : timestamp;
+    };
+
+    const start = parseTimestamp(contract?.issuedAt ?? contract?.createdAt ?? contract?.created_at ?? service?.createdAt ?? service?.created_at);
+    const end = parseTimestamp(contract?.renewsOn
+      || contract?.expiryDate
+      || contract?.expiry_date
+      || contract?.expiresOn
+      || contract?.expires_on
+      || service?.renewsOn
+      || service?.expiryDate
+      || service?.expiry_date
+      || service?.expiresOn
+      || service?.expires_on);
+
+    if (start != null && end != null && end > start) {
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const days = Math.max(1, Math.ceil((end - start) / DAY_MS));
+      return `${days} day${days !== 1 ? 's' : ''}`;
+    }
+
+    const durationValue = contract?.duration ?? service?.duration;
+    if (durationValue != null) {
+      const durationNumber = Number(durationValue);
+      if (Number.isFinite(durationNumber)) {
+        return `${durationNumber} day${durationNumber !== 1 ? 's' : ''}`;
+      }
+      return durationValue;
+    }
+
+    return '—';
+  };
+
+  const getContractPlanExpiry = (contract, service) => {
+    const expiryDate = contract?.renewsOn
+      || contract?.expiryDate
+      || contract?.expiry_date
+      || contract?.expiresOn
+      || contract?.expires_on
+      || service?.renewsOn
+      || service?.expiryDate
+      || service?.expiry_date
+      || service?.expiresOn
+      || service?.expires_on;
+
+    return expiryDate ? formatDateTime(expiryDate) : 'Not scheduled';
+  };
+
+  const getContractPlanStartDate = (contract, service) => {
+    const start = contract?.issuedAt ?? contract?.createdAt ?? contract?.created_at ?? service?.createdAt ?? service?.created_at;
+    return start ? formatDateTime(start) : '';
+  };
+
+  const getContractReferenceLabel = (contract) => {
+    if (!contract) return '—';
+
+    // prefer explicit order number when present
+    if (contract.orderNumber) return String(contract.orderNumber);
+
+    // prefer auditReference next
+    if (contract.auditReference) return String(contract.auditReference);
+
+    // fallback by source
+    if (contract.source === 'derived-service') {
+      const svc = contract.serviceId ?? contract.id ?? contract.externalKey;
+      return svc ? `SERVICE-${svc}` : String(contract.id ?? '—');
+    }
+
+    if (contract.source === 'derived-order') {
+      const ord = contract.orderId ?? contract.orderNumber ?? contract.id ?? contract.externalKey;
+      return ord ? `ORDER-${ord}` : String(contract.id ?? '—');
+    }
+
+    return String(contract.externalKey ?? contract.id ?? '—');
+  };
 
   const handleReset = async () => {
     if (!selectedContract) {
@@ -302,6 +400,8 @@ export default function AdminManageContractsPage() {
                     <th className="px-5 py-3 font-medium">Agreement</th>
                     <th className="px-5 py-3 font-medium">Customer</th>
                     <th className="px-5 py-3 font-medium">Service</th>
+                    <th className="px-5 py-3 font-medium">Plan Duration</th>
+                    <th className="px-5 py-3 font-medium">Plan Expiry</th>
                     <th className="px-5 py-3 font-medium">Status</th>
                       <th className="px-5 py-3 font-medium">Template</th>
                       <th className="px-5 py-3 font-medium text-center align-middle">Actions</th>
@@ -311,6 +411,7 @@ export default function AdminManageContractsPage() {
                   {paginatedContracts.map((contract) => {
                     const isSelected = selectedContract?.id === contract.id;
                     const isManaged = Boolean(contract.managedTemplateSettings);
+                    const matchedService = getContractService(contract);
 
                     return (
                       <tr
@@ -319,11 +420,33 @@ export default function AdminManageContractsPage() {
                         className={`table-row-hoverable cursor-pointer transition ${isSelected ? 'bg-sky-400/[0.08]' : ''}`}
                       >
                         <td className="px-5 py-4 font-medium text-white">
-                          {contract.auditReference || contract.orderNumber || '—'}
+                          {getContractReferenceLabel(contract)}
                         </td>
                         <td className="px-5 py-4 text-white">{contract.title}</td>
                         <td className="px-5 py-4 text-slate-300">{contract.clientName || 'Customer'}</td>
                         <td className="px-5 py-4 text-slate-300">{contract.serviceName || 'Managed service'}</td>
+                        <td className="px-5 py-4 text-slate-300">
+                          <div>
+                            <p className="text-sm font-medium text-white">{getContractPlanDuration(contract, matchedService)}</p>
+                            <p className="mt-1 text-xs text-slate-500">{getContractPlanStartDate(contract, matchedService)}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-slate-300">
+                          {(() => {
+                            const pseudoService = {
+                              ...(matchedService || {}),
+                              renewsOn: contract?.renewsOn ?? matchedService?.renewsOn,
+                            };
+                            const expirationMeta = getAdminServiceExpirationMeta(pseudoService);
+
+                            return (
+                              <div>
+                                <p className={`text-sm font-medium ${expirationMeta.isExpired ? 'text-rose-300' : 'text-white'}`}>{expirationMeta.value}</p>
+                                <p className={`mt-1 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>{expirationMeta.helper}</p>
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td className="px-5 py-4">
                           <StatusBadge status={contract.status} />
                         </td>

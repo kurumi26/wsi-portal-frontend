@@ -740,20 +740,20 @@ export default function ContractsPage() {
         </div>
       ),
     },
-    {
-      key: 'documents',
-      label: 'Document Bundle',
-      render: (_, row) => {
-        const documents = buildDocumentRows(row);
+    // {
+    //   key: 'documents',
+    //   label: 'Document Bundle',
+    //   render: (_, row) => {
+    //     const documents = buildDocumentRows(row);
 
-        return (
-          <div>
-            <p className="font-medium text-white">{documents.length} included</p>
-            <p className="mt-1 text-xs leading-5 text-slate-400">{documents.map((document) => document.title).join(', ')}</p>
-          </div>
-        );
-      },
-    },
+    //     return (
+    //       <div>
+    //         <p className="font-medium text-white">{documents.length} included</p>
+    //         <p className="mt-1 text-xs leading-5 text-slate-400">{documents.map((document) => document.title).join(', ')}</p>
+    //       </div>
+    //     );
+    //   },
+    // },
     {
       key: 'signedDocumentName',
       label: 'Signed Copy',
@@ -1078,7 +1078,7 @@ export default function ContractsPage() {
                       </table>
                     </div>
 
-                    <div className="border-t border-white/10 px-4 py-4">
+                    {/* <div className="border-t border-white/10 px-4 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Document Bundle</p>
                         <p className="text-xs text-slate-500">{documents.length} included documents</p>
@@ -1093,7 +1093,7 @@ export default function ContractsPage() {
                           </span>
                         ))}
                       </div>
-                    </div>
+                    </div> */}
 
                     <div className="border-t border-white/10 px-4 py-4">
                       <div className="flex items-center gap-3">

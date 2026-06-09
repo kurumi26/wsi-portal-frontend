@@ -1401,7 +1401,7 @@ const buildDerivedOrderContract = ({ order, services, myServices, overrides, use
     signedDocumentUploadedAt: signedDocument.uploadedAt,
     signedDocumentUrl: signedDocument.url,
     downloadUrl: getContractDownloadUrl({ order, service: relatedService }),
-    auditReference: `ORDER-${orderKey}`,
+    auditReference: orderKey,
     documentSections: getAgreementSections(serviceName),
   }, overrides);
 };
