@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { BarChart3, Bell, ChevronDown, FileSignature, LayoutDashboard, LayoutGrid, LifeBuoy, List, LogOut, ReceiptText, ClipboardList, Settings, Shield, ShieldAlert, ShieldCheck, UserCircle2, Users } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
 import StatusBadge from '../components/common/StatusBadge';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { usePortal } from '../context/PortalContext';
 import { formatDateTime } from '../utils/format';
 import { buildReportFocusPath, REPORT_SIDEBAR_ITEMS } from '../utils/reports';
@@ -70,7 +68,6 @@ export default function AdminLayout() {
 
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
   const recentNotifications = notifications.slice(0, 4);
-  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -350,7 +347,7 @@ export default function AdminLayout() {
                   aria-expanded={isProfileMenuOpen}
                 >
                   <UserAvatar user={user} />
-                  <span className={`absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border shadow-lg shadow-slate-950/30 ${isDarkMode ? 'border-white/10 bg-slate-900 text-slate-300' : 'border-slate-200/80 bg-transparent text-slate-900'}`}>
+                  <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200/80 bg-transparent text-slate-900 shadow-lg shadow-slate-950/30">
                     <ChevronDown size={12} className={`transition ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                   </span>
                 </button>
@@ -360,9 +357,6 @@ export default function AdminLayout() {
                     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
                       <p className="text-sm font-medium text-white">{user?.email}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{user?.role}</p>
-                    </div>
-                    <div className="mt-3">
-                      <ThemeToggle />
                     </div>
                     <button
                       type="button"

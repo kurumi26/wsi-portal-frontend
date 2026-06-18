@@ -21,12 +21,25 @@ const detectClientSessionMeta = () => {
   };
 };
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
+const readStoredUser = () => {
+  const token = portalApi.getStoredToken();
+
+  if (!token) {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
+
+  try {
     const stored = localStorage.getItem(storageKey);
     return stored ? JSON.parse(stored) : null;
-  });
-  const [isAuthLoading, setIsAuthLoading] = useState(Boolean(portalApi.getStoredToken()));
+  } catch {
+    return null;
+  }
+};
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(readStoredUser);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [security, setSecurity] = useState({ twoFactorEnabled: false, sessions: [] });
   // Inactivity logout settings
   // inactivity limit before warning/logout (5 minutes)
@@ -155,13 +168,15 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      setSecurity({ twoFactorEnabled: false, sessions: [] });
+    if (isAuthLoading || !user) {
+      if (!user) {
+        setSecurity({ twoFactorEnabled: false, sessions: [] });
+      }
       return;
     }
 
     loadSecuritySettings();
-  }, [user]);
+  }, [user, isAuthLoading, loadSecuritySettings]);
 
   const login = async ({ email, password, role = 'customer' }) => {
     try {
@@ -300,7 +315,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
-      isAuthenticated: Boolean(user),
+      isAuthenticated: Boolean(user) && Boolean(portalApi.getStoredToken()),
       isAdmin: user?.role === 'admin',
       isAuthLoading,
       security,

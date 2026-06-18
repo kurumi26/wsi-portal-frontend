@@ -699,7 +699,6 @@ function getHeaders(customHeaders = {}) {
 
 async function apiRequest(path, options = {}) {
   let response;
-  console.log('BASE URL: '+API_BASE_URL)
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,

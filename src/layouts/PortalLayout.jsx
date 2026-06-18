@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { BarChart3, Bell, ChevronDown, CreditCard, FileSignature, LayoutDashboard, LifeBuoy, LogOut, ReceiptText, Settings, Shield } from 'lucide-react';
+import { BarChart3, Bell, ChevronDown, CreditCard, FileSignature, LayoutDashboard, LifeBuoy, LogOut, ReceiptText, Settings, Shield, ShoppingCart } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import ThemeToggle from '../components/common/ThemeToggle';
 import UserAvatar from '../components/common/UserAvatar';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { usePortal } from '../context/PortalContext';
 import { formatDateTime } from '../utils/format';
 import { buildReportFocusPath, REPORT_SIDEBAR_ITEMS } from '../utils/reports';
@@ -46,7 +44,6 @@ export default function PortalLayout() {
   const recentNotifications = [...notifications]
     .sort((a, b) => new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime())
     .slice(0, 4);
-  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -271,8 +268,14 @@ export default function PortalLayout() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <NavLink to="/checkout" className="btn-secondary">
-                Cart ({cart.length})
+              <NavLink to="/checkout" className="relative inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-[color:var(--accent)] hover:bg-[color:var(--accent-08)]">
+                <ShoppingCart size={18} />
+                <span className="hidden sm:inline">Cart</span>
+                {cart.length ? (
+                  <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[color:var(--accent)] px-1.5 text-[11px] font-bold leading-none text-white">
+                    {cart.length}
+                  </span>
+                ) : null}
               </NavLink>
               <div ref={notificationsRef} className="relative">
                 <button
@@ -352,7 +355,7 @@ export default function PortalLayout() {
                   aria-expanded={isProfileMenuOpen}
                 >
                   <UserAvatar user={user} />
-                  <span className={`absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border shadow-lg shadow-slate-950/30 ${isDarkMode ? 'border-white/10 bg-slate-900 text-slate-300' : 'border-slate-200/80 bg-transparent text-slate-900'}`}>
+                  <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200/80 bg-transparent text-slate-900 shadow-lg shadow-slate-950/30">
                     <ChevronDown size={12} className={`transition ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                   </span>
                 </button>
@@ -362,9 +365,6 @@ export default function PortalLayout() {
                     <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
                       <p className="text-sm font-medium text-white">{user?.email}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{user?.role}</p>
-                    </div>
-                    <div className="mt-3">
-                      <ThemeToggle />
                     </div>
                     <button
                       type="button"

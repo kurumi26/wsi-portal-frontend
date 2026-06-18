@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 function GoogleIcon() {
@@ -16,6 +16,7 @@ function GoogleIcon() {
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { register } = useAuth();
   const [form, setForm] = useState({
     name: '',
@@ -86,7 +87,8 @@ export default function RegisterPage() {
       return;
     }
 
-    navigate('/dashboard');
+    const returnTo = typeof location.state?.returnTo === 'string' ? location.state.returnTo : '/dashboard';
+    navigate(returnTo);
   };
 
   const handleGoogleSignup = async () => {
@@ -106,70 +108,86 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="panel auth-panel relative overflow-hidden p-8 lg:p-9">
+    <div className="rounded-[28px] border border-slate-200 bg-white p-8 text-slate-950 shadow-2xl shadow-slate-950/10 lg:p-9">
 
       <div className="relative">
-        <p className="text-sm uppercase tracking-[0.2em] text-orange-300">New User Registration</p>
-        <h2 className="mt-3 text-3xl font-semibold text-white">Create your customer portal access</h2>
-        <p className="mt-3 text-sm text-slate-400">Submit your full account details. Your registration will be reviewed by the admin before sign in is enabled.</p>
+        <p className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-sky-700">
+          <ShieldCheck size={14} /> Create account
+        </p>
+        <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950">Create your customer portal access</h2>
+        <p className="mt-3 text-sm leading-6 text-slate-600">Submit your account details. Your registration will be reviewed by the admin before sign in is enabled.</p>
 
 
-        <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-slate-500">
-          <span className="h-px flex-1 bg-white/10" />
-          <span>Register Here</span>
-          <span className="h-px flex-1 bg-white/10" />
+        <div className="mt-6 space-y-3">
+          <button type="button" onClick={handleGoogleSignup} className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50">
+            <span className="facebook-icon-mark flex h-6 w-6 items-center justify-center rounded-full text-sm font-black">f</span>
+            Continue with Facebook
+          </button>
+          <button type="button" onClick={handleGoogleSignup} className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50">
+            <GoogleIcon />
+            Continue with Google
+          </button>
+          <a href="#register-email-form" className="flex w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50">
+            Continue with Email
+          </a>
         </div>
 
-        <form className="mt-6 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
-          <label className="block text-sm text-slate-300 md:col-span-2">
+        <div className="mt-6 flex items-center gap-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+          <span className="h-px flex-1 bg-slate-200" />
+          <span>Register Here</span>
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+
+        <form id="register-email-form" className="mt-6 grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+          <label className="block text-sm font-bold text-slate-700 md:col-span-2">
           Full Name
-          <input className="input mt-2" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+          <input className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
         </label>
-        <label className="block text-sm text-slate-300">
+        <label className="block text-sm font-bold text-slate-700">
           Company
-          <input className="input mt-2" value={form.company} onChange={(event) => setForm((current) => ({ ...current, company: event.target.value }))} />
+          <input className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.company} onChange={(event) => setForm((current) => ({ ...current, company: event.target.value }))} />
         </label>
-        <label className="block text-sm text-slate-300">
+        <label className="block text-sm font-bold text-slate-700">
           Mobile Number
-          <input className="input mt-2" value={form.mobileNumber} onChange={(event) => setForm((current) => ({ ...current, mobileNumber: event.target.value }))} placeholder="+63 912 345 6789" />
+          <input className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.mobileNumber} onChange={(event) => setForm((current) => ({ ...current, mobileNumber: event.target.value }))} placeholder="+63 912 345 6789" />
         </label>
-        <label className="block text-sm text-slate-300 md:col-span-2">
+        <label className="block text-sm font-bold text-slate-700 md:col-span-2">
           Address
-          <input className="input mt-2" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} placeholder="Street, city, province, country" />
+          <input className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} placeholder="Street, city, province, country" />
         </label>
-        <label className="block text-sm text-slate-300 md:col-span-2">
+        <label className="block text-sm font-bold text-slate-700 md:col-span-2">
           Email
-          <input type="email" className="input mt-2" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+          <input type="email" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
         </label>
-        <label className="block text-sm text-slate-300 md:col-span-2">
+        <label className="block text-sm font-bold text-slate-700 md:col-span-2">
           Password
-          <input type="password" className="input mt-2" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+          <input type="password" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
         </label>
-        <label className="block text-sm text-slate-300 md:col-span-2">
+        <label className="block text-sm font-bold text-slate-700 md:col-span-2">
           Confirm Password
-          <input type="password" className="input mt-2" value={form.passwordConfirmation} onChange={(event) => setForm((current) => ({ ...current, passwordConfirmation: event.target.value }))} />
+          <input type="password" className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100" value={form.passwordConfirmation} onChange={(event) => setForm((current) => ({ ...current, passwordConfirmation: event.target.value }))} />
         </label>
 
-        {error ? <p className="rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100 md:col-span-2">{error}</p> : null}
-        {message ? <p className="rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100 md:col-span-2">{message}</p> : null}
+        {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 md:col-span-2">{error}</p> : null}
+        {message ? <p className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-700 md:col-span-2">{message}</p> : null}
 
-          <button type="submit" disabled={isSubmitting} className="btn-primary gap-2 md:col-span-2 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800 md:col-span-2 disabled:cursor-not-allowed disabled:opacity-60 force-white">
             {isSubmitting ? 'Submitting registration...' : 'Create account'} {!isSubmitting ? <ArrowRight size={16} /> : null}
           </button>
         </form>
 
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
           <div className="flex items-start gap-3">
-            <ShieldCheck size={18} className="mt-0.5 text-sky-300" />
+            <ShieldCheck size={18} className="mt-0.5 text-sky-700" />
             <div>
-              <p className="font-medium text-white">Approval notice</p>
+              <p className="font-black text-slate-950">Approval notice</p>
               <p className="mt-1">After registration, the admin will review your account in Clients. Approval or rejection updates will be sent to your registered email.</p>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 text-sm text-slate-400">
-          Already registered? <Link to="/auth/login" className="text-sky-300 hover:text-sky-200">Return to login</Link>
+        <div className="mt-6 text-sm text-slate-600">
+          Already registered? <Link to="/auth/login" state={location.state} className="font-bold text-sky-700 hover:text-sky-600">Return to login</Link>
         </div>
       </div>
     </div>

@@ -1,16 +1,43 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
+import { availableServices } from '../services/mockData';
 import { buildCheckoutAgreementRecord, buildContractRecords, clearStoredManagedContractTemplate, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractESignState, writeStoredContractOverrides, writeStoredManagedContractTemplate } from '../utils/contracts';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
 import { getServiceDisplayStatus } from '../utils/services';
 
 const PortalContext = createContext(null);
+const PUBLIC_CART_STORAGE_KEY = 'wsi-public-cart-v1';
 const LOCAL_PORTAL_NOTIFICATION_STORAGE_KEY = 'wsi-local-portal-notifications-v1';
 const MAX_LOCAL_PORTAL_NOTIFICATIONS = 100;
 const LOCAL_NOTIFICATION_TYPES = new Set(['info', 'warning', 'success', 'danger']);
 
 const buildLocalNotificationId = () => `synth-local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const readStoredPublicCart = () => {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PUBLIC_CART_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeStoredPublicCart = (cart) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.setItem(PUBLIC_CART_STORAGE_KEY, JSON.stringify(Array.isArray(cart) ? cart : []));
+  } catch {
+    // Cart persistence is a convenience; storage failures should not block checkout.
+  }
+};
 
 const normalizeLocalNotification = (notification) => {
   if (!notification || typeof notification !== 'object') {
@@ -76,15 +103,19 @@ const writeStoredLocalNotifications = (notifications) => {
 };
 
 export function PortalProvider({ children }) {
-  const { isAuthenticated, isAdmin, isAuthLoading, user } = useAuth();
+  const { isAuthenticated, isAdmin, isAuthLoading, user, logout } = useAuth();
   const [services, setServices] = useState([]);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => readStoredPublicCart());
   const [orders, setOrders] = useState([]);
   const [myServices, setMyServices] = useState([]);
   const contractOwnerKey = useMemo(() => getContractOwnerKey(user), [user?.email, user?.id, user?.name]);
   const [remoteContracts, setRemoteContracts] = useState([]);
   const [contractOverrides, setContractOverrides] = useState(() => readStoredContractOverrides(contractOwnerKey));
   const [managedTemplateRevision, setManagedTemplateRevision] = useState(0);
+
+  useEffect(() => {
+    writeStoredPublicCart(cart);
+  }, [cart]);
 
   // Deduplicate services by name (or id) preferring active/provisioning records over unpaid
   const dedupeServices = (list) => {
@@ -397,9 +428,9 @@ export function PortalProvider({ children }) {
     const loadServices = async () => {
       try {
         const catalog = await portalApi.getServices();
-        setServices(catalog);
+        setServices(Array.isArray(catalog) && catalog.length ? catalog : availableServices);
       } catch {
-        setServices([]);
+        setServices(availableServices);
       }
     };
 
@@ -564,6 +595,21 @@ export function PortalProvider({ children }) {
         setAdminPurchases([]);
         setAdminServices([]);
       }
+    } catch (error) {
+      const message = String(error?.message ?? '').toLowerCase();
+
+      if (message.includes('unauthenticated') || message.includes('401')) {
+        logout();
+      }
+
+      setOrders([]);
+      setMyServices([]);
+      setNotifications([]);
+      setClients([]);
+      setAdminUsers([]);
+      setAdminPurchases([]);
+      setAdminServices([]);
+      setRemoteContracts([]);
     } finally {
       setIsLoadingPortal(false);
     }

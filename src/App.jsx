@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AuthLayout from './layouts/AuthLayout';
 import AdminLayout from './layouts/AdminLayout';
 import PortalLayout from './layouts/PortalLayout';
+import StorefrontLayout from './layouts/StorefrontLayout';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
@@ -16,6 +17,9 @@ import ContractsPage from './pages/dashboard/ContractsPage';
 import HelpCommunicationPage from './pages/dashboard/HelpCommunicationPage';
 import CustomerReportsPage from './pages/dashboard/CustomerReportsPage';
 import ServicesPage from './pages/services/ServicesPage';
+import ProductDetailPage from './pages/services/ProductDetailPage';
+import DomainsPage from './pages/services/DomainsPage';
+import DomainAvailabilityPage from './pages/services/DomainAvailabilityPage';
 import CheckoutPage from './pages/checkout/CheckoutPage';
 import NotificationsPage from './pages/dashboard/NotificationsPage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
@@ -73,8 +77,16 @@ export default function App() {
     <Routes>
       <Route
         path="/"
-        element={<Navigate to="/auth/login" replace />}
+        element={<Navigate to="/services" replace />}
       />
+
+      <Route element={<StorefrontLayout />}>
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/domains" element={<DomainsPage />} />
+        <Route path="/domains/check" element={<DomainAvailabilityPage />} />
+        <Route path="/services/:serviceId" element={<ProductDetailPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+      </Route>
 
       <Route element={<PublicOnlyRoute><AuthLayout /></PublicOnlyRoute>}>
         <Route path="/auth/login" element={<LoginPage />} />
@@ -99,8 +111,6 @@ export default function App() {
         <Route path="/dashboard/orders" element={<OrderHistoryPage />} />
         <Route path="/contracts" element={<ContractsPage />} />
         <Route path="/dashboard/notifications" element={<NotificationsPage />} />
-        <Route path="/services" element={<ServicesPage />} />
-        <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/support" element={<HelpCommunicationPage />} />
       </Route>
 

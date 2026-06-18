@@ -4,24 +4,24 @@ const ThemeContext = createContext(null);
 const storageKey = 'wsi-portal-theme';
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => localStorage.getItem(storageKey) ?? 'dark');
+  const [theme, setTheme] = useState('light');
 
   useEffect(() => {
     document.body.classList.remove('theme-dark', 'theme-light');
     document.body.classList.add(`theme-${theme}`);
-    document.documentElement.style.colorScheme = theme;
-    localStorage.setItem(storageKey, theme);
+    document.documentElement.style.colorScheme = 'light';
+    localStorage.setItem(storageKey, 'light');
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+    setTheme('light');
   };
 
   const value = useMemo(
     () => ({
       theme,
-      isDarkMode: theme === 'dark',
-      setTheme,
+      isDarkMode: false,
+      setTheme: () => setTheme('light'),
       toggleTheme,
     }),
     [theme],
