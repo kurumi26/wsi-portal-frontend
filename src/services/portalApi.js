@@ -9,6 +9,27 @@ const LOGO_WATERMARK_PATH = '/logo-light.png';
 
 let authToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
 let logoAssetPromise = null;
+const authSessionListeners = new Set();
+
+function invalidateAuthSession() {
+  if (!authToken) {
+    return;
+  }
+
+  authToken = null;
+
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+
+  authSessionListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      console.error('Auth session listener failed:', error);
+    }
+  });
+}
 
 function sanitizeFileName(value, fallback = 'download') {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -683,26 +704,36 @@ async function createStyledContractPdf(templateDocument, fileName) {
   return pdf.output('blob');
 }
 
-function getHeaders(customHeaders = {}) {
+function getHeaders(customHeaders = {}, { skipAuth = false } = {}) {
   const headers = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
     ...customHeaders,
   };
 
-  if (authToken) {
+  if (authToken && !skipAuth) {
     headers.Authorization = `Bearer ${authToken}`;
   }
 
   return headers;
 }
 
+function shouldInvalidateAuthSession(status, data) {
+  if (status !== 401 || !authToken) {
+    return false;
+  }
+
+  const message = String(data?.message ?? '').trim().toLowerCase();
+  return message.includes('unauthenticated');
+}
+
 async function apiRequest(path, options = {}) {
+  const { skipAuth = false, ...fetchOptions } = options;
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: getHeaders(options.headers),
+      ...fetchOptions,
+      headers: getHeaders(fetchOptions.headers, { skipAuth }),
     });
   } catch (err) {
     console.error('Network request failed:', err);
@@ -726,7 +757,12 @@ async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     const validationMessage = data.errors ? Object.values(data.errors).flat().join(' ') : null;
-    console.error('API error', { path: path, status: response.status, data });
+
+    if (shouldInvalidateAuthSession(response.status, data)) {
+      invalidateAuthSession();
+    } else {
+      console.error('API error', { path: path, status: response.status, data });
+    }
 
     throw new Error(validationMessage || data.message || `Request failed with status ${response.status}`);
   }
@@ -792,6 +828,11 @@ const buildESignedContractDocument = (templateDocument, signerData, options = {}
 };
 
 export const portalApi = {
+  onAuthSessionInvalid(listener) {
+    authSessionListeners.add(listener);
+    return () => authSessionListeners.delete(listener);
+  },
+
   setAuthToken(token) {
     authToken = token;
 
@@ -808,11 +849,19 @@ export const portalApi = {
   },
 
   getStoredToken() {
+    if (typeof window !== 'undefined') {
+      authToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    }
+
     return authToken;
   },
 
   clearAuthToken() {
-    this.setAuthToken(null);
+    authToken = null;
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
   },
 
   downloadTextAsPdf(text, fallbackFileName = 'agreement-copy.pdf') {
@@ -951,6 +1000,7 @@ export const portalApi = {
     return apiRequest('/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),
+      skipAuth: true,
     });
   },
 
@@ -958,6 +1008,7 @@ export const portalApi = {
     return apiRequest('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),
+      skipAuth: true,
     });
   },
 

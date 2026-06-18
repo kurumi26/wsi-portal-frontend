@@ -128,10 +128,18 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   useEffect(() => {
+    return portalApi.onAuthSessionInvalid(() => {
+      persistUser(null);
+      setSecurity({ twoFactorEnabled: false, sessions: [] });
+    });
+  }, []);
+
+  useEffect(() => {
     const bootstrapAuth = async () => {
       const token = portalApi.getStoredToken();
 
       if (!token) {
+        persistUser(null);
         setIsAuthLoading(false);
         return;
       }
@@ -315,7 +323,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
-      isAuthenticated: Boolean(user) && Boolean(portalApi.getStoredToken()),
+      isAuthenticated: Boolean(user) && Boolean(portalApi.getStoredToken()) && !isAuthLoading,
       isAdmin: user?.role === 'admin',
       isAuthLoading,
       security,

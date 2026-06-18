@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { portalApi } from '../services/portalApi';
 import { availableServices } from '../services/mockData';
@@ -103,7 +103,8 @@ const writeStoredLocalNotifications = (notifications) => {
 };
 
 export function PortalProvider({ children }) {
-  const { isAuthenticated, isAdmin, isAuthLoading, user, logout } = useAuth();
+  const { isAuthenticated, isAdmin, isAuthLoading, user } = useAuth();
+  const refreshInFlightRef = useRef(false);
   const [services, setServices] = useState([]);
   const [cart, setCart] = useState(() => readStoredPublicCart());
   const [orders, setOrders] = useState([]);
@@ -437,19 +438,28 @@ export function PortalProvider({ children }) {
     loadServices();
   }, []);
 
+  const clearPortalData = () => {
+    setOrders([]);
+    setMyServices([]);
+    setNotifications([]);
+    setClients([]);
+    setAdminUsers([]);
+    setAdminPurchases([]);
+    setAdminServices([]);
+    setRemoteContracts([]);
+  };
+
   const refreshPortalData = async () => {
-    if (!isAuthenticated) {
-      setOrders([]);
-      setMyServices([]);
-      setNotifications([]);
-      setClients([]);
-      setAdminUsers([]);
-      setAdminPurchases([]);
-      setAdminServices([]);
-      setRemoteContracts([]);
+    if (isAuthLoading || !isAuthenticated || !portalApi.getStoredToken()) {
+      clearPortalData();
       return;
     }
 
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
     setIsLoadingPortal(true);
 
     try {
@@ -595,22 +605,10 @@ export function PortalProvider({ children }) {
         setAdminPurchases([]);
         setAdminServices([]);
       }
-    } catch (error) {
-      const message = String(error?.message ?? '').toLowerCase();
-
-      if (message.includes('unauthenticated') || message.includes('401')) {
-        logout();
-      }
-
-      setOrders([]);
-      setMyServices([]);
-      setNotifications([]);
-      setClients([]);
-      setAdminUsers([]);
-      setAdminPurchases([]);
-      setAdminServices([]);
-      setRemoteContracts([]);
+    } catch {
+      clearPortalData();
     } finally {
+      refreshInFlightRef.current = false;
       setIsLoadingPortal(false);
     }
   };
@@ -662,7 +660,7 @@ export function PortalProvider({ children }) {
       channel.removeEventListener('message', handler);
       channel.close();
     };
-  }, [isAdmin, isAuthLoading]);
+  }, [isAdmin, isAuthenticated, isAuthLoading]);
 
   const contractRecords = useMemo(
     () => buildContractRecords({

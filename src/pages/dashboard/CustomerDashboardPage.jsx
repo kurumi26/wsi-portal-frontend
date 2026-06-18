@@ -7,6 +7,7 @@ import Pagination from '../../components/common/Pagination';
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDateTime } from '../../utils/format';
 import { extractAddonEntries, getAddonBillingCycleLabel, getAddonExpirationMeta, matchCatalogService } from '../../utils/addons';
 import { getRenewalCountdownMeta, getServiceDisplayStatus, hasRenewalCountdown } from '../../utils/services';
@@ -15,6 +16,7 @@ const SERVICES_PER_PAGE = 6;
 
 export default function CustomerDashboardPage() {
   const { myServices, notifications, orders, stats, requestServiceCancellation, reportServiceIssue, addToCart, services, refreshPortalData } = usePortal();
+  const { isAuthenticated, isAuthLoading } = useAuth();
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState('All');
   const [layoutMode, setLayoutMode] = useState('grid');
@@ -470,12 +472,12 @@ export default function CustomerDashboardPage() {
 
   // Ensure data is fresh when the dashboard mounts so status banners reflect admin actions
   useEffect(() => {
-    try {
-      refreshPortalData();
-    } catch (e) {
-      // ignore
+    if (isAuthLoading || !isAuthenticated) {
+      return;
     }
-  }, []);
+
+    refreshPortalData().catch(() => {});
+  }, [isAuthenticated, isAuthLoading]);
 
   // Notify the user when admin approves a pending payment (pending list shrinks)
   useEffect(() => {
@@ -513,18 +515,16 @@ export default function CustomerDashboardPage() {
 
   // If there are orders awaiting admin approval, poll for updates so the UI reflects admin actions quickly
   useEffect(() => {
-    if (!approvalPendingOrders.length) return undefined;
+    if (isAuthLoading || !isAuthenticated || !approvalPendingOrders.length) {
+      return undefined;
+    }
 
     const iv = setInterval(() => {
-      try {
-        refreshPortalData();
-      } catch (e) {
-        // ignore
-      }
+      refreshPortalData().catch(() => {});
     }, 8000);
 
     return () => clearInterval(iv);
-  }, [approvalPendingOrders.length]);
+  }, [approvalPendingOrders.length, isAuthenticated, isAuthLoading]);
 
   // Restore persisted dismissed banner for this browser (persist across refresh)
   useEffect(() => {
