@@ -134,7 +134,31 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
-  useEffect(() => {
+//   useEffect(() => {
+//     const bootstrapAuth = async () => {
+//       const token = portalApi.getStoredToken();
+
+//       if (!token) {
+//         persistUser(null);
+//         setIsAuthLoading(false);
+//         return;
+//       }
+
+//       try {
+//         const currentUser = await portalApi.getCurrentUser();
+//         persistUser(currentUser);
+//       } catch {
+//         portalApi.clearAuthToken();
+//         persistUser(null);
+//       } finally {
+//         setIsAuthLoading(false);
+//       }
+//     };
+
+//     bootstrapAuth();
+//   }, []);
+
+useEffect(() => {
     const bootstrapAuth = async () => {
       const token = portalApi.getStoredToken();
 
@@ -148,8 +172,12 @@ export function AuthProvider({ children }) {
         const currentUser = await portalApi.getCurrentUser();
         persistUser(currentUser);
       } catch {
-        portalApi.clearAuthToken();
-        persistUser(null);
+        // invalidateAuthSession already cleared the token for a real 401.
+        // For network errors or 5xx, the token is still in storage — keep
+        // the session alive so a transient backend hiccup doesn't log users out.
+        if (!portalApi.getStoredToken()) {
+          persistUser(null);
+        }
       } finally {
         setIsAuthLoading(false);
       }
