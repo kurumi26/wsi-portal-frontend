@@ -13,8 +13,10 @@ import {
 const CATEGORY_VISUALS = {
   Domains: Globe,
   Hosting: Server,
+  'Shared Hosting': Server,
   Cloud: Cloud,
   Dedicated: HardDrive,
+  'Dedicated Server': HardDrive,
   SSL: Lock,
   SiteLock: ShieldCheck,
   CodeGuard: DatabaseBackup,

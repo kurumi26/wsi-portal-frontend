@@ -128,42 +128,10 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   useEffect(() => {
-    return portalApi.onAuthSessionInvalid(() => {
-      persistUser(null);
-      setSecurity({ twoFactorEnabled: false, sessions: [] });
-    });
-  }, []);
-
-//   useEffect(() => {
-//     const bootstrapAuth = async () => {
-//       const token = portalApi.getStoredToken();
-
-//       if (!token) {
-//         persistUser(null);
-//         setIsAuthLoading(false);
-//         return;
-//       }
-
-//       try {
-//         const currentUser = await portalApi.getCurrentUser();
-//         persistUser(currentUser);
-//       } catch {
-//         portalApi.clearAuthToken();
-//         persistUser(null);
-//       } finally {
-//         setIsAuthLoading(false);
-//       }
-//     };
-
-//     bootstrapAuth();
-//   }, []);
-
-useEffect(() => {
     const bootstrapAuth = async () => {
       const token = portalApi.getStoredToken();
 
       if (!token) {
-        persistUser(null);
         setIsAuthLoading(false);
         return;
       }
@@ -172,12 +140,8 @@ useEffect(() => {
         const currentUser = await portalApi.getCurrentUser();
         persistUser(currentUser);
       } catch {
-        // invalidateAuthSession already cleared the token for a real 401.
-        // For network errors or 5xx, the token is still in storage — keep
-        // the session alive so a transient backend hiccup doesn't log users out.
-        if (!portalApi.getStoredToken()) {
-          persistUser(null);
-        }
+        portalApi.clearAuthToken();
+        persistUser(null);
       } finally {
         setIsAuthLoading(false);
       }
@@ -204,15 +168,13 @@ useEffect(() => {
   }, []);
 
   useEffect(() => {
-    if (isAuthLoading || !user) {
-      if (!user) {
-        setSecurity({ twoFactorEnabled: false, sessions: [] });
-      }
+    if (!user) {
+      setSecurity({ twoFactorEnabled: false, sessions: [] });
       return;
     }
 
     loadSecuritySettings();
-  }, [user, isAuthLoading, loadSecuritySettings]);
+  }, [user]);
 
   const login = async ({ email, password, role = 'customer' }) => {
     try {
@@ -351,7 +313,7 @@ useEffect(() => {
   const value = useMemo(
     () => ({
       user,
-      isAuthenticated: Boolean(user) && Boolean(portalApi.getStoredToken()) && !isAuthLoading,
+      isAuthenticated: Boolean(user),
       isAdmin: user?.role === 'admin',
       isAuthLoading,
       security,

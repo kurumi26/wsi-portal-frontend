@@ -1,6 +1,6 @@
 import { Menu, ShoppingCart, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePortal } from '../context/PortalContext';
 
@@ -13,7 +13,9 @@ export default function StorefrontLayout() {
   const { cart } = usePortal();
   const { isAuthenticated, isAdmin, user } = useAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
   const portalPath = isAdmin ? '/admin' : '/dashboard';
+  const isDomainsRoute = location.pathname.startsWith('/domains');
 
   return (
     <div className="storefront-page min-h-screen bg-white text-slate-950">
@@ -121,7 +123,13 @@ export default function StorefrontLayout() {
         ) : null}
       </header>
 
-      <main className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-10 2xl:px-14">
+      <main
+        className={
+          isDomainsRoute
+            ? 'w-full px-0 py-0'
+            : 'mx-auto w-full px-4 py-6 sm:px-6 lg:px-10 2xl:px-14'
+        }
+      >
         <Outlet />
       </main>
     </div>

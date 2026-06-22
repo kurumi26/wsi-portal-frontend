@@ -49,7 +49,7 @@ export default function ServiceCard({ service }) {
           <span className="text-sm font-bold tracking-normal"> /{billingLabel}</span>
         </p>
         <Link
-          to={`/services/${service.id}`}
+          to={`/services?plan=${service.id}`}
           className="domain-card-cta mt-7"
         >
           View Plans
