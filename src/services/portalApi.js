@@ -713,6 +713,7 @@ function getHeaders(customHeaders = {}, { skipAuth = false } = {}) {
 
   if (authToken && !skipAuth) {
     headers.Authorization = `Bearer ${authToken}`;
+    headers['X-Api-Token'] = authToken;
   }
 
   return headers;
