@@ -4,7 +4,7 @@ import { CheckCircle, ClipboardCheck, Clock, CreditCard, FileText, PackageCheck,
 import { useAuth } from '../../context/AuthContext';
 import { usePortal } from '../../context/PortalContext';
 import { formatCurrency } from '../../utils/format';
-import { getAddonBillingCycle, getAddonBillingCycleLabel } from '../../utils/addons';
+import { getAddonBillingCycle, getAddonBillingCycleLabel, getAddonPrice as resolveAddonPrice } from '../../utils/addons';
 import { desiredDomainRequiredMessage, getDesiredDomainValue, requiresDesiredDomain } from '../../utils/orders';
 
 const paymentMethods = ['Credit Card', 'PayPal', 'Bank Transfer'];
@@ -231,32 +231,42 @@ export default function CheckoutPage() {
 
   const renderOption = (opt) => {
     if (opt === null || opt === undefined) return '';
-    if (typeof opt === 'object') return opt.label ?? opt.name ?? JSON.stringify(opt);
+    if (Array.isArray(opt)) {
+      return opt.map((entry) => renderOption(entry)).filter(Boolean).join(', ');
+    }
+    if (typeof opt === 'object') return opt.label ?? opt.name ?? '';
     return String(opt);
+  };
+
+  const getCatalogService = (item) => services?.find((service) => String(service.id) === String(item.serviceId));
+
+  const findCatalogAddon = (addon, item) => {
+    if (!addon || typeof addon !== 'string') {
+      return null;
+    }
+
+    const svc = getCatalogService(item);
+    if (!svc || !Array.isArray(svc.addons)) {
+      return null;
+    }
+
+    return svc.addons.find((opt) => {
+      if (opt === null || opt === undefined) return false;
+      if (typeof opt === 'object') return (opt.label ?? opt.name) === addon;
+      return String(opt) === addon;
+    });
   };
 
   const getAddonPrice = (addon, item) => {
     if (!addon) return 0;
+    const catalogMatch = typeof addon === 'string' ? findCatalogAddon(addon, item) : null;
+    const price = resolveAddonPrice(addon, catalogMatch);
+    return typeof price === 'number' && !Number.isNaN(price) ? price : 0;
+  };
 
-    if (typeof addon === 'object') {
-      return Number(addon.price || 0);
-    }
-
-    // string addon - try to resolve from service definition
-    const svc = services && services.find((s) => String(s.id) === String(item.serviceId));
-    if (svc && Array.isArray(svc.addons)) {
-      const found = svc.addons.find((opt) => {
-        if (opt === null || opt === undefined) return false;
-        if (typeof opt === 'object') return (opt.label ?? opt.name) === addon;
-        return String(opt) === addon;
-      });
-
-      if (found && typeof found === 'object' && typeof found.price === 'number') {
-        return Number(found.price);
-      }
-    }
-
-    return 0;
+  const serviceHasAddons = (item) => {
+    const svc = getCatalogService(item);
+    return Array.isArray(svc?.addons) && svc.addons.length > 0;
   };
 
   const getAddonBilling = (addon, item) => {
@@ -268,14 +278,9 @@ export default function CheckoutPage() {
       return getAddonBillingCycleLabel(getAddonBillingCycle(addon, item?.billing?.cycle ?? item?.billing), '');
     }
 
-    const svc = services && services.find((service) => String(service.id) === String(item.serviceId));
-    if (svc && Array.isArray(svc.addons)) {
-      const found = svc.addons.find((opt) => {
-        if (opt === null || opt === undefined) return false;
-        if (typeof opt === 'object') return (opt.label ?? opt.name) === addon;
-        return String(opt) === addon;
-      });
-
+    const found = findCatalogAddon(addon, item);
+    const svc = getCatalogService(item);
+    if (found || svc) {
       return getAddonBillingCycleLabel(getAddonBillingCycle(found, svc?.billingCycle ?? svc?.billing?.cycle ?? svc?.billing), '');
     }
 
@@ -303,6 +308,15 @@ export default function CheckoutPage() {
     }
 
     return 0;
+  };
+
+  const getItemAddons = (item) => {
+    if (item.addon === null || item.addon === undefined) {
+      return [];
+    }
+
+    const entries = Array.isArray(item.addon) ? item.addon : [item.addon];
+    return entries.filter((entry) => entry !== null && entry !== undefined && String(entry).trim() !== '');
   };
 
   return (
@@ -430,25 +444,28 @@ export default function CheckoutPage() {
                           </div>
                           {getConfigPrice(item.configuration, item) ? <span className="ml-2 text-xs text-slate-500">{formatCurrency(getConfigPrice(item.configuration, item))}</span> : null}
 
-                        {Array.isArray(item.addon) && item.addon.length ? (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {item.addon.map((a, i) => {
-                              const price = getAddonPrice(a, item);
-                              const billingCycle = getAddonBilling(a, item);
-                              return (
-                                <span key={`addon-${item.lineId}-${i}`} className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-700">
-                                  <span>{renderOption(a)}</span>
-                                  {price ? <span className="ml-2 text-xs font-bold text-slate-950">{formatCurrency(price)}</span> : null}
-                                  {billingCycle ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-500">/{billingCycle}</span> : null}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        ) : Array.isArray(item.addon) && !item.addon.length ? (
-                          <p className="mt-3 text-sm text-slate-500">Add-on: No Available Add-on</p>
-                        ) : item.addon ? (
-                          <p className="mt-3 text-sm text-slate-500">Add-on: {renderOption(item.addon)}{getAddonPrice(item.addon, item) ? <span className="ml-2 text-xs font-bold text-slate-950">{formatCurrency(getAddonPrice(item.addon, item))}</span> : null}{getAddonBilling(item.addon, item) ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-500">/{getAddonBilling(item.addon, item)}</span> : null}</p>
-                        ) : null}
+                        <div className="mt-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Add-ons</p>
+                          {getItemAddons(item).length ? (
+                            <div className="mt-2 space-y-1">
+                              {getItemAddons(item).map((addon, addonIndex) => {
+                                const price = getAddonPrice(addon, item);
+                                const billingCycle = getAddonBilling(addon, item);
+                                return (
+                                  <p key={`addon-line-${item.lineId}-${addonIndex}`} className="text-sm text-slate-600">
+                                    <span className="font-semibold text-slate-800">{renderOption(addon)}</span>
+                                    {price ? <span className="ml-2 text-xs font-bold text-slate-950">{formatCurrency(price)}</span> : null}
+                                    {billingCycle ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-500">/{billingCycle}</span> : null}
+                                  </p>
+                                );
+                              })}
+                            </div>
+                          ) : serviceHasAddons(item) ? (
+                            <p className="mt-2 text-sm text-slate-500">No add-ons selected.</p>
+                          ) : (
+                            <p className="mt-2 text-sm text-slate-500">No Add Ons Available</p>
+                          )}
+                        </div>
 
                         {showDesiredDomainField ? (
                           <div className="mt-4">
@@ -498,6 +515,45 @@ export default function CheckoutPage() {
             <p className="mt-5 text-sm font-semibold text-slate-700">
               {cart.length} {cart.length === 1 ? 'item' : 'items'}
             </p>
+
+            {cart.length ? (
+              <div className="mt-4 space-y-2 border-t border-slate-300 pt-4">
+                {cart.map((item) => {
+                  const itemAddons = getItemAddons(item);
+
+                  return (
+                    <div key={`summary-${item.lineId}`} className="border-b border-slate-200 pb-3 last:border-b-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-950">{item.serviceName}</p>
+                          <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{item.category}</p>
+                        </div>
+                        <p className="shrink-0 text-sm font-black text-sky-700">{formatCurrency(item.price)}</p>
+                      </div>
+                      {itemAddons.length ? (
+                        <div className="mt-2 space-y-1">
+                          {itemAddons.map((addon, addonIndex) => {
+                            const price = getAddonPrice(addon, item);
+                            const billingCycle = getAddonBilling(addon, item);
+                            return (
+                              <p key={`summary-addon-${item.lineId}-${addonIndex}`} className="text-xs text-slate-600">
+                                + {renderOption(addon)}
+                                {price ? <span className="ml-1 font-bold text-slate-800">{formatCurrency(price)}</span> : null}
+                                {billingCycle ? <span className="ml-1 uppercase tracking-[0.1em] text-slate-400">/{billingCycle}</span> : null}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      ) : serviceHasAddons(item) ? (
+                        <p className="mt-2 text-xs text-slate-500">No add-ons selected.</p>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">No Add Ons Available</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
 
             <div className="mt-4 border-t border-slate-300 pt-4">
               <div className="flex items-center justify-between gap-4">
@@ -731,11 +787,28 @@ export default function CheckoutPage() {
                           <p className="shrink-0 font-black text-slate-950">{formatCurrency(item.price)}</p>
                         </div>
                         <p className="mt-2 text-slate-600">Configuration: {renderOption(item.configuration) || 'Standard'}</p>
-                        {Array.isArray(item.addon) && item.addon.length ? (
-                          <p className="mt-1 text-slate-600">
-                            Add-ons: {item.addon.map((addon) => renderOption(addon)).join(', ')}
-                          </p>
-                        ) : null}
+                        <div className="mt-2">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Add-ons</p>
+                          {getItemAddons(item).length ? (
+                            <div className="mt-1 space-y-1">
+                              {getItemAddons(item).map((addon, addonIndex) => {
+                                const price = getAddonPrice(addon, item);
+                                const billingCycle = getAddonBilling(addon, item);
+                                return (
+                                  <p key={`agreement-addon-${item.lineId}-${addonIndex}`} className="text-slate-600">
+                                    + {renderOption(addon)}
+                                    {price ? <span className="ml-2 font-bold text-slate-950">{formatCurrency(price)}</span> : null}
+                                    {billingCycle ? <span className="ml-2 text-[11px] uppercase tracking-[0.12em] text-slate-500">/{billingCycle}</span> : null}
+                                  </p>
+                                );
+                              })}
+                            </div>
+                          ) : serviceHasAddons(item) ? (
+                            <p className="mt-1 text-slate-500">No add-ons selected.</p>
+                          ) : (
+                            <p className="mt-1 text-slate-500">No Add Ons Available</p>
+                          )}
+                        </div>
                       </div>
                     )) : (
                       <p>No cart items are currently selected.</p>

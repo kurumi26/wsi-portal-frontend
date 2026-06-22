@@ -3906,3 +3906,228 @@ body.theme-dark .store-hero__search svg { color: var(--accent); }
 .service-plan-card__cta:hover {
   background: #003d7a;
 }
+
+.service-plan-card__addons-note {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #0284c7;
+}
+
+/* Plan configurator (add-ons before checkout) */
+.service-plan-configurator {
+  margin-top: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 1rem;
+}
+
+.service-plan-configurator__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.service-plan-configurator__eyebrow {
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.service-plan-configurator__title {
+  margin-top: 0.2rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.service-plan-configurator__subtitle {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.service-plan-configurator__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  width: 2rem;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.service-plan-configurator__close:hover {
+  border-color: #0f172a;
+  color: #0f172a;
+}
+
+.service-plan-configurator__section {
+  margin-top: 1rem;
+}
+
+.service-plan-configurator__section-title {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.service-plan-configurator__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.service-plan-configurator__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #cbd5e1;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.service-plan-configurator__option.is-active {
+  border-color: #0284c7;
+  background: rgba(56, 189, 248, 0.12);
+  color: #0f172a;
+}
+
+.service-plan-configurator__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1rem;
+  width: 1rem;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.service-plan-configurator__check.is-active {
+  border-color: #0284c7;
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.service-plan-configurator__addons {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.service-plan-configurator__addon {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.service-plan-configurator__addon.is-active {
+  border-color: #0284c7;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.service-plan-configurator__addon-input {
+  flex-shrink: 0;
+}
+
+.service-plan-configurator__addon-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.service-plan-configurator__addon-name {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.service-plan-configurator__addon-cycle {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.service-plan-configurator__addon-price {
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.service-plan-configurator__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.service-plan-configurator__total-label {
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.service-plan-configurator__total {
+  margin-top: 0.15rem;
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.service-plan-configurator__total span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.service-plan-configurator__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  padding: 0.6rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: #ffffff;
+  background: #005fa3;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.service-plan-configurator__cta:hover {
+  background: #003d7a;
+}
+
+.service-plan-configurator__no-addons {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: #64748b;
+}

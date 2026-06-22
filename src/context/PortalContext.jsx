@@ -4,6 +4,7 @@ import { portalApi } from '../services/portalApi';
 import { availableServices } from '../services/mockData';
 import { buildCheckoutAgreementRecord, buildContractRecords, clearStoredManagedContractTemplate, getContractOwnerKey, getContractSignedDocumentMetadata, hasSignedDocument, normalizeContractStatus, readStoredContractOverrides, writeStoredContractESignState, writeStoredContractOverrides, writeStoredManagedContractTemplate } from '../utils/contracts';
 import { desiredDomainRequiredMessage, getCancellationReasonValue, getDesiredDomainValue, normalizeOrderNoteRecords, requiresDesiredDomain } from '../utils/orders';
+import { getAddonPrice } from '../utils/addons';
 import { getServiceDisplayStatus } from '../utils/services';
 
 const PortalContext = createContext(null);
@@ -711,75 +712,64 @@ export function PortalProvider({ children }) {
     };
   }, [checkoutAgreementRecord, contractRecords]);
 
-  const addToCart = (service, configuration, addon) => {
+  const computeCartLineDetails = (service, configuration, addon) => {
     const computeAddonTotal = (addonInput) => {
       if (addonInput === null || addonInput === undefined) return 0;
 
       const items = Array.isArray(addonInput) ? addonInput : [addonInput];
-      let total = 0;
+      let addonSum = 0;
 
       items.forEach((a) => {
         if (a === null || a === undefined) return;
 
-        if (typeof a === 'object') {
-          if (typeof a.price === 'number') {
-            total += Number(a.price);
-          }
-          return;
+        let catalogMatch = null;
+        if (typeof a === 'string' && service && Array.isArray(service.addons)) {
+          catalogMatch = service.addons.find((opt) => {
+            if (opt === null || opt === undefined) return false;
+            if (typeof opt === 'object') return (opt.label ?? opt.name) === a;
+            return String(opt) === a;
+          });
         }
 
-        if (typeof a === 'string') {
-          // try to match against the provided service's addons (which may contain objects with price)
-          if (service && Array.isArray(service.addons)) {
-            const found = service.addons.find((opt) => {
-              if (opt === null || opt === undefined) return false;
-              if (typeof opt === 'object') return (opt.label ?? opt.name) === a;
-              return String(opt) === a;
-            });
-
-            if (found && typeof found === 'object' && typeof found.price === 'number') {
-              total += Number(found.price);
-            }
-          }
+        const addonPrice = getAddonPrice(a, catalogMatch);
+        if (typeof addonPrice === 'number' && !Number.isNaN(addonPrice)) {
+          addonSum += addonPrice;
         }
       });
 
-      return total;
+      return addonSum;
     };
 
     const computeConfigPrice = (configInput) => {
       if (configInput === null || configInput === undefined) return 0;
 
       const items = Array.isArray(configInput) ? configInput : [configInput];
-      let total = 0;
+      let configSum = 0;
 
       items.forEach((c) => {
         if (c === null || c === undefined) return;
 
         if (typeof c === 'object') {
           if (typeof c.price === 'number') {
-            total += Number(c.price);
+            configSum += Number(c.price);
           }
           return;
         }
 
-        if (typeof c === 'string') {
-          // try to match against the provided service's configurations (which may contain objects with price)
-          if (service && Array.isArray(service.configurations)) {
-            const found = service.configurations.find((opt) => {
-              if (opt === null || opt === undefined) return false;
-              if (typeof opt === 'object') return (opt.label ?? opt.name) === c;
-              return String(opt) === c;
-            });
+        if (typeof c === 'string' && service && Array.isArray(service.configurations)) {
+          const found = service.configurations.find((opt) => {
+            if (opt === null || opt === undefined) return false;
+            if (typeof opt === 'object') return (opt.label ?? opt.name) === c;
+            return String(opt) === c;
+          });
 
-            if (found && typeof found === 'object' && typeof found.price === 'number') {
-              total += Number(found.price);
-            }
+          if (found && typeof found === 'object' && typeof found.price === 'number') {
+            configSum += Number(found.price);
           }
         }
       });
 
-      return total;
+      return configSum;
     };
 
     const normalizedAddon = Array.isArray(addon)
@@ -792,6 +782,12 @@ export function PortalProvider({ children }) {
     const configTotal = computeConfigPrice(configuration);
     const basePrice = typeof service.price === 'number' ? Number(service.price) : Number(service.price || 0);
     const linePrice = Number(basePrice) + Number(addonTotal || 0) + Number(configTotal || 0);
+
+    return { normalizedAddon, linePrice };
+  };
+
+  const addToCart = (service, configuration, addon) => {
+    const { normalizedAddon, linePrice } = computeCartLineDetails(service, configuration, addon);
 
     const lineItem = {
       lineId: `${service.id}-${Date.now()}`,
@@ -815,6 +811,23 @@ export function PortalProvider({ children }) {
 
   const updateCartItem = (lineId, updates) => {
     setCart((current) => current.map((item) => (item.lineId === lineId ? { ...item, ...updates } : item)));
+  };
+
+  const updateCartItemAddons = (lineId, service, configuration, addon) => {
+    const { normalizedAddon, linePrice } = computeCartLineDetails(service, configuration, addon);
+
+    setCart((current) => current.map((item) => {
+      if (item.lineId !== lineId) {
+        return item;
+      }
+
+      return {
+        ...item,
+        configuration,
+        addon: normalizedAddon,
+        price: linePrice,
+      };
+    }));
   };
 
   const clearCart = () => setCart([]);
@@ -1569,6 +1582,7 @@ export function PortalProvider({ children }) {
       addToCart,
       removeFromCart,
       updateCartItem,
+      updateCartItemAddons,
       clearCart,
       placeOrder,
       retryPayment,
