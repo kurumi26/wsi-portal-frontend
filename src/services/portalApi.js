@@ -1375,6 +1375,13 @@ export const portalApi = {
     });
   },
 
+  async createClient(payload) {
+    return apiRequest('/admin/clients', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async updateClientAccount(userId, payload) {
     return apiRequest(`/admin/clients/${userId}`, {
       method: 'PATCH',

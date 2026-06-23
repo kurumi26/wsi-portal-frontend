@@ -1027,7 +1027,9 @@ export default function HelpdeskPage() {
 
   return (
     <div>
-      <PageHeader title="Tickets Central" />
+        <PageHeader
+        eyebrow="Tickets Central"
+      />
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (

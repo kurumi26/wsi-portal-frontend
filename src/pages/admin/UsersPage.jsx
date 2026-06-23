@@ -4,6 +4,7 @@ import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
 import { usePortal } from '../../context/PortalContext';
+import { formatDateTime } from '../../utils/format';
 
 const roleClasses = {
   Admin: 'bg-sky-300 text-white',
@@ -255,6 +256,13 @@ export default function UsersPage() {
       ),
     },
     {
+      key: 'joinedAt',
+      label: 'Date Created',
+      sortable: true,
+      sortValue: (user) => (user.joinedAt ? new Date(user.joinedAt).getTime() : 0),
+      render: (value) => formatDateTime(value),
+    },
+    {
       key: 'role',
       label: 'Role',
       sortable: true,
@@ -444,8 +452,8 @@ export default function UsersPage() {
       ) : null}
 
       <PageHeader
-        eyebrow="Admin Users"
-        title="Users"
+        eyebrow="Users"
+        // title="Users"
         action={usersHeaderAction}
       />
 
@@ -504,8 +512,8 @@ export default function UsersPage() {
             rows={filteredUsers}
             emptyMessage="No users match the current search and filters."
             enableAdminColumnVisibility
-            columnVisibilityStorageKey="admin-users-table"
-            compactColumnKeys={['name', 'status', 'actions']}
+            columnVisibilityStorageKey="admin-users-table-v2"
+            compactColumnKeys={['name', 'joinedAt', 'role', 'status', 'actions']}
             columnVisibilityPortalTargetId="users-column-visibility-slot"
           />
         </div>
@@ -532,13 +540,19 @@ export default function UsersPage() {
                   <StatusBadge status={user.status} />
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Role</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Date Created</p>
+                    <p className="mt-2 text-sm text-white">{formatDateTime(user.joinedAt)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Role</p>
                     <p className="mt-2">
-                    <span className={`badge ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'} text-white`}>
-                      {user.role}
-                    </span>
+                      <span className={`badge ${roleClasses[user.role] ?? 'border-white/10 bg-white/10 text-slate-100'} text-white`}>
+                        {user.role}
+                      </span>
                     </p>
+                  </div>
                 </div>
 
                 <div className="mt-4 flex justify-end gap-2">

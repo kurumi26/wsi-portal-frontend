@@ -247,7 +247,6 @@ export default function AdminNotificationsPage() {
     <div>
       <PageHeader
         eyebrow="Admin Alerts"
-        title="Notifications center"
         action={notificationsHeaderAction}
       />
 

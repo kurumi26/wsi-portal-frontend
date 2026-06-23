@@ -521,8 +521,8 @@ export default function PurchasesPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Transaction Ledger"
-        title="Transactions"
+        eyebrow="Transactions"
+        // title="Transactions"
         action={purchasesHeaderAction}
       />
 

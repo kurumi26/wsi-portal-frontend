@@ -355,8 +355,7 @@ export default function AdminManageContractsPage() {
     <div className="pb-12 ">
       <PageHeader
         eyebrow="Contracts / Manage"
-        title="Manage Contract Templates"
-        description="Select a contract record, review its details, and open the editor when you need to change the agreement template."
+        // title="Manage Contract Templates"
         belowDescription={feedback ? (
           <div className={`rounded-2xl border px-4 py-3 text-sm ${feedbackToneClasses[feedback.tone] ?? feedbackToneClasses.success}`}>
             {feedback.text}

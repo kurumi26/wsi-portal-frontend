@@ -1691,7 +1691,7 @@ export default function ManageServicesPage() {
         </div>
       ) : null}
 
-      <PageHeader eyebrow="Manage Services" title="All Services" action={manageServicesHeaderAction} />
+      <PageHeader eyebrow="Manage Services" title="" action={manageServicesHeaderAction} />
 
       {error ? (
         <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">

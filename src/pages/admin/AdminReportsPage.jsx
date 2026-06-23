@@ -771,7 +771,7 @@ const getReportsPageConfig = (audience = 'admin') => {
   }
 
   return {
-    title: 'Admin Reports',
+    // title: 'Admin Reports',
     basePath: '/admin/reports',
     exportTitle: 'WSI Admin Reports Center',
     filenamePrefix: 'wsi-admin',

@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Building2, CheckCircle2, Eye, EyeOff, FileText, LayoutGrid, List, Mail, MapPin, PencilLine, Phone, Power, Search, UserCircle2, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, Eye, EyeOff, FileText, LayoutGrid, List, Mail, MapPin, PencilLine, Phone, Plus, Power, Search, UserCircle2, XCircle } from 'lucide-react';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -9,8 +9,18 @@ import { usePortal } from '../../context/PortalContext';
 import { clientMatchesRecord } from '../../utils/clients';
 import { formatCurrency, formatDate } from '../../utils/format';
 
+const emptyAddClientForm = {
+  ownerId: '',
+  name: '',
+  company: '',
+  email: '',
+  status: 'Active',
+  password: '',
+  confirmPassword: '',
+};
+
 export default function ClientsPage() {
-  const { clients, adminPurchases, adminServices, approveProfileUpdateRequest, rejectProfileUpdateRequest, approveClientRegistration, rejectClientRegistration, updateClientAccount, updateClientAccountStatus } = usePortal();
+  const { clients, adminUsers, adminPurchases, adminServices, approveProfileUpdateRequest, rejectProfileUpdateRequest, approveClientRegistration, rejectClientRegistration, updateClientAccount, createClient, updateClientAccountStatus } = usePortal();
   const [selectedAuditTrail, setSelectedAuditTrail] = useState(null);
   const [selectedClientAccount, setSelectedClientAccount] = useState(null);
   const [selectedProfileRequest, setSelectedProfileRequest] = useState(null);
@@ -20,7 +30,10 @@ export default function ClientsPage() {
   const [reviewError, setReviewError] = useState('');
   const [isReviewing, setIsReviewing] = useState(false);
   const [selectedEditClient, setSelectedEditClient] = useState(null);
-  const [editClientForm, setEditClientForm] = useState({ name: '', email: '', password: '', confirmPassword: '', company: '', address: '', mobileNumber: '' });
+  const [editClientForm, setEditClientForm] = useState({ ownerId: '', name: '', email: '', password: '', confirmPassword: '', company: '', address: '', mobileNumber: '', status: 'Active' });
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
+  const [addClientForm, setAddClientForm] = useState(emptyAddClientForm);
+  const [isSavingAddClient, setIsSavingAddClient] = useState(false);
   const [isSavingClientEdit, setIsSavingClientEdit] = useState(false);
   const [copySuccess, setCopySuccess] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
@@ -30,6 +43,13 @@ export default function ClientsPage() {
   const [clientsStatusFilter, setClientsStatusFilter] = useState('All');
   const [clientsApprovalFilter, setClientsApprovalFilter] = useState('All');
   const [clientsView, setClientsView] = useState('list');
+
+  const ownerOptions = useMemo(
+    () => adminUsers.filter((user) => user.isEnabled !== false),
+    [adminUsers],
+  );
+
+  const defaultOwnerId = ownerOptions[0]?.id ?? '';
 
   const buildAuditTrailLines = (client) => {
     const relatedPurchases = adminPurchases.filter((purchase) => clientMatchesRecord(client, purchase.client, purchase.clientEmail));
@@ -107,7 +127,7 @@ export default function ClientsPage() {
   };
 
   useEffect(() => {
-    const shouldOpen = Boolean(selectedAuditTrail || selectedEditClient);
+    const shouldOpen = Boolean(selectedAuditTrail || selectedEditClient || showAddClientModal);
 
     if (shouldOpen) {
       document.body.classList.add('audit-modal-open');
@@ -116,7 +136,7 @@ export default function ClientsPage() {
     }
 
     return () => document.body.classList.remove('audit-modal-open');
-  }, [selectedAuditTrail, selectedEditClient]);
+  }, [selectedAuditTrail, selectedEditClient, showAddClientModal]);
 
   const openProfileRequestModal = (client) => {
     setSelectedProfileRequest(client);
@@ -395,6 +415,7 @@ export default function ClientsPage() {
         onClick={() => {
           setSelectedEditClient(row);
           setEditClientForm({
+            ownerId: row.ownerId ?? defaultOwnerId,
             name: row.name ?? '',
             email: row.email ?? '',
             password: '',
@@ -402,6 +423,7 @@ export default function ClientsPage() {
             company: row.company ?? '',
             address: row.address ?? '',
             mobileNumber: row.mobileNumber ?? '',
+            status: row.accountStatus ?? (row.isEnabled === false ? 'Inactive' : 'Active'),
           });
           setReviewError('');
           setReviewMessage('');
@@ -415,9 +437,9 @@ export default function ClientsPage() {
       <button
         type="button"
         onClick={() => setStatusConfirmClient(row)}
-        className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${row.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
-        title={row.status === 'Active' ? 'Deactivate Account' : 'Activate Account'}
-        aria-label={`${row.status === 'Active' ? 'Deactivate' : 'Activate'} account for ${row.name}`}
+        className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${(row.accountStatus ?? row.status) === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
+        title={(row.accountStatus ?? row.status) === 'Active' ? 'Deactivate Account' : 'Activate Account'}
+        aria-label={`${(row.accountStatus ?? row.status) === 'Active' ? 'Deactivate' : 'Activate'} account for ${row.name}`}
       >
         <Power size={16} />
       </button>
@@ -444,11 +466,13 @@ export default function ClientsPage() {
 
     try {
       const payload = {
+        ownerId: editClientForm.ownerId ? Number(editClientForm.ownerId) : null,
         name: editClientForm.name,
         email: editClientForm.email,
         company: editClientForm.company,
         address: editClientForm.address,
         mobileNumber: editClientForm.mobileNumber,
+        enabled: editClientForm.status === 'Active',
       };
 
       // include password only when provided
@@ -462,6 +486,52 @@ export default function ClientsPage() {
       setReviewError(requestError.message);
     } finally {
       setIsSavingClientEdit(false);
+    }
+  };
+
+  const openAddClientModal = () => {
+    setReviewError('');
+    setReviewMessage('');
+    setAddClientForm({
+      ...emptyAddClientForm,
+      ownerId: defaultOwnerId,
+    });
+    setShowAddClientModal(true);
+  };
+
+  const handleAddClientSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!addClientForm.ownerId) {
+      setReviewError('Please select a client owner.');
+      return;
+    }
+
+    if (addClientForm.password && addClientForm.password !== addClientForm.confirmPassword) {
+      setReviewError('Password and confirmation do not match.');
+      return;
+    }
+
+    setIsSavingAddClient(true);
+    setReviewError('');
+    setReviewMessage('');
+
+    try {
+      const response = await createClient({
+        ownerId: Number(addClientForm.ownerId),
+        name: addClientForm.name,
+        company: addClientForm.company,
+        email: addClientForm.email,
+        password: addClientForm.password || undefined,
+        enabled: addClientForm.status === 'Active',
+      });
+
+      setReviewMessage(response.message || 'Client account created successfully.');
+      setShowAddClientModal(false);
+    } catch (requestError) {
+      setReviewError(requestError.message);
+    } finally {
+      setIsSavingAddClient(false);
     }
   };
 
@@ -489,7 +559,7 @@ export default function ClientsPage() {
       return;
     }
 
-    const nextEnabled = statusConfirmClient.status !== 'Active';
+    const nextEnabled = (statusConfirmClient.accountStatus ?? statusConfirmClient.status) !== 'Active';
     setTogglingClientId(statusConfirmClient.id);
     setReviewError('');
     setReviewMessage('');
@@ -506,24 +576,38 @@ export default function ClientsPage() {
   };
 
   const columns = [
-    { key: 'name', label: 'Client', sortable: true },
+    {
+      key: 'ownerName',
+      label: 'Client Owner',
+      sortable: true,
+      render: (value) => value || '—',
+    },
+    { key: 'name', label: 'Client Name', sortable: true },
     { key: 'company', label: 'Company', sortable: true },
+    {
+      key: 'joinedAt',
+      label: 'Created Date | Time',
+      sortable: true,
+      sortValue: (row) => row.joinedAt ? new Date(row.joinedAt).getTime() : 0,
+      render: (value) => formatDateTime(value),
+    },
     { key: 'email', label: 'Email', sortable: true },
-    { key: 'services', label: 'Services', sortable: true, sortValue: (r) => Number(r.services || 0) },
+    {
+      key: 'type',
+      label: 'Type',
+      sortable: true,
+      render: (value) => value || 'Registered',
+    },
+    { key: 'services', label: 'Service', sortable: true, sortValue: (r) => Number(r.services || 0) },
     {
       key: 'status',
       label: 'Status',
       sortable: true,
-      render: (value) => <StatusBadge status={value} />,
-    },
-    {
-      key: 'approvals',
-      label: 'Approvals',
-      render: (_, row) => renderClientApprovals(row),
+      render: (value, row) => <StatusBadge status={row.accountStatus ?? value} />,
     },
     {
       key: 'actions',
-      label: 'Actions',
+      label: 'Action',
       hideable: false,
       render: (_, row) => renderClientActions(row),
     },
@@ -547,6 +631,7 @@ export default function ClientsPage() {
         <select className="input w-full sm:w-44" value={clientsStatusFilter} onChange={(event) => setClientsStatusFilter(event.target.value)}>
           <option value="All">All statuses</option>
           <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
           <option value="Pending">Pending</option>
           <option value="Pending Approval">Pending Approval</option>
           <option value="Rejected">Rejected</option>
@@ -559,6 +644,14 @@ export default function ClientsPage() {
           <option value="Rejected">Rejected</option>
           <option value="No request">No request</option>
         </select>
+
+        <button
+          type="button"
+          onClick={openAddClientModal}
+          className="btn-primary gap-2 px-6 py-2"
+        >
+          <Plus size={20} /> Add
+        </button>
 
         {clientsView === 'list' ? <div id="clients-column-visibility-slot" className="shrink-0" /> : null}
 
@@ -589,8 +682,8 @@ export default function ClientsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Client Management"
-        title="Registered Customers"
+        eyebrow="Client"
+        // title="Registered Customers"
         action={clientsHeaderAction}
       />
       {reviewError ? <p className="mb-4 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{reviewError}</p> : null}
@@ -602,7 +695,7 @@ export default function ClientsPage() {
           rows={filteredClients}
           enableAdminColumnVisibility
           columnVisibilityStorageKey="admin-clients-table"
-          compactColumnKeys={['name', 'company', 'email', 'services', 'status', 'actions']}
+          compactColumnKeys={['ownerName', 'name', 'company', 'joinedAt', 'email', 'type', 'services', 'status', 'actions']}
           columnVisibilityPortalTargetId="clients-column-visibility-slot"
         />
       ) : filteredClients.length ? (
@@ -1091,7 +1184,23 @@ export default function ClientsPage() {
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <label className="block text-sm text-slate-300 md:col-span-2">
-                Full Name
+                Client Owner
+                <select
+                  className="input mt-2"
+                  value={editClientForm.ownerId}
+                  onChange={(event) => setEditClientForm((current) => ({ ...current, ownerId: event.target.value }))}
+                >
+                  <option value="">Select owner</option>
+                  {ownerOptions.map((owner) => (
+                    <option key={owner.id} value={owner.id}>
+                      {owner.name} ({owner.role})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Client Name
                 <input className="input mt-2" value={editClientForm.name} onChange={(event) => setEditClientForm((current) => ({ ...current, name: event.target.value }))} required />
               </label>
 
@@ -1100,16 +1209,35 @@ export default function ClientsPage() {
                 <input className="input mt-2" value={editClientForm.company} onChange={(event) => setEditClientForm((current) => ({ ...current, company: event.target.value }))} />
               </label>
               <label className="block text-sm text-slate-300">
+                Status
+                <select className="input mt-2" value={editClientForm.status} onChange={(event) => setEditClientForm((current) => ({ ...current, status: event.target.value }))}>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </label>
+              <label className="block text-sm text-slate-300">
                 Mobile Number
                 <input className="input mt-2" value={editClientForm.mobileNumber} onChange={(event) => setEditClientForm((current) => ({ ...current, mobileNumber: event.target.value }))} />
+              </label>
+              <label className="block text-sm text-slate-300">
+                Type
+                <input className="input mt-2" value={selectedEditClient.type || 'Registered'} readOnly disabled />
+              </label>
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Created Date | Time
+                <input className="input mt-2" value={formatDateTime(selectedEditClient.joinedAt)} readOnly disabled />
+              </label>
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Email
+                <input type="email" className="input mt-2" value={editClientForm.email} onChange={(event) => setEditClientForm((current) => ({ ...current, email: event.target.value }))} required />
+              </label>
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Service
+                <input className="input mt-2" value={String(selectedEditClient.services ?? 0)} readOnly disabled />
               </label>
               <label className="block text-sm text-slate-300 md:col-span-2">
                 Address
                 <input className="input mt-2" value={editClientForm.address} onChange={(event) => setEditClientForm((current) => ({ ...current, address: event.target.value }))} />
-              </label>
-                <label className="block text-sm text-slate-300 md:col-span-2">
-                Email
-                <input type="email" className="input mt-2" value={editClientForm.email} onChange={(event) => setEditClientForm((current) => ({ ...current, email: event.target.value }))} required />
               </label>
               <label className="block text-sm text-slate-300">
                 Password
@@ -1131,7 +1259,100 @@ export default function ClientsPage() {
             <div className="mt-6 flex justify-end gap-3">
               <button type="button" onClick={() => setSelectedEditClient(null)} className="btn-secondary">Cancel</button>
               <button type="submit" disabled={isSavingClientEdit} className="btn-primary disabled:opacity-60">
-                {isSavingClientEdit ? 'Saving...' : 'Save Changes'}
+                {isSavingClientEdit ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {showAddClientModal ? (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <form onSubmit={handleAddClientSubmit} className="panel w-full max-w-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Create Client</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Add Client</h2>
+              </div>
+              <button type="button" onClick={() => setShowAddClientModal(false)} className="btn-secondary px-4">Close</button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Client Owner
+                <select
+                  className="input mt-2"
+                  value={addClientForm.ownerId}
+                  onChange={(event) => setAddClientForm((current) => ({ ...current, ownerId: event.target.value }))}
+                  required
+                >
+                  <option value="">Select owner</option>
+                  {ownerOptions.map((owner) => (
+                    <option key={owner.id} value={owner.id}>
+                      {owner.name} ({owner.role})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Client Name
+                <input className="input mt-2" value={addClientForm.name} onChange={(event) => setAddClientForm((current) => ({ ...current, name: event.target.value }))} required />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Company
+                <input className="input mt-2" value={addClientForm.company} onChange={(event) => setAddClientForm((current) => ({ ...current, company: event.target.value }))} required />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Status
+                <select className="input mt-2" value={addClientForm.status} onChange={(event) => setAddClientForm((current) => ({ ...current, status: event.target.value }))}>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Created Date | Time
+                <input className="input mt-2" value="Set automatically on save" readOnly disabled />
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Email
+                <input type="email" className="input mt-2" value={addClientForm.email} onChange={(event) => setAddClientForm((current) => ({ ...current, email: event.target.value }))} required />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Type
+                <input className="input mt-2" value="Created" readOnly disabled />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Service
+                <input className="input mt-2" value="0" readOnly disabled />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Password
+                <div className="mt-2 flex items-center gap-2">
+                  <input type={showPasswords ? 'text' : 'password'} className="input flex-1" value={addClientForm.password} onChange={(event) => setAddClientForm((current) => ({ ...current, password: event.target.value }))} placeholder="Leave blank to auto-generate" />
+                  <button type="button" onClick={() => setShowPasswords((s) => !s)} className="btn-secondary px-3" aria-pressed={showPasswords} aria-label={showPasswords ? 'Hide password' : 'Show password'}>
+                    {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Confirm password
+                <input type={showPasswords ? 'text' : 'password'} className="input mt-2" value={addClientForm.confirmPassword} onChange={(event) => setAddClientForm((current) => ({ ...current, confirmPassword: event.target.value }))} placeholder="Repeat password" />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowAddClientModal(false)} className="btn-secondary">Cancel</button>
+              <button type="submit" disabled={isSavingAddClient} className="btn-primary disabled:opacity-60">
+                {isSavingAddClient ? 'Saving...' : 'Save'}
               </button>
             </div>
           </form>
@@ -1145,14 +1366,14 @@ export default function ClientsPage() {
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Confirm Action</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">
-                  {statusConfirmClient.status === 'Active' ? 'Disable customer account' : 'Enable customer account'}
+                  {(statusConfirmClient.accountStatus ?? statusConfirmClient.status) === 'Active' ? 'Disable customer account' : 'Enable customer account'}
                 </h2>
               </div>
               <button type="button" onClick={() => setStatusConfirmClient(null)} className="btn-secondary px-4">Close</button>
             </div>
 
             <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300">
-              Are you sure you want to {statusConfirmClient.status === 'Active' ? 'disable' : 'enable'}{' '}
+              Are you sure you want to {(statusConfirmClient.accountStatus ?? statusConfirmClient.status) === 'Active' ? 'disable' : 'enable'}{' '}
               <span className="font-semibold text-white">{statusConfirmClient.name}</span>?
             </div>
 
@@ -1162,9 +1383,9 @@ export default function ClientsPage() {
                 type="button"
                 onClick={handleConfirmToggleClientStatus}
                 disabled={togglingClientId === statusConfirmClient.id}
-                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 disabled:opacity-60 ${statusConfirmClient.status === 'Active' ? 'bg-rose-400 hover:bg-rose-500 text-white' : 'bg-emerald-400 hover:bg-emerald-500 text-white'}`}
+                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 disabled:opacity-60 ${(statusConfirmClient.accountStatus ?? statusConfirmClient.status) === 'Active' ? 'bg-rose-400 hover:bg-rose-500 text-white' : 'bg-emerald-400 hover:bg-emerald-500 text-white'}`}
               >
-                {togglingClientId === statusConfirmClient.id ? 'Saving...' : (statusConfirmClient.status === 'Active' ? 'Disable' : 'Enable')}
+                {togglingClientId === statusConfirmClient.id ? 'Saving...' : ((statusConfirmClient.accountStatus ?? statusConfirmClient.status) === 'Active' ? 'Disable' : 'Enable')}
               </button>
             </div>
           </div>

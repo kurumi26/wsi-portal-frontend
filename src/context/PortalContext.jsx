@@ -1539,6 +1539,12 @@ export function PortalProvider({ children }) {
     return result;
   };
 
+  const createClient = async (payload) => {
+    const result = await portalApi.createClient(payload);
+    await refreshPortalData();
+    return result;
+  };
+
   const updateClientAccountStatus = async (userId, enabled) => {
     const result = await portalApi.updateClientAccountStatus(userId, enabled);
     await refreshPortalData();
@@ -1610,6 +1616,7 @@ export function PortalProvider({ children }) {
       markAdminPurchasePaid,
       updateClientBilling,
       updateClientAccount,
+      createClient,
       updateClientAccountStatus,
       approveProfileUpdateRequest,
       rejectProfileUpdateRequest,

@@ -232,7 +232,7 @@ export default function AdminAccountPage() {
     <div>
       <PageHeader
         eyebrow="Admin Account"
-        title="Profile & security"
+        // title="Profile & security"
         description="Manage your admin identity, password, two-factor authentication, and active sessions."
       />
 

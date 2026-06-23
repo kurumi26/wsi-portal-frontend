@@ -1235,7 +1235,7 @@ export default function ApprovalsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Operations" title="Approve Orders / Update Profiles" action={headerAction} />
+      <PageHeader eyebrow="Approvals" title="" action={headerAction} />
 
       {error ? <div className="mt-6 rounded-2xl border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{error}</div> : null}
       {message ? <div className="mt-6 rounded-2xl border border-sky-300/20 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">{message}</div> : null}
