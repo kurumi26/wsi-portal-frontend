@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, LifeBuoy, Mail, MessageSquareText, PencilLine, Save, UserRound } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import { useAuth } from '../../context/AuthContext';
 import { usePortal } from '../../context/PortalContext';
-import { useTheme } from '../../context/ThemeContext';
 import { appendTicketConversationMessage, buildHelpdeskSyncKey, getStoredOverrideForTicket, getTicketConversation, HELP_DESK_OVERRIDES_KEY, loadTicketOverrides, mergeTicketOverride } from '../../utils/helpdesk';
 import { formatDateTime } from '../../utils/format';
 
@@ -476,25 +475,6 @@ const getAgentMeta = (ticket, agentDirectory) => {
   };
 };
 
-const getActionButtonClasses = (variant, isDarkMode) => {
-  const styles = {
-    email: isDarkMode
-      ? 'border-sky-300/25 bg-sky-400/12 text-sky-300 hover:bg-sky-400/18'
-      : 'border-sky-200 bg-sky-50 text-sky-700 shadow-sm hover:bg-sky-100',
-    manage: isDarkMode
-      ? 'border-cyan-300/25 bg-cyan-400/12 text-cyan-300 hover:bg-cyan-400/18'
-      : 'border-cyan-200 bg-cyan-50 text-cyan-700 shadow-sm hover:bg-cyan-100',
-    details: isDarkMode
-      ? 'border-white/12 bg-white/7 text-slate-200 hover:bg-white/12'
-      : 'border-slate-200 bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200',
-    service: isDarkMode
-      ? 'border-emerald-300/25 bg-emerald-400/12 text-emerald-300 hover:bg-emerald-400/18'
-      : 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm hover:bg-emerald-100',
-  };
-
-  return `inline-flex h-10 w-10 items-center justify-center rounded-xl border transition ${styles[variant]}`;
-};
-
 const formatResolutionValue = (hours) => {
   if (hours === null || hours === undefined || Number.isNaN(hours)) {
     return '—';
@@ -532,7 +512,6 @@ const getWeeklyDelta = (tickets, now) => {
 
 export default function HelpdeskPage() {
   const { user } = useAuth();
-  const { isDarkMode } = useTheme();
   const { adminServices, adminUsers, clients, notifications } = usePortal();
   const [now, setNow] = useState(() => Date.now());
   const [ticketOverrides, setTicketOverrides] = useState(() => loadTicketOverrides());
@@ -1162,48 +1141,38 @@ export default function HelpdeskPage() {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTicketId(ticket.id)}
-                          className={`${getActionButtonClasses('email', isDarkMode)} relative`}
-                          title={ticket.hasUnreadClientMessage ? 'Open ticket conversation (new client reply)' : 'Open ticket conversation'}
-                          aria-label={ticket.hasUnreadClientMessage ? `Open conversation for ${ticket.reference} with new client reply` : `Open conversation for ${ticket.reference}`}
-                        >
-                          <MessageSquareText size={16} strokeWidth={2.25} />
-                          {ticket.hasUnreadClientMessage ? (
-                            <span className="absolute -right-1 -top-1 inline-flex h-3.5 w-3.5 rounded-full border-2 border-white bg-rose-500" aria-hidden="true" />
-                          ) : null}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTicketId(ticket.id)}
-                          className={getActionButtonClasses('manage', isDarkMode)}
-                          title="Assign agent and edit status"
-                          aria-label={`Manage workflow for ${ticket.reference}`}
-                        >
-                          <PencilLine size={16} strokeWidth={2.25} />
-                        </button>
-                        {ticket.serviceId ? (
-                          <Link
-                            to="/admin/client-services"
-                            className={getActionButtonClasses('service', isDarkMode)}
-                            title="Open client service"
-                            aria-label={`Open client service for ${ticket.reference}`}
-                          >
-                            <ArrowUpRight size={16} strokeWidth={2.25} />
-                          </Link>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTicketId(ticket.id)}
-                            className={getActionButtonClasses('service', isDarkMode)}
-                            title="Review ticket"
-                            aria-label={`Review ${ticket.reference}`}
-                          >
-                            <ArrowUpRight size={16} strokeWidth={2.25} />
-                          </button>
-                        )}
+                      <div className="flex justify-end">
+                        <TableActionsDropdown
+                          ariaLabel={`Actions for ${ticket.reference}`}
+                          items={[
+                            {
+                              key: 'conversation',
+                              label: ticket.hasUnreadClientMessage ? 'Open conversation (new reply)' : 'Open conversation',
+                              icon: MessageSquareText,
+                              badge: ticket.hasUnreadClientMessage,
+                              onClick: () => setSelectedTicketId(ticket.id),
+                            },
+                            {
+                              key: 'manage',
+                              label: 'Assign agent and edit status',
+                              icon: PencilLine,
+                              onClick: () => setSelectedTicketId(ticket.id),
+                            },
+                            ticket.serviceId
+                              ? {
+                                  key: 'service',
+                                  label: 'Open client service',
+                                  icon: ArrowUpRight,
+                                  to: '/admin/client-services',
+                                }
+                              : {
+                                  key: 'review',
+                                  label: 'Review ticket',
+                                  icon: ArrowUpRight,
+                                  onClick: () => setSelectedTicketId(ticket.id),
+                                },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

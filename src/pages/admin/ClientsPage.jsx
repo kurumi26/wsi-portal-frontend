@@ -4,6 +4,7 @@ import { Building2, CheckCircle2, Eye, EyeOff, FileText, LayoutGrid, List, Mail,
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { clientMatchesRecord } from '../../utils/clients';
@@ -360,125 +361,80 @@ export default function ClientsPage() {
 
   const renderClientApprovals = (row) => (
     row.registrationApproval?.statusKey === 'pending' ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => openRegistrationRequestModal(row)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
-          title="Review registration request"
-          aria-label={`Review registration request for ${row.name}`}
-        >
-          <FileText size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleProfileRequestDecision(row, 'approve')}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-white transition hover:bg-emerald-500"
-          title="Approve registration"
-          aria-label={`Approve registration for ${row.name}`}
-        >
-          <CheckCircle2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleProfileRequestDecision(row, 'reject')}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-400 text-white transition hover:bg-rose-500"
-          title="Reject registration"
-          aria-label={`Reject registration for ${row.name}`}
-        >
-          <XCircle size={16} />
-        </button>
-      </div>
+      <TableActionsDropdown
+        ariaLabel={`Registration actions for ${row.name}`}
+        items={[
+          { key: 'review', label: 'Review registration request', icon: FileText, onClick: () => openRegistrationRequestModal(row) },
+          { key: 'approve', label: 'Approve registration', icon: CheckCircle2, tone: 'success', onClick: () => handleProfileRequestDecision(row, 'approve') },
+          { key: 'reject', label: 'Reject registration', icon: XCircle, tone: 'danger', onClick: () => handleProfileRequestDecision(row, 'reject') },
+        ]}
+      />
     ) : row.profileUpdateRequest?.statusKey === 'pending' ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => openProfileRequestModal(row)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10"
-          title="Review profile update request"
-          aria-label={`Review profile update request for ${row.name}`}
-        >
-          <FileText size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => openProfileRequestModal(row)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-400 text-white transition hover:bg-emerald-500"
-          title="Approve profile update"
-          aria-label={`Approve profile update for ${row.name}`}
-        >
-          <CheckCircle2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => openProfileRequestModal(row)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-400 text-white transition hover:bg-rose-500"
-          title="Reject profile update"
-          aria-label={`Reject profile update for ${row.name}`}
-        >
-          <XCircle size={16} />
-        </button>
-      </div>
+      <TableActionsDropdown
+        ariaLabel={`Profile update actions for ${row.name}`}
+        items={[
+          { key: 'review', label: 'Review profile update', icon: FileText, onClick: () => openProfileRequestModal(row) },
+          { key: 'approve', label: 'Approve profile update', icon: CheckCircle2, tone: 'success', onClick: () => openProfileRequestModal(row) },
+          { key: 'reject', label: 'Reject profile update', icon: XCircle, tone: 'danger', onClick: () => openProfileRequestModal(row) },
+        ]}
+      />
     ) : (
       <span className="text-sm text-slate-400">{row.registrationApproval?.statusKey === 'rejected' ? 'Registration rejected' : 'No request'}</span>
     )
   );
 
-  const renderClientActions = (row) => (
-    <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={() => openClientAccountModal(row)}
-        className="btn-secondary px-3"
-        title="View client account"
-        aria-label={`View client account for ${row.name}`}
-      >
-        <Eye size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={() => openAuditTrailModal(row)}
-        className="btn-secondary px-3"
-        title="View audit trail"
-        aria-label={`View audit trail for ${row.name}`}
-      >
-        <FileText size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setSelectedEditClient(row);
-          setEditClientForm({
-            ownerId: row.ownerId ?? defaultOwnerId,
-            name: row.name ?? '',
-            email: row.email ?? '',
-            password: '',
-            confirmPassword: '',
-            company: row.company ?? '',
-            address: row.address ?? '',
-            mobileNumber: row.mobileNumber ?? '',
-            status: row.accountStatus ?? (row.isEnabled === false ? 'Inactive' : 'Active'),
-          });
-          setReviewError('');
-          setReviewMessage('');
-        }}
-        className="btn-secondary px-3"
-        title="Edit customer account"
-        aria-label={`Edit customer account for ${row.name}`}
-      >
-        <PencilLine size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={() => setStatusConfirmClient(row)}
-        className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${(row.accountStatus ?? row.status) === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
-        title={(row.accountStatus ?? row.status) === 'Active' ? 'Deactivate Account' : 'Activate Account'}
-        aria-label={`${(row.accountStatus ?? row.status) === 'Active' ? 'Deactivate' : 'Activate'} account for ${row.name}`}
-      >
-        <Power size={16} />
-      </button>
-    </div>
-  );
+  const renderClientActions = (row) => {
+    const isActive = (row.accountStatus ?? row.status) === 'Active';
+
+    return (
+      <TableActionsDropdown
+        ariaLabel={`Actions for ${row.name}`}
+        items={[
+          {
+            key: 'view',
+            label: 'View client account',
+            icon: Eye,
+            onClick: () => openClientAccountModal(row),
+          },
+          {
+            key: 'audit',
+            label: 'View audit trail',
+            icon: FileText,
+            onClick: () => openAuditTrailModal(row),
+          },
+          {
+            key: 'edit',
+            label: 'Edit customer account',
+            icon: PencilLine,
+            onClick: () => {
+              setSelectedEditClient(row);
+              setEditClientForm({
+                ownerId: row.ownerId ?? defaultOwnerId,
+                name: row.name ?? '',
+                email: row.email ?? '',
+                password: '',
+                confirmPassword: '',
+                company: row.company ?? '',
+                address: row.address ?? '',
+                mobileNumber: row.mobileNumber ?? '',
+                status: row.accountStatus ?? (row.isEnabled === false ? 'Inactive' : 'Active'),
+              });
+              setReviewError('');
+              setReviewMessage('');
+            },
+          },
+          { type: 'divider', key: 'divider-status' },
+          {
+            key: 'toggle-status',
+            label: isActive ? 'Deactivate account' : 'Activate account',
+            icon: Power,
+            tone: isActive ? 'danger' : 'success',
+            onClick: () => setStatusConfirmClient(row),
+          },
+        ]}
+      />
+    );
+  };
 
   const handleEditClientSubmit = async (event) => {
     event.preventDefault();

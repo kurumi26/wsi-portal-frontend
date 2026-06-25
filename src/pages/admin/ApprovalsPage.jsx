@@ -12,6 +12,7 @@ import { canApproveOrderProvisioning, getInvoiceApprovalBlockReason, getInvoiceD
 import { getCancellationReasonValue, getCustomerCommentValue, getDesiredDomainValue, isDomainOrder } from '../../utils/orders';
 import { getAdminServiceExpirationMeta } from '../../utils/services';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 
 const PURCHASE_LINE_ITEM_KEYS = ['orderItems', 'order_items', 'orderItem', 'order_item', 'lineItems', 'line_items', 'lineItem', 'line_item', 'cart', 'cartItems', 'cart_items', 'items', 'item'];
 const PURCHASE_ADDON_KEYS = ['selectedAddons', 'selected_addons', 'addons', 'add_ons', 'addon'];
@@ -864,6 +865,135 @@ export default function ApprovalsPage() {
 
     return Boolean(row.customerNote || getCancellationReasonValue(row.raw));
   };
+
+  const renderPendingApprovalActions = (row) => {
+    const items = [];
+
+    if (row.type === 'order') {
+      if (shouldShowCommentAction(row)) {
+        items.push({
+          key: 'comment',
+          label: 'View desired domain comment',
+          icon: MessageSquare,
+          onClick: () => openOrderNoteModal(row.raw),
+        });
+      }
+
+      items.push(
+        { key: 'view', label: 'View order', icon: Eye, onClick: () => openOrderModal(row.raw) },
+        {
+          key: 'approve',
+          label: processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve order' : 'Invoice pending'),
+          icon: ShieldCheck,
+          tone: 'success',
+          disabled: processingOrderId === row.raw.id || !row.canApproveProvisioning,
+          onClick: () => handleApproveOrder(row.raw),
+        },
+      );
+    } else if (row.type === 'cancellation') {
+      if (shouldShowCommentAction(row)) {
+        items.push({
+          key: 'comment',
+          label: 'View cancellation reason',
+          icon: MessageSquare,
+          onClick: () => openOrderNoteModal(row.raw),
+        });
+      }
+
+      items.push(
+        {
+          key: 'keep',
+          label: 'Keep service',
+          icon: XCircle,
+          tone: 'danger',
+          disabled: processingCancellationId === row.raw.id,
+          onClick: () => handleRejectCancellation(row.raw.id),
+        },
+        {
+          key: 'approve-cancel',
+          label: processingCancellationId === row.raw.id ? 'Approving...' : 'Approve cancellation',
+          icon: CheckCircle2,
+          tone: 'success',
+          disabled: processingCancellationId === row.raw.id,
+          onClick: () => handleApproveCancellation(row.raw.id),
+        },
+      );
+    } else if (row.type === 'profile') {
+      items.push(
+        { key: 'view', label: 'View request', icon: Eye, onClick: () => openProfileRequestModal(row.raw) },
+        { key: 'reject', label: 'Reject update', icon: XCircle, tone: 'danger', onClick: () => openProfileRequestModal(row.raw) },
+        { key: 'approve', label: 'Approve update', icon: CheckCircle2, tone: 'success', onClick: () => openProfileRequestModal(row.raw) },
+      );
+    } else if (row.type === 'registration') {
+      items.push(
+        {
+          key: 'view',
+          label: 'View client',
+          icon: Eye,
+          onClick: () => {
+            setSelectedClientId(row.raw.id);
+            setShowClientProfile(true);
+          },
+        },
+        {
+          key: 'reject',
+          label: 'Reject registration',
+          icon: XCircle,
+          tone: 'danger',
+          disabled: processingRegistrationId === row.raw.id,
+          onClick: () => handleRejectRegistration(row.raw.id),
+        },
+        {
+          key: 'approve',
+          label: processingRegistrationId === row.raw.id ? 'Approving...' : 'Approve registration',
+          icon: CheckCircle2,
+          tone: 'success',
+          disabled: processingRegistrationId === row.raw.id,
+          onClick: () => handleApproveRegistration(row.raw.id),
+        },
+      );
+    }
+
+    return (
+      <TableActionsDropdown
+        ariaLabel={`Actions for ${row.serviceName || row.client}`}
+        menuWidth={240}
+        items={items}
+      />
+    );
+  };
+
+  const renderServicePanelActions = (service, { canQueueCancellation = true, onCancel } = {}) => (
+    <TableActionsDropdown
+      ariaLabel={`Actions for ${service.name}`}
+      items={[
+        {
+          key: 'view',
+          label: 'View service',
+          icon: Eye,
+          onClick: () => openOrderModal({ serviceName: service.name, id: service.id }),
+        },
+        ...(canQueueCancellation ? [{
+          key: 'cancel',
+          label: 'Queue cancellation',
+          icon: CircleOff,
+          tone: 'warning',
+          onClick: onCancel,
+        }] : []),
+      ]}
+    />
+  );
+
+  const renderProfileRegistrationActions = (client, type = 'profile') => (
+    <TableActionsDropdown
+      ariaLabel={`Actions for ${client.name || client.email}`}
+      items={[
+        { key: 'view', label: 'View request', icon: Eye, onClick: () => openProfileRequestModal(client) },
+        { key: 'reject', label: 'Reject', icon: XCircle, tone: 'danger', onClick: () => openProfileRequestModal(client) },
+        { key: 'approve', label: type === 'registration' ? 'Approve registration' : 'Approve update', icon: CheckCircle2, tone: 'success', onClick: () => openProfileRequestModal(client) },
+      ]}
+    />
+  );
   const selectedOrderForNoteTitle = selectedOrderForNote?.serviceName ?? selectedOrderForNote?.name ?? 'Customer Comment';
   const selectedOrderForNoteIsCancellation = Boolean(selectedOrderForNote?.cancellationRequest);
 
@@ -1377,13 +1507,11 @@ export default function ApprovalsPage() {
                             )}
                           </td>
                           <td className="px-5 py-4 align-top">
-                            <div className="flex items-center justify-center gap-2">
-                              <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="View service">
-                                <Eye size={16} />
-                              </button>
-                              <button type="button" onClick={() => handleQueueCancellation(service)} className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border ${canQueueCancellation ? 'border-orange-400/20 bg-orange-400/10 text-orange-100 hover:bg-orange-400/20' : 'border-white/10 bg-white/5 text-slate-100'}`} title="Queue cancellation">
-                                <CircleOff size={16} />
-                              </button>
+                            <div className="flex items-center justify-center">
+                              {renderServicePanelActions(service, {
+                                canQueueCancellation,
+                                onCancel: () => handleQueueCancellation(service),
+                              })}
                             </div>
                           </td>
                         </tr>
@@ -1446,9 +1574,10 @@ export default function ApprovalsPage() {
                           <td className="px-5 py-4 align-top"><select className="input w-48 whitespace-nowrap" value={service.status} onChange={(e) => updateServiceStatus(service.id, e.target.value)}>{statuses.map((st) => <option key={st} value={st}>{st}</option>)}</select></td>
                           <td className="px-5 py-4 align-top">{service.cancellationRequest ? <span className="text-sm text-orange-200 whitespace-nowrap">{service.cancellationRequest.status}</span> : <span className="text-sm text-slate-500 whitespace-nowrap">No request</span>}</td>
                           <td className="px-5 py-4 align-top">
-                            <div className="flex items-center justify-center gap-2 whitespace-nowrap">
-                              <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100" title="View"><Eye size={16} /></button>
-                              <button type="button" onClick={() => openCancellationModal(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 text-orange-100" title="Queue cancellation"><CircleOff size={16} /></button>
+                            <div className="flex items-center justify-center">
+                              {renderServicePanelActions(service, {
+                                onCancel: () => openCancellationModal(service),
+                              })}
                             </div>
                           </td>
                         </tr>
@@ -1476,9 +1605,10 @@ export default function ApprovalsPage() {
                         <button type="button" onClick={() => openServiceBreakdownModal(service)} className="mt-2 block text-xs text-sky-300 transition hover:text-sky-200">{purchaseDetails.totalPaid !== null ? formatCurrency(purchaseDetails.totalPaid) : '—'}</button>
                       </div>
 
-                      <div className="mt-4 flex items-center justify-center gap-2">
-                        <button type="button" onClick={() => openOrderModal({ serviceName: service.name, id: service.id })} className="btn-secondary px-3"><Eye size={16} /></button>
-                        <button type="button" onClick={() => openCancellationModal(service)} className="btn-secondary border-orange-400/20 bg-orange-400/10 px-3 text-orange-100"><CircleOff size={16} /></button>
+                      <div className="mt-4 flex justify-center">
+                        {renderServicePanelActions(service, {
+                          onCancel: () => openCancellationModal(service),
+                        })}
                       </div>
                     </div>
                   );})}
@@ -1553,76 +1683,8 @@ export default function ApprovalsPage() {
                       <td className="w-px whitespace-nowrap px-5 py-4 align-middle"><StatusBadge status={row.status} /></td>
                       {/* ─── FIX: flex instead of grid, null instead of spacer <span> ─── */}
                       <td className="w-px whitespace-nowrap px-5 py-4 align-middle">
-                        <div className="flex items-center justify-center gap-3">
-                          {row.type === 'order' ? (
-                            <>
-                              {shouldShowCommentAction(row) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openOrderNoteModal(row.raw)}
-                                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
-                                  title="View desired domain comment"
-                                  aria-label={`View desired domain comment for ${row.serviceName}`}
-                                >
-                                  <MessageSquare size={16} />
-                                </button>
-                              ) : null}
-                              <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center">View</button>
-                              <button
-                                type="button"
-                                onClick={() => handleApproveOrder(row.raw)}
-                                disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning}
-                                title={row.approvalBlockReason || 'Approve order'}
-                                className={`inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl px-4 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}
-                              >
-                                <ShieldCheck size={16} /> {processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}
-                              </button>
-                            </>
-                          ) : row.type === 'cancellation' ? (
-                            <>
-                              {shouldShowCommentAction(row) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openOrderNoteModal(row.raw)}
-                                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
-                                  title="View cancellation reason"
-                                  aria-label={`View cancellation reason for ${row.serviceName}`}
-                                >
-                                  <MessageSquare size={16} />
-                                </button>
-                              ) : null}
-                              <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-rose-500">
-                                <XCircle size={16} /> Keep Service
-                              </button>
-                              <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-emerald-500">
-                                <CheckCircle2 size={16} /> {processingCancellationId === row.raw.id ? 'Approving...' : 'Approve Cancellation'}
-                              </button>
-                            </>
-                          ) : row.type === 'profile' ? (
-                            <>
-                              <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View request" aria-label={`View profile request for ${row.client}`}>
-                                <Eye size={16} />
-                              </button>
-                              <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white hover:bg-rose-500">
-                                <XCircle size={16} /> Reject
-                              </button>
-                              <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white hover:bg-emerald-500">
-                                <CheckCircle2 size={16} /> Approve Update
-                              </button>
-                            </>
-                          ) : row.type === 'registration' ? (
-                            <>
-                              <button type="button" onClick={() => { setSelectedClientId(row.raw.id); setShowClientProfile(true); }} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View client" aria-label={`View client ${row.client}`}>
-                                <Eye size={16} />
-                              </button>
-                              <button type="button" onClick={() => handleRejectRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-rose-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-rose-500">
-                                <XCircle size={16} /> Reject
-                              </button>
-                              <button type="button" onClick={() => handleApproveRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="inline-flex min-w-[156px] items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2 text-white disabled:opacity-60 hover:bg-emerald-500">
-                                <CheckCircle2 size={16} /> {processingRegistrationId === row.raw.id ? 'Approving...' : 'Approve'}
-                              </button>
-                            </>
-                          ) : null}
+                        <div className="flex items-center justify-center">
+                          {renderPendingApprovalActions(row)}
                         </div>
                       </td>
                     </tr>
@@ -1660,56 +1722,8 @@ export default function ApprovalsPage() {
                     </div>
                   ) : null}
 
-                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-center">
-                    {row.type === 'order' ? (
-                      <>
-                        {shouldShowCommentAction(row) ? (
-                          <button
-                            type="button"
-                            onClick={() => openOrderNoteModal(row.raw)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
-                            title="View desired domain comment"
-                            aria-label={`View desired domain comment for ${row.serviceName}`}
-                          >
-                            <MessageSquare size={16} />
-                          </button>
-                        ) : null}
-                        <button type="button" onClick={() => openOrderModal(row.raw)} className="btn-secondary min-w-[96px] justify-center px-3">View</button>
-                        <button type="button" onClick={() => handleApproveOrder(row.raw)} disabled={processingOrderId === row.raw.id || !row.canApproveProvisioning} title={row.approvalBlockReason || 'Approve order'} className={`inline-flex min-w-[140px] items-center justify-center gap-2 rounded-2xl px-3 py-2 ${row.canApproveProvisioning ? 'bg-emerald-400 text-white disabled:cursor-not-allowed disabled:opacity-60 hover:bg-emerald-500' : `${blockedApprovalButtonClasses} disabled:cursor-not-allowed`}`}>{processingOrderId === row.raw.id ? 'Approving...' : (row.canApproveProvisioning ? 'Approve' : 'Invoice Pending')}</button>
-                      </>
-                    ) : row.type === 'cancellation' ? (
-                      <>
-                        {shouldShowCommentAction(row) ? (
-                          <button
-                            type="button"
-                            onClick={() => openOrderNoteModal(row.raw)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/10 text-sky-100 transition hover:bg-sky-400/20"
-                            title="View cancellation reason"
-                            aria-label={`View cancellation reason for ${row.serviceName}`}
-                          >
-                            <MessageSquare size={16} />
-                          </button>
-                        ) : null}
-                        <button type="button" onClick={() => handleRejectCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-secondary min-w-[140px] justify-center px-3">Keep Service</button>
-                        <button type="button" onClick={() => handleApproveCancellation(row.raw.id)} disabled={processingCancellationId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingCancellationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
-                      </>
-                    ) : row.type === 'profile' ? (
-                      <>
-                        <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View request" aria-label={`View profile request for ${row.client}`}>
-                          <Eye size={16} />
-                        </button>
-                        <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="btn-secondary min-w-[140px] justify-center px-3">Reject</button>
-                        <button type="button" onClick={() => openProfileRequestModal(row.raw)} className="btn-primary min-w-[140px] justify-center px-3">Approve</button>
-                      </>
-                    ) : row.type === 'registration' ? (
-                      <>
-                        <button type="button" onClick={() => { setSelectedClientId(row.raw.id); setShowClientProfile(true); }} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" title="View client" aria-label={`View client ${row.client}`}>
-                          <Eye size={16} />
-                        </button>
-                        <button type="button" onClick={() => handleRejectRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="btn-secondary min-w-[140px] justify-center px-3">Reject</button>
-                        <button type="button" onClick={() => handleApproveRegistration(row.raw.id)} disabled={processingRegistrationId === row.raw.id} className="btn-primary min-w-[140px] justify-center px-3">{processingRegistrationId === row.raw.id ? 'Approving...' : 'Approve'}</button>
-                      </>
-                    ) : null}
+                  <div className="mt-4 flex justify-center">
+                    {renderPendingApprovalActions(row)}
                   </div>
                 </div>
               ))}
@@ -1753,10 +1767,8 @@ export default function ApprovalsPage() {
                           <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary px-3">Preview</button>
                         </td>
                         <td className="px-5 py-4 align-middle">
-                          <div className="flex items-center justify-center gap-2">
-                            <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary">View</button>
-                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-rose-400 px-3 py-2 text-white hover:bg-rose-500">Reject</button>
-                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 py-2 text-white hover:bg-emerald-500">Approve</button>
+                          <div className="flex items-center justify-center">
+                            {renderProfileRegistrationActions(c, 'profile')}
                           </div>
                         </td>
                       </tr>
@@ -1771,10 +1783,8 @@ export default function ApprovalsPage() {
                           <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary px-3">Preview</button>
                         </td>
                         <td className="px-5 py-4 align-middle">
-                          <div className="flex items-center justify-center gap-2">
-                            <button type="button" onClick={() => openProfileRequestModal(c)} className="btn-secondary">View</button>
-                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-rose-400 px-3 py-2 text-white hover:bg-rose-500">Reject</button>
-                            <button type="button" onClick={() => openProfileRequestModal(c)} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 py-2 text-white hover:bg-emerald-500">Approve</button>
+                          <div className="flex items-center justify-center">
+                            {renderProfileRegistrationActions(c, 'registration')}
                           </div>
                         </td>
                       </tr>

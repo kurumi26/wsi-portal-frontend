@@ -8,6 +8,7 @@ import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import { usePortal } from '../../context/PortalContext';
 import usePageTitle from '../../hooks/usePageTitle';
 import { portalApi } from '../../services/portalApi';
@@ -675,60 +676,46 @@ export default function AdminContractsPage() {
     }
   };
 
-  const tableActionButtonClass = 'btn-secondary flex h-10 w-10 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-60';
-  const successActionButtonClass = 'flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/15 p-0 text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60';
   const successButtonClass = 'flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/15 px-4 py-2 text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60';
-  const gridActionButtonClass = 'btn-secondary flex h-11 w-11 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-60';
-  const successGridActionButtonClass = 'flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/15 p-0 text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60';
 
   const renderContractActions = (contract, layout = 'table') => {
     const canVerify = contract.status === 'Accepted' && !isContractVerified(contract);
-    const isTable = layout === 'table';
-    const defaultButtonClass = isTable ? tableActionButtonClass : gridActionButtonClass;
-    const verifyButtonClass = isTable ? successActionButtonClass : successGridActionButtonClass;
 
     return (
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => handleReviewContract(contract.id)}
-          className={defaultButtonClass}
-          title="Review agreement"
-          aria-label={`Review agreement ${contract.title}`}
-        >
-          <Eye size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleVerify(contract.id)}
-          disabled={!canVerify || workingContractId === contract.id}
-          className={verifyButtonClass}
-          title={canVerify ? 'Verify acceptance' : 'Verification unavailable'}
-          aria-label={`Verify agreement ${contract.title}`}
-        >
-          <Check size={16} strokeWidth={3} />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleDownload(contract)}
-          disabled={downloadingContractId === contract.id}
-          className={defaultButtonClass}
-          title={downloadingContractId === contract.id ? 'Downloading signable agreement PDF' : 'Download signable agreement PDF'}
-          aria-label={`Download signable agreement PDF ${contract.title}`}
-        >
-          <Download size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => setESignContractId(contract.id)}
-          disabled={isESignSubmitting && eSignContractId === contract.id}
-          className={defaultButtonClass}
-          title="Sign electronically"
-          aria-label={`Sign contract electronically ${contract.title}`}
-        >
-          <PenLine size={16} />
-        </button>
-      </div>
+      <TableActionsDropdown
+        ariaLabel={`Actions for ${contract.title}`}
+        align={layout === 'grid' ? 'end' : 'end'}
+        items={[
+          {
+            key: 'review',
+            label: 'Review agreement',
+            icon: Eye,
+            onClick: () => handleReviewContract(contract.id),
+          },
+          {
+            key: 'verify',
+            label: canVerify ? 'Verify acceptance' : 'Verification unavailable',
+            icon: Check,
+            tone: 'success',
+            disabled: !canVerify || workingContractId === contract.id,
+            onClick: () => handleVerify(contract.id),
+          },
+          {
+            key: 'download',
+            label: downloadingContractId === contract.id ? 'Downloading PDF...' : 'Download signable PDF',
+            icon: Download,
+            disabled: downloadingContractId === contract.id,
+            onClick: () => handleDownload(contract),
+          },
+          {
+            key: 'esign',
+            label: 'Sign electronically',
+            icon: PenLine,
+            disabled: isESignSubmitting && eSignContractId === contract.id,
+            onClick: () => setESignContractId(contract.id),
+          },
+        ]}
+      />
     );
   };
 

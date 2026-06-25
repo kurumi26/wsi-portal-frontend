@@ -3,6 +3,7 @@ import { KeyRound, LayoutGrid, List, PencilLine, Plus, Power, Search, UsersRound
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import { usePortal } from '../../context/PortalContext';
 import { formatDateTime } from '../../utils/format';
 
@@ -286,42 +287,35 @@ export default function UsersPage() {
       headerContentClassName: 'justify-end',
       cellClassName: 'text-right',
       render: (_, user) => {
-        const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
-        const statusActionClass = user.status === 'Enabled'
-          ? 'bg-rose-400 text-white hover:bg-rose-500'
-          : 'bg-emerald-400 text-white hover:bg-emerald-500';
+        const statusActionLabel = user.status === 'Enabled' ? 'Deactivate account' : 'Activate account';
 
         return (
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => handleUpdateDetails(user)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
-              title={`Update details for ${user.name}`}
-              aria-label={`Update details for ${user.name}`}
-            >
-              <PencilLine size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleResetPassword(user)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
-              title={`Reset password for ${user.name}`}
-              aria-label={`Reset password for ${user.name}`}
-            >
-              <KeyRound size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleStatus(user)}
-              disabled={togglingUserId === user.id}
-              className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${statusActionClass}`}
-              title={`${statusActionLabel} for ${user.name}`}
-              aria-label={`${statusActionLabel} for ${user.name}`}
-            >
-              <Power size={16} />
-            </button>
-          </div>
+          <TableActionsDropdown
+            ariaLabel={`Actions for ${user.name}`}
+            align="end"
+            items={[
+              {
+                key: 'edit',
+                label: 'Update details',
+                icon: PencilLine,
+                onClick: () => handleUpdateDetails(user),
+              },
+              {
+                key: 'reset-password',
+                label: 'Reset password',
+                icon: KeyRound,
+                onClick: () => handleResetPassword(user),
+              },
+              {
+                key: 'toggle-status',
+                label: statusActionLabel,
+                icon: Power,
+                tone: user.status === 'Enabled' ? 'danger' : 'success',
+                disabled: togglingUserId === user.id,
+                onClick: () => handleToggleStatus(user),
+              },
+            ]}
+          />
         );
       },
     },
@@ -519,13 +513,7 @@ export default function UsersPage() {
         </div>
       ) : filteredUsers.length ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredUsers.map((user) => {
-            const statusActionLabel = user.status === 'Enabled' ? 'Deactivate Account' : 'Activate Account';
-            const statusActionClass = user.status === 'Enabled'
-              ? 'bg-rose-400 text-white hover:bg-rose-500'
-              : 'bg-emerald-400 text-white hover:bg-emerald-500';
-
-            return (
+          {filteredUsers.map((user) => (
               <div key={user.id} className="panel p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3">
@@ -555,39 +543,25 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleUpdateDetails(user)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
-                    title={`Update details for ${user.name}`}
-                    aria-label={`Update details for ${user.name}`}
-                  >
-                    <PencilLine size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleResetPassword(user)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10 disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80"
-                    title={`Reset password for ${user.name}`}
-                    aria-label={`Reset password for ${user.name}`}
-                  >
-                    <KeyRound size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleStatus(user)}
-                    disabled={togglingUserId === user.id}
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${statusActionClass}`}
-                    title={`${statusActionLabel} for ${user.name}`}
-                    aria-label={`${statusActionLabel} for ${user.name}`}
-                  >
-                    <Power size={16} />
-                  </button>
+                <div className="mt-4 flex justify-end">
+                  <TableActionsDropdown
+                    ariaLabel={`Actions for ${user.name}`}
+                    items={[
+                      { key: 'edit', label: 'Update details', icon: PencilLine, onClick: () => handleUpdateDetails(user) },
+                      { key: 'reset-password', label: 'Reset password', icon: KeyRound, onClick: () => handleResetPassword(user) },
+                      {
+                        key: 'toggle-status',
+                        label: user.status === 'Enabled' ? 'Deactivate account' : 'Activate account',
+                        icon: Power,
+                        tone: user.status === 'Enabled' ? 'danger' : 'success',
+                        disabled: togglingUserId === user.id,
+                        onClick: () => handleToggleStatus(user),
+                      },
+                    ]}
+                  />
                 </div>
               </div>
-            );
-          })}
+          ))}
         </div>
       ) : (
         <div className="panel mt-6 px-5 py-12 text-center text-sm text-slate-400">No users match the current search and filters.</div>

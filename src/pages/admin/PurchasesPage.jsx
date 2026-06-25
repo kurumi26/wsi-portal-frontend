@@ -5,6 +5,7 @@ import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import { usePortal } from '../../context/PortalContext';
 import { collectPurchaseLineItems, getPurchaseClientEmail, getPurchaseDisplayId } from '../../utils/adminDeals';
 import { findClientByRecord, getClientDisplayName } from '../../utils/clients';
@@ -25,8 +26,6 @@ const emptyAddTransactionForm = {
   notes: '',
   dueDate: '',
 };
-
-const workspaceActionButtonClass = 'btn-secondary p-0 flex shrink-0 items-center justify-center disabled:cursor-not-allowed disabled:opacity-60';
 
 const getDisplayValue = (...values) => {
   for (const value of values) {
@@ -335,60 +334,39 @@ export default function PurchasesPage() {
     }
   };
 
-  const getMarkPaidActionTitle = (purchase) => {
-    if (!purchase) {
-      return 'Mark invoice as paid';
-    }
-
-    if (processingPaidPurchaseId === String(purchase.id)) {
-      return 'Marking invoice as paid...';
-    }
-
-    if (purchase.isInvoicePaid) {
-      return 'Invoice already paid';
-    }
-
-    return purchase.markPaidBlockedReason || 'Mark invoice as paid';
-  };
-
-  const renderPurchaseActions = (purchase, buttonSizeClasses = 'h-10 w-10') => {
+  const renderPurchaseActions = (purchase) => {
     const isProcessing = processingPaidPurchaseId === String(purchase.id);
     const markPaidDisabled = isProcessing || !purchase.canMarkInvoicePaid;
     const rejectDisabled = processingRejectPurchaseId === String(purchase.id) || purchase.isInvoicePaid || purchase.invoiceStatus === 'Cancelled';
-    const baseButtonClasses = `${buttonSizeClasses} ${workspaceActionButtonClass} transition`;
 
     return (
-      <>
-        <button
-          type="button"
-          onClick={() => openPurchaseDetails(purchase)}
-          className={`${baseButtonClasses} border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]`}
-          title="View purchase details"
-          aria-label={`View purchase details for ${purchase.displayId}`}
-        >
-          <Eye size={16} className="text-current" />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleMarkPaid(purchase)}
-          disabled={markPaidDisabled}
-          className={`${baseButtonClasses} ${markPaidDisabled ? 'border-white/10 bg-white/[0.04] text-slate-500' : 'border-emerald-400/25 bg-emerald-400/12 text-emerald-200 hover:bg-emerald-400/20'}`}
-          title={getMarkPaidActionTitle(purchase)}
-          aria-label={`${getMarkPaidActionTitle(purchase)} for ${purchase.invoiceNumber || purchase.displayId}`}
-        >
-          <CheckCircle2 size={16} className={markPaidDisabled ? 'text-slate-500' : 'text-emerald-400'} strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleReject(purchase)}
-          disabled={rejectDisabled}
-          className={`${baseButtonClasses} ${rejectDisabled ? 'border-white/10 bg-white/[0.04] text-slate-500' : 'border-rose-400/25 bg-rose-400/12 text-rose-200 hover:bg-rose-400/20'}`}
-          title={purchase.isInvoicePaid ? 'Cannot reject a paid invoice' : 'Reject purchase'}
-          aria-label={`Reject purchase ${purchase.displayId}`}
-        >
-          <XCircle size={16} className={rejectDisabled ? 'text-slate-500' : 'text-rose-400'} strokeWidth={2} />
-        </button>
-      </>
+      <TableActionsDropdown
+        ariaLabel={`Actions for ${purchase.displayId}`}
+        items={[
+          {
+            key: 'view',
+            label: 'View purchase details',
+            icon: Eye,
+            onClick: () => openPurchaseDetails(purchase),
+          },
+          {
+            key: 'mark-paid',
+            label: isProcessing ? 'Marking as paid...' : 'Mark invoice as paid',
+            icon: CheckCircle2,
+            tone: 'success',
+            disabled: markPaidDisabled,
+            onClick: () => handleMarkPaid(purchase),
+          },
+          {
+            key: 'reject',
+            label: purchase.isInvoicePaid ? 'Cannot reject paid invoice' : 'Reject purchase',
+            icon: XCircle,
+            tone: 'danger',
+            disabled: rejectDisabled,
+            onClick: () => handleReject(purchase),
+          },
+        ]}
+      />
     );
   };
 
@@ -493,7 +471,7 @@ export default function PurchasesPage() {
       label: 'Actions',
       hideable: false,
       headerClassName: 'px-6 py-5',
-      cellClassName: 'px-6 py-5 flex items-center justify-start gap-2 text-center align-middle',
+      cellClassName: 'px-6 py-5 text-center align-middle',
       render: (_, row) => renderPurchaseActions(row),
     },
   ];
@@ -640,7 +618,7 @@ export default function PurchasesPage() {
                 </div>
 
                 <div className="mt-auto flex items-center justify-center gap-2">
-                  {renderPurchaseActions(p, 'h-9 w-9 rounded-lg')}
+                  {renderPurchaseActions(p)}
                 </div>
               </div>
             ))}

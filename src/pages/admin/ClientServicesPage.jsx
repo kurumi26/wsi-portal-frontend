@@ -5,6 +5,7 @@ import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import UserAvatar from '../../components/common/UserAvatar';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import { usePortal } from '../../context/PortalContext';
 import { clientMatchesRecord, findClientByRecord } from '../../utils/clients';
 import { formatCurrency, formatDateTime } from '../../utils/format';
@@ -1186,15 +1187,22 @@ export default function ClientServicesPage() {
                         )}
                       </td>
                       <td className="px-5 py-4 align-top">
-                        <div className="flex justify-end gap-2 whitespace-nowrap">
-                          <button type="button" onClick={() => openDiscountModal(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-emerald-600/10 text-emerald-100 transition hover:bg-emerald-600/20" title="Apply discount" aria-label={`Apply discount to ${service.name}`}><Percent size={16} /></button>
-                          <button type="button" onClick={() => openPricingLogs(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="Pricing logs" aria-label={`Pricing logs for ${service.name}`}><CheckCircle2 size={16} /></button>
-                          <button type="button" onClick={() => handleViewClientFromService(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="View client profile" aria-label={`View client profile for ${service.name}`}><Eye size={16} /></button>
-                          {canQueueCancellation ? (
-                            <button type="button" onClick={() => openCancellationModal(service)} className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 text-orange-100 transition hover:bg-orange-400/20" title="Queue cancellation" aria-label={`Queue cancellation for ${service.name}`}><CircleOff size={16} /></button>
-                          ) : hasPendingCancellation ? (
-                            <span className="inline-flex items-center rounded-2xl border border-orange-400/20 bg-orange-400/10 px-3 py-2 text-xs text-orange-100">Pending</span>
-                          ) : null}
+                        <div className="flex justify-end">
+                          <TableActionsDropdown
+                            ariaLabel={`Actions for ${service.name}`}
+                            items={[
+                              { key: 'discount', label: 'Apply discount', icon: Percent, tone: 'success', onClick: () => openDiscountModal(service) },
+                              { key: 'pricing-logs', label: 'Pricing logs', icon: CheckCircle2, onClick: () => openPricingLogs(service) },
+                              { key: 'view-client', label: 'View client profile', icon: Eye, onClick: () => handleViewClientFromService(service) },
+                              ...(canQueueCancellation ? [{
+                                key: 'cancel',
+                                label: 'Queue cancellation',
+                                icon: CircleOff,
+                                tone: 'warning',
+                                onClick: () => openCancellationModal(service),
+                              }] : []),
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -1240,15 +1248,22 @@ export default function ClientServicesPage() {
                     <p className="mt-2 text-sm font-medium text-white">{expirationMeta.value}</p>
                     <p className={`mt-1 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>{expirationMeta.helper}</p>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2 justify-end">
-                    <button type="button" onClick={() => openDiscountModal(service)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-emerald-600/10 text-emerald-100 transition hover:bg-emerald-600/20" title="Apply discount" aria-label={`Apply discount to ${service.name}`}><Percent size={16} /></button>
-                    <button type="button" onClick={() => openPricingLogs(service)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="Pricing logs" aria-label={`Pricing logs for ${service.name}`}><CheckCircle2 size={16} /></button>
-                    <button type="button" onClick={() => handleViewClientFromService(service)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-100 transition hover:bg-white/10" title="View client profile" aria-label={`View client profile for ${service.name}`}><Eye size={16} /></button>
-                    {canQueueCancellation ? (
-                      <button type="button" onClick={() => openCancellationModal(service)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 text-orange-100 transition hover:bg-orange-400/20" title="Queue cancellation" aria-label={`Queue cancellation for ${service.name}`}><CircleOff size={16} /></button>
-                    ) : hasPendingCancellation ? (
-                      <span className="inline-flex items-center rounded-2xl border border-orange-400/20 bg-orange-400/10 px-3 py-2 text-xs text-orange-100">Pending</span>
-                    ) : null}
+                  <div className="mt-4 flex justify-end">
+                    <TableActionsDropdown
+                      ariaLabel={`Actions for ${service.name}`}
+                      items={[
+                        { key: 'discount', label: 'Apply discount', icon: Percent, tone: 'success', onClick: () => openDiscountModal(service) },
+                        { key: 'pricing-logs', label: 'Pricing logs', icon: CheckCircle2, onClick: () => openPricingLogs(service) },
+                        { key: 'view-client', label: 'View client profile', icon: Eye, onClick: () => handleViewClientFromService(service) },
+                        ...(canQueueCancellation ? [{
+                          key: 'cancel',
+                          label: 'Queue cancellation',
+                          icon: CircleOff,
+                          tone: 'warning',
+                          onClick: () => openCancellationModal(service),
+                        }] : []),
+                      ]}
+                    />
                   </div>
                 </div>
               );

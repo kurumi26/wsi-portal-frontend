@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import { usePortal } from '../../context/PortalContext';
 import usePageTitle from '../../hooks/usePageTitle';
 import { formatDateTime } from '../../utils/format';
@@ -18,8 +19,6 @@ const feedbackToneClasses = {
 };
 
 const CONTRACTS_PER_PAGE = 5;
-
-const workspaceActionButtonClass = 'btn-secondary flex h-10 w-10 shrink-0 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-60';
 
 const getContractSearchValue = (contract) => [
   contract?.title,
@@ -459,25 +458,28 @@ export default function AdminManageContractsPage() {
                           )}
                         </td>
                         <td className="px-5 py-4 align-middle text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              className={workspaceActionButtonClass}
-                              title="Preview contract"
-                              aria-label={`Preview ${contract.title}`}
-                              onClick={(e) => { e.stopPropagation(); setPreviewContract(contract); setPreviewOpen(true); }}
-                            >
-                              <Eye size={16} className="text-current" />
-                            </button>
-                            <Link
-                              to={getContractEditorPath(contract.id)}
-                              className={workspaceActionButtonClass}
-                              title="Open full editor"
-                              aria-label={`Open full editor for ${contract.title}`}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <PenLine size={16} className="text-current" strokeWidth={2.3} />
-                            </Link>
+                          <div className="flex items-center justify-center">
+                            <TableActionsDropdown
+                              ariaLabel={`Actions for ${contract.title}`}
+                              items={[
+                                {
+                                  key: 'preview',
+                                  label: 'Preview contract',
+                                  icon: Eye,
+                                  onClick: () => {
+                                    setPreviewContract(contract);
+                                    setPreviewOpen(true);
+                                  },
+                                },
+                                {
+                                  key: 'editor',
+                                  label: 'Open full editor',
+                                  icon: PenLine,
+                                  to: getContractEditorPath(contract.id),
+                                  onClick: (event) => event.stopPropagation(),
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>

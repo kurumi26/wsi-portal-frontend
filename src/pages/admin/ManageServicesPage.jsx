@@ -24,6 +24,7 @@ import {
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
 import StatusBadge from '../../components/common/StatusBadge';
+import TableActionsDropdown from '../../components/common/TableActionsDropdown';
 import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { clientMatchesRecord, getClientDisplayName } from '../../utils/clients';
@@ -1795,55 +1796,45 @@ export default function ManageServicesPage() {
                         )}
                       </td>
                       <td className="px-5 py-4 align-top">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleViewClientFromService(service)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-800 shadow-sm transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
-                            title="View client"
-                            aria-label={`View client for ${service.name}`}
-                          >
-                            <Eye size={16} color="#111827" strokeWidth={2.3} className="dark:!text-slate-100" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openDiscountModal(service)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm transition hover:bg-emerald-200 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/20"
-                            title="Apply discount"
-                            aria-label={`Apply discount to ${service.name}`}
-                          >
-                            <Percent size={16} color="#111827" strokeWidth={2.3} className="dark:!text-emerald-100" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openPricingLogs(service)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-sky-300 bg-sky-100 text-sky-800 shadow-sm transition hover:bg-sky-200 dark:border-sky-400/25 dark:bg-sky-400/10 dark:text-sky-100 dark:hover:bg-sky-400/20"
-                            title="View pricing logs"
-                            aria-label={`View pricing logs for ${service.name}`}
-                          >
-                            <CreditCard size={16} color="#111827" strokeWidth={2.3} className="dark:!text-sky-100" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleServiceStatus(service)}
-                            disabled={statusUpdatingServiceId === service.id}
-                            className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition disabled:bg-white/10 disabled:border-white/6 disabled:text-slate-400 disabled:opacity-80 ${service.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
-                            title={service.status === 'Active' ? 'Disable service' : 'Enable service'}
-                            aria-label={`${service.status === 'Active' ? 'Disable' : 'Enable'} ${service.name}`}
-                          >
-                            {service.status === 'Active'
-                              ? <XCircle size={16} strokeWidth={2.3} />
-                              : <CheckCircle2 size={16} strokeWidth={2.3} />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openAddModal(service)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-300 bg-violet-100 text-violet-800 shadow-sm transition hover:bg-violet-200 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100 dark:hover:bg-violet-400/20"
-                            title="Edit service"
-                            aria-label={`Edit ${service.name}`}
-                          >
-                            <PencilLine size={16} color="#111827" strokeWidth={2.3} className="dark:!text-violet-100" />
-                          </button>
+                        <div className="flex justify-end">
+                          <TableActionsDropdown
+                            ariaLabel={`Actions for ${service.name}`}
+                            items={[
+                              {
+                                key: 'view-client',
+                                label: 'View client',
+                                icon: Eye,
+                                onClick: () => handleViewClientFromService(service),
+                              },
+                              {
+                                key: 'discount',
+                                label: 'Apply discount',
+                                icon: Percent,
+                                tone: 'success',
+                                onClick: () => openDiscountModal(service),
+                              },
+                              {
+                                key: 'pricing-logs',
+                                label: 'View pricing logs',
+                                icon: CreditCard,
+                                onClick: () => openPricingLogs(service),
+                              },
+                              {
+                                key: 'toggle-status',
+                                label: service.status === 'Active' ? 'Disable service' : 'Enable service',
+                                icon: service.status === 'Active' ? XCircle : CheckCircle2,
+                                tone: service.status === 'Active' ? 'danger' : 'success',
+                                disabled: statusUpdatingServiceId === service.id,
+                                onClick: () => handleToggleServiceStatus(service),
+                              },
+                              {
+                                key: 'edit',
+                                label: 'Edit service',
+                                icon: PencilLine,
+                                onClick: () => openAddModal(service),
+                              },
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -1922,28 +1913,24 @@ export default function ManageServicesPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleViewClientFromService(service)} className="btn-secondary px-3 py-1.5 text-xs">
-                    <Eye size={14} /> View Client
-                  </button>
-                  <button type="button" onClick={() => openDiscountModal(service)} className="btn-secondary px-3 py-1.5 text-xs">
-                    <Percent size={14} /> Discount
-                  </button>
-                  <button type="button" onClick={() => openPricingLogs(service)} className="btn-secondary px-3 py-1.5 text-xs">
-                    <CreditCard size={14} /> Logs
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleServiceStatus(service)}
-                    disabled={statusUpdatingServiceId === service.id}
-                    className={`btn-secondary px-3 py-1.5 text-xs disabled:opacity-60 ${service.status === 'Active' ? 'bg-rose-400 text-white hover:bg-rose-500' : 'bg-emerald-400 text-white hover:bg-emerald-500'}`}
-                  >
-                    {service.status === 'Active' ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-                    {service.status === 'Active' ? 'Disable' : 'Enable'}
-                  </button>
-                  <button type="button" onClick={() => openAddModal(service)} className="btn-secondary px-3 py-1.5 text-xs">
-                    <PencilLine size={14} /> Edit
-                  </button>
+                <div className="mt-5 flex justify-end">
+                  <TableActionsDropdown
+                    ariaLabel={`Actions for ${service.name}`}
+                    items={[
+                      { key: 'view-client', label: 'View client', icon: Eye, onClick: () => handleViewClientFromService(service) },
+                      { key: 'discount', label: 'Apply discount', icon: Percent, tone: 'success', onClick: () => openDiscountModal(service) },
+                      { key: 'pricing-logs', label: 'View pricing logs', icon: CreditCard, onClick: () => openPricingLogs(service) },
+                      {
+                        key: 'toggle-status',
+                        label: service.status === 'Active' ? 'Disable service' : 'Enable service',
+                        icon: service.status === 'Active' ? XCircle : CheckCircle2,
+                        tone: service.status === 'Active' ? 'danger' : 'success',
+                        disabled: statusUpdatingServiceId === service.id,
+                        onClick: () => handleToggleServiceStatus(service),
+                      },
+                      { key: 'edit', label: 'Edit service', icon: PencilLine, onClick: () => openAddModal(service) },
+                    ]}
+                  />
                 </div>
               </div>
               );
