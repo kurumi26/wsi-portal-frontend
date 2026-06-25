@@ -8,6 +8,8 @@ import UserAvatar from '../../components/common/UserAvatar';
 import { usePortal } from '../../context/PortalContext';
 import { clientMatchesRecord } from '../../utils/clients';
 import { formatCurrency, formatDate } from '../../utils/format';
+import { getAddonBillingCycleLabel } from '../../utils/addons';
+import { getAdminServiceExpirationMeta } from '../../utils/services';
 
 const emptyAddClientForm = {
   ownerId: '',
@@ -23,6 +25,8 @@ export default function ClientsPage() {
   const { clients, adminUsers, adminPurchases, adminServices, approveProfileUpdateRequest, rejectProfileUpdateRequest, approveClientRegistration, rejectClientRegistration, updateClientAccount, createClient, updateClientAccountStatus } = usePortal();
   const [selectedAuditTrail, setSelectedAuditTrail] = useState(null);
   const [selectedClientAccount, setSelectedClientAccount] = useState(null);
+  const [selectedClientServices, setSelectedClientServices] = useState(null);
+  const [selectedClientServiceDetail, setSelectedClientServiceDetail] = useState(null);
   const [selectedProfileRequest, setSelectedProfileRequest] = useState(null);
   const [approvalDecision, setApprovalDecision] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
@@ -155,6 +159,36 @@ export default function ClientsPage() {
   const openClientAccountModal = (client) => {
     setSelectedClientAccount(client);
   };
+
+  const openClientServicesModal = (client) => {
+    setSelectedClientServiceDetail(null);
+    setSelectedClientServices(client);
+  };
+
+  const selectedClientServicesList = useMemo(() => {
+    if (!selectedClientServices) {
+      return [];
+    }
+
+    return adminServices.filter(
+      (service) => clientMatchesRecord(selectedClientServices, service.client, service.clientEmail),
+    );
+  }, [adminServices, selectedClientServices]);
+
+  const selectedClientServicePurchase = useMemo(() => {
+    if (!selectedClientServiceDetail || !selectedClientServices) {
+      return null;
+    }
+
+    return adminPurchases.find((purchase) => {
+      if (!clientMatchesRecord(selectedClientServices, purchase.client, purchase.clientEmail)) {
+        return false;
+      }
+
+      const serviceName = String(purchase.serviceName ?? purchase.service_name ?? '').trim().toLowerCase();
+      return serviceName === String(selectedClientServiceDetail.name ?? '').trim().toLowerCase();
+    }) ?? null;
+  }, [adminPurchases, selectedClientServiceDetail, selectedClientServices]);
 
   const downloadAuditTrailPdf = (client) => {
     const lines = buildAuditTrailLines(client);
@@ -598,7 +632,17 @@ export default function ClientsPage() {
       sortable: true,
       render: (value) => value || 'Registered',
     },
-    { key: 'services', label: 'Service', sortable: true, sortValue: (r) => Number(r.services || 0) },
+    { key: 'services', label: 'Services', sortable: true, sortValue: (r) => Number(r.services || 0), render: (value, row) => (
+      <button
+        type="button"
+        onClick={() => openClientServicesModal(row)}
+        className="font-semibold text-sky-300 underline-offset-2 transition hover:text-sky-200 hover:underline"
+        title={`View services for ${row.name}`}
+        aria-label={`View ${value ?? 0} services for ${row.name}`}
+      >
+        {value ?? 0}
+      </button>
+    ) },
     {
       key: 'status',
       label: 'Status',
@@ -650,7 +694,7 @@ export default function ClientsPage() {
           onClick={openAddClientModal}
           className="btn-primary gap-2 px-6 py-2"
         >
-          <Plus size={20} /> Add
+          <Plus size={20} /> Add Client
         </button>
 
         {clientsView === 'list' ? <div id="clients-column-visibility-slot" className="shrink-0" /> : null}
@@ -720,7 +764,13 @@ export default function ClientsPage() {
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Services</p>
-                  <p className="mt-2 text-sm font-medium text-white">{client.services}</p>
+                  <button
+                    type="button"
+                    onClick={() => openClientServicesModal(client)}
+                    className="mt-2 text-sm font-semibold text-sky-300 transition hover:text-sky-200 hover:underline"
+                  >
+                    {client.services}
+                  </button>
                 </div>
               </div>
 
@@ -1017,6 +1067,184 @@ export default function ClientsPage() {
           </div>
         </div>,
         document.body
+      ) : null}
+
+      {selectedClientServices ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="panel max-h-[85vh] w-full max-w-4xl overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Client Services</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">{selectedClientServices.name}</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  {selectedClientServices.company} • {selectedClientServices.email}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedClientServices(null)}
+                className="btn-secondary px-4"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[calc(85vh-110px)] overflow-y-auto px-6 py-5">
+              {selectedClientServicesList.length ? (
+                <div className="space-y-3">
+                  {selectedClientServicesList.map((service) => (
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() => setSelectedClientServiceDetail(service)}
+                      className="panel-muted w-full rounded-3xl p-4 text-left transition hover:border-sky-300/30 hover:bg-white/10"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="font-medium text-white">{service.name}</p>
+                          <p className="mt-1 text-sm text-slate-400">{service.category} • {service.plan}</p>
+                          <p className="mt-2 text-xs text-sky-300">Click to view full service information</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <StatusBadge status={service.status} />
+                          <span className="text-xs text-slate-500">Renews {formatDate(service.renewsOn)}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="panel-muted rounded-3xl p-6 text-center text-sm text-slate-400">
+                  No services found for this client.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {selectedClientServiceDetail ? createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="panel max-h-[88vh] w-full max-w-4xl overflow-hidden">
+            {(() => {
+              const expirationMeta = getAdminServiceExpirationMeta(selectedClientServiceDetail);
+              const addonEntries = Array.isArray(selectedClientServiceDetail.addons) ? selectedClientServiceDetail.addons : [];
+
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Client Service Details</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-white">{selectedClientServiceDetail.name}</h2>
+                      <p className="mt-2 text-sm text-slate-400">
+                        {selectedClientServiceDetail.client || selectedClientServices?.name} • {selectedClientServiceDetail.category} • {selectedClientServiceDetail.plan}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedClientServiceDetail(null)}
+                      className="btn-secondary px-4"
+                    >
+                      Back
+                    </button>
+                  </div>
+
+                  <div className="max-h-[calc(88vh-110px)] space-y-6 overflow-y-auto px-6 py-5">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Status</p>
+                        <div className="mt-3"><StatusBadge status={selectedClientServiceDetail.status} /></div>
+                      </div>
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Base Price</p>
+                        <p className="mt-2 text-xl font-semibold text-sky-300">
+                          {typeof selectedClientServiceDetail.basePrice === 'number' ? formatCurrency(selectedClientServiceDetail.basePrice) : '—'}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">{selectedClientServiceDetail.billing ?? 'Billing cycle not set'}</p>
+                      </div>
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Renewal Countdown</p>
+                        <p className={`mt-2 text-xl font-semibold ${expirationMeta.isExpired ? 'text-rose-300' : 'text-white'}`}>{expirationMeta.value}</p>
+                        <p className={`mt-2 text-xs ${expirationMeta.isExpired ? 'text-rose-300' : 'text-slate-500'}`}>{expirationMeta.helper}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Service Information</p>
+                        <dl className="mt-4 space-y-3 text-sm">
+                          <div className="flex justify-between gap-4"><dt className="text-slate-400">Category</dt><dd className="font-medium text-white">{selectedClientServiceDetail.category || '—'}</dd></div>
+                          <div className="flex justify-between gap-4"><dt className="text-slate-400">Plan</dt><dd className="font-medium text-white">{selectedClientServiceDetail.plan || '—'}</dd></div>
+                          <div className="flex justify-between gap-4"><dt className="text-slate-400">Renews On</dt><dd className="font-medium text-white">{formatDate(selectedClientServiceDetail.renewsOn)}</dd></div>
+                          <div className="flex justify-between gap-4"><dt className="text-slate-400">Client Email</dt><dd className="font-medium text-white">{selectedClientServiceDetail.clientEmail || selectedClientServices?.email || '—'}</dd></div>
+                        </dl>
+                      </div>
+
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Purchase Record</p>
+                        {selectedClientServicePurchase ? (
+                          <dl className="mt-4 space-y-3 text-sm">
+                            <div className="flex justify-between gap-4"><dt className="text-slate-400">Order</dt><dd className="font-medium text-white">{selectedClientServicePurchase.id}</dd></div>
+                            <div className="flex justify-between gap-4"><dt className="text-slate-400">Amount</dt><dd className="font-medium text-sky-300">{formatCurrency(selectedClientServicePurchase.amount)}</dd></div>
+                            <div className="flex justify-between gap-4"><dt className="text-slate-400">Date</dt><dd className="font-medium text-white">{formatDate(selectedClientServicePurchase.date)}</dd></div>
+                            <div className="flex justify-between gap-4"><dt className="text-slate-400">Payment</dt><dd className="font-medium text-white">{selectedClientServicePurchase.paymentMethod || '—'}</dd></div>
+                            <div className="flex justify-between gap-4"><dt className="text-slate-400">Status</dt><dd><StatusBadge status={selectedClientServicePurchase.status} /></dd></div>
+                          </dl>
+                        ) : (
+                          <p className="mt-4 text-sm text-slate-400">No linked purchase record found for this service.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="panel-muted rounded-3xl p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected Add-ons</p>
+                      <div className="mt-4 space-y-3">
+                        {addonEntries.length ? addonEntries.map((addon) => (
+                          <div key={addon.label} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-sm font-medium text-white">{addon.label}</p>
+                                <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">{getAddonBillingCycleLabel(addon.billingCycle, 'Recurring')}</p>
+                              </div>
+                              <p className="text-sm font-semibold text-sky-300">{typeof addon.price === 'number' ? formatCurrency(addon.price) : '—'}</p>
+                            </div>
+                          </div>
+                        )) : (
+                          <p className="text-sm text-slate-400">No add-ons recorded for this service.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedClientServiceDetail.cancellationRequest ? (
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cancellation Request</p>
+                        <div className="mt-3 space-y-2 text-sm text-slate-300">
+                          <p><span className="text-slate-400">Status:</span> {selectedClientServiceDetail.cancellationRequest.status}</p>
+                          {selectedClientServiceDetail.cancellationRequest.reason ? (
+                            <p><span className="text-slate-400">Reason:</span> {selectedClientServiceDetail.cancellationRequest.reason}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {Array.isArray(selectedClientServiceDetail.migrationPaths) && selectedClientServiceDetail.migrationPaths.length ? (
+                      <div className="panel-muted rounded-3xl p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Migration Paths</p>
+                        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-300">
+                          {selectedClientServiceDetail.migrationPaths.map((path) => (
+                            <li key={path}>{path}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body,
       ) : null}
 
       {selectedProfileRequest?.profileUpdateRequest ? createPortal(

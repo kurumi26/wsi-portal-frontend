@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, ChevronDown, List, Grid2x2, Eye, CheckCircle2, XCircle } from 'lucide-react';
+import { Search, ChevronDown, List, Grid2x2, Eye, CheckCircle2, XCircle, Plus } from 'lucide-react';
 import DataTable from '../../components/common/DataTable';
 import PageHeader from '../../components/common/PageHeader';
 import Pagination from '../../components/common/Pagination';
@@ -14,6 +14,17 @@ import { getDesiredDomainValue } from '../../utils/orders';
 
 const PURCHASES_PER_PAGE = 5;
 const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/api\/?$/i, '');
+
+const emptyAddTransactionForm = {
+  userId: '',
+  serviceId: '',
+  serviceName: '',
+  category: '',
+  amount: '',
+  paymentMethod: 'manual',
+  notes: '',
+  dueDate: '',
+};
 
 const workspaceActionButtonClass = 'btn-secondary p-0 flex shrink-0 items-center justify-center disabled:cursor-not-allowed disabled:opacity-60';
 
@@ -148,7 +159,7 @@ const buildPurchaseRow = (purchase, clients) => {
 };
 
 export default function PurchasesPage() {
-  const { adminPurchases, clients, markAdminPurchasePaid, rejectAdminOrder } = usePortal();
+  const { adminPurchases, clients, services, markAdminPurchasePaid, rejectAdminOrder, createAdminPurchase } = usePortal();
   const [processingRejectPurchaseId, setProcessingRejectPurchaseId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -158,6 +169,9 @@ export default function PurchasesPage() {
   const [processingPaidPurchaseId, setProcessingPaidPurchaseId] = useState('');
   const [paymentActionMessage, setPaymentActionMessage] = useState('');
   const [paymentActionError, setPaymentActionError] = useState('');
+  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
+  const [addTransactionForm, setAddTransactionForm] = useState(emptyAddTransactionForm);
+  const [isCreatingTransaction, setIsCreatingTransaction] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const statusRef = useRef(null);
   const statusMenuRef = useRef(null);
@@ -196,6 +210,47 @@ export default function PurchasesPage() {
     setPaymentActionMessage('');
     setPaymentActionError('');
     setSelectedPurchase(purchase);
+  };
+
+  const openAddTransactionModal = () => {
+    setAddTransactionForm(emptyAddTransactionForm);
+    setPaymentActionError('');
+    setShowAddTransactionModal(true);
+  };
+
+  const handleAddTransactionSubmit = async (event) => {
+    event.preventDefault();
+    setPaymentActionError('');
+    setPaymentActionMessage('');
+
+    if (!addTransactionForm.userId || !addTransactionForm.serviceName.trim() || !addTransactionForm.amount) {
+      setPaymentActionError('Client, service name, and amount are required.');
+      return;
+    }
+
+    setIsCreatingTransaction(true);
+
+    try {
+      const result = await createAdminPurchase({
+        userId: Number(addTransactionForm.userId),
+        serviceId: addTransactionForm.serviceId ? Number(addTransactionForm.serviceId) : undefined,
+        serviceName: addTransactionForm.serviceName.trim(),
+        category: addTransactionForm.category.trim() || undefined,
+        amount: Number(addTransactionForm.amount),
+        paymentMethod: addTransactionForm.paymentMethod.trim() || 'manual',
+        notes: addTransactionForm.notes.trim() || undefined,
+        dueDate: addTransactionForm.dueDate || undefined,
+      });
+
+      setPaymentActionMessage(result?.message || 'Transaction created successfully.');
+      setShowAddTransactionModal(false);
+      setAddTransactionForm(emptyAddTransactionForm);
+      setCurrentPage(1);
+    } catch (error) {
+      setPaymentActionError(error.message || 'Unable to create transaction.');
+    } finally {
+      setIsCreatingTransaction(false);
+    }
   };
 
   const closePurchaseDetails = () => {
@@ -496,6 +551,14 @@ export default function PurchasesPage() {
 
         {layoutMode === 'list' ? <div id="purchases-column-visibility-slot" className="shrink-0" /> : null}
 
+        <button
+          type="button"
+          onClick={openAddTransactionModal}
+          className="btn-primary gap-2 px-6 py-2"
+        >
+          <Plus size={20} /> Add New Transaction
+        </button>
+
         <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/70 p-1">
           <button
             type="button"
@@ -766,6 +829,139 @@ export default function PurchasesPage() {
             document.body,
           )
         : null}
+
+      {showAddTransactionModal ? createPortal(
+        <div className="fixed inset-0 z-[10003] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <form onSubmit={handleAddTransactionSubmit} className="panel w-full max-w-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-orange-300">Transactions</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Add New Transaction</h2>
+              </div>
+              <button type="button" onClick={() => setShowAddTransactionModal(false)} className="btn-secondary px-4">Close</button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Client
+                <select
+                  className="input mt-2"
+                  value={addTransactionForm.userId}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, userId: event.target.value }))}
+                  required
+                >
+                  <option value="">Select client</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name} ({client.company})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Catalog Service (optional)
+                <select
+                  className="input mt-2"
+                  value={addTransactionForm.serviceId}
+                  onChange={(event) => {
+                    const nextServiceId = event.target.value;
+                    const selectedService = services.find((service) => String(service.id) === String(nextServiceId));
+
+                    setAddTransactionForm((current) => ({
+                      ...current,
+                      serviceId: nextServiceId,
+                      serviceName: selectedService?.name ?? current.serviceName,
+                      category: selectedService?.category ?? current.category,
+                      amount: selectedService?.price != null ? String(selectedService.price) : current.amount,
+                    }));
+                  }}
+                >
+                  <option value="">Select catalog service or enter manually</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name} ({service.category})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Service Name
+                <input
+                  className="input mt-2"
+                  value={addTransactionForm.serviceName}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, serviceName: event.target.value }))}
+                  placeholder="Dedicated Bare Metal Linux"
+                  required
+                />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Category
+                <input
+                  className="input mt-2"
+                  value={addTransactionForm.category}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, category: event.target.value }))}
+                  placeholder="Dedicated Server"
+                />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Amount
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input mt-2"
+                  value={addTransactionForm.amount}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, amount: event.target.value }))}
+                  placeholder="200520"
+                  required
+                />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Payment Method
+                <input
+                  className="input mt-2"
+                  value={addTransactionForm.paymentMethod}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, paymentMethod: event.target.value }))}
+                  placeholder="manual"
+                />
+              </label>
+
+              <label className="block text-sm text-slate-300">
+                Due Date
+                <input
+                  type="date"
+                  className="input mt-2"
+                  value={addTransactionForm.dueDate}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, dueDate: event.target.value }))}
+                />
+              </label>
+
+              <label className="block text-sm text-slate-300 md:col-span-2">
+                Notes
+                <textarea
+                  className="input mt-2 min-h-24"
+                  value={addTransactionForm.notes}
+                  onChange={(event) => setAddTransactionForm((current) => ({ ...current, notes: event.target.value }))}
+                  placeholder="Optional customer note or admin note"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowAddTransactionModal(false)} className="btn-secondary px-5">Cancel</button>
+              <button type="submit" disabled={isCreatingTransaction} className="btn-primary px-5">
+                {isCreatingTransaction ? 'Creating...' : 'Add Transaction'}
+              </button>
+            </div>
+          </form>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }

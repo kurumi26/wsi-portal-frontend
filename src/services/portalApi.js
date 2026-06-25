@@ -1206,6 +1206,13 @@ export const portalApi = {
     return apiRequest('/admin/purchases');
   },
 
+  async createAdminPurchase(payload) {
+    return apiRequest('/admin/purchases', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async approveAdminOrder(orderId) {
     return apiRequest(`/admin/purchases/${orderId}/approve`, {
       method: 'PATCH',
